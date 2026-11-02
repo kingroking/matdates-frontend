@@ -1,6 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from './firebase'; 
+import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
+import { format, parse, startOfWeek, getDay } from 'date-fns';
+import { enUS } from 'date-fns/locale';
+import 'react-big-calendar/lib/css/react-big-calendar.css';
+
+const locales = {
+  'en-US': enUS,
+}
+const localizer = dateFnsLocalizer({
+  format,
+  parse,
+  startOfWeek,
+  getDay,
+  locales,
+})
 
 export default function App() {
   const [events, setEvents] = useState([]);
@@ -13,7 +28,11 @@ export default function App() {
   const [federationFilter, setFederationFilter] = useState('All');
   const [ageFilter, setAgeFilter] = useState('All');
   const [monthFilter, setMonthFilter] = useState('All');
-  const [viewMode, setViewMode] = useState('list');
+  const [viewMode, setViewMode] = useState('list'); 
+
+  // NEW: Explicitly track the Calendar's internal state so the navigation buttons work
+  const [calendarDate, setCalendarDate] = useState(new Date());
+  const [calendarView, setCalendarView] = useState('month');
 
   const [formData, setFormData] = useState({
     name: '', date: '', location: '', link: '', cost: '', type: 'Tournament', color: '#ff9f43'
@@ -53,29 +72,23 @@ export default function App() {
             color = '#9b59b6';
         }
 
-        // --- NEW SMART AGE LOGIC ---
-        // Assume standard events (JJWL, ADCC Opens, Grappling Industries) host BOTH kids and adults
         let isKids = true;  
         let isAdult = true; 
         
         if (type === 'Super Fight' || evId.startsWith('flograp') || evId.startsWith('ufc') || evId.includes('fightpass')) {
-            isKids = false; // Super fights are adult professionals
+            isKids = false; 
         } else if (evId.startsWith('ibjjf')) {
-            // IBJJF strictly separates events. If it doesn't say "kids", it's adults.
             isKids = evNameLow.includes('kids');
             isAdult = !evNameLow.includes('kids');
         } else {
-            // For all others (JJWL, Smoothcomp, ADCC): Exclude kids ONLY if explicitly adult/pro
             if (evNameLow.includes('adult only') || evNameLow.includes('masters only') || /\b(pro)\b/.test(evNameLow)) {
                 isKids = false;
             }
-            // Exclude adults ONLY if explicitly a youth-only event
             if ((evNameLow.includes('kids') || evNameLow.includes('youth') || evNameLow.includes('juvenile')) && !evNameLow.includes('adult') && !evNameLow.includes('all ages')) {
                 isAdult = false;
             }
         }
 
-        // We attach these directly to the event object so the Filter and the Tiger Icon perfectly match
         return { ...ev, type, color, isKidsEvent: isKids, isAdultEvent: isAdult };
       })
       .sort((a, b) => (a.sort_date > b.sort_date ? 1 : -1));
@@ -155,6 +168,20 @@ export default function App() {
     return matchesSearch && matchesFed && matchesAge && matchesMonth;
   });
 
+  const calendarEvents = filteredEvents.map(ev => {
+    let startDate = new Date();
+    if (ev.sort_date) {
+      const [y, m, d] = ev.sort_date.split('-');
+      startDate = new Date(y, m - 1, d);
+    }
+    return {
+      title: `${ev.isKidsEvent ? '🐯 ' : ''}${ev.name}`,
+      start: startDate,
+      end: startDate,
+      resource: ev 
+    };
+  });
+
   return (
     <div style={{ backgroundColor: '#000', minHeight: '100vh', color: '#fff', padding: '20px', fontFamily: 'sans-serif' }}>
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
@@ -230,9 +257,10 @@ export default function App() {
             </span>
           </div>
           
-          <div style={{ display: 'flex', gap: '5px' }}>
+          <div style={{ display: 'flex', gap: '0' }}>
             <button onClick={() => setViewMode('list')} style={{ padding: '8px 12px', cursor: 'pointer', backgroundColor: viewMode === 'list' ? '#333' : '#111', color: '#fff', border: '1px solid #444', borderRadius: '4px 0 0 4px' }}>List</button>
-            <button onClick={() => setViewMode('grid')} style={{ padding: '8px 12px', cursor: 'pointer', backgroundColor: viewMode === 'grid' ? '#333' : '#111', color: '#fff', border: '1px solid #444', borderRadius: '0 4px 4px 0' }}>Grid</button>
+            <button onClick={() => setViewMode('grid')} style={{ padding: '8px 12px', cursor: 'pointer', backgroundColor: viewMode === 'grid' ? '#333' : '#111', color: '#fff', borderTop: '1px solid #444', borderBottom: '1px solid #444', borderLeft: 'none', borderRight: 'none' }}>Grid</button>
+            <button onClick={() => setViewMode('calendar')} style={{ padding: '8px 12px', cursor: 'pointer', backgroundColor: viewMode === 'calendar' ? '#333' : '#111', color: '#fff', border: '1px solid #444', borderRadius: '0 4px 4px 0' }}>Calendar</button>
           </div>
         </div>
 
@@ -270,69 +298,102 @@ export default function App() {
           </select>
         </div>
 
-        <div style={{ 
-          display: viewMode === 'grid' ? 'grid' : 'flex', 
-          flexDirection: viewMode === 'list' ? 'column' : 'row',
-          gridTemplateColumns: viewMode === 'grid' ? 'repeat(auto-fill, minmax(300px, 1fr))' : 'none',
-          gap: '20px' 
-        }}>
-          {filteredEvents.length === 0 ? (
-            <p style={{ color: '#aaa', fontSize: '1.2rem', textAlign: 'center', marginTop: '40px', width: '100%' }}>No events found matching your filters.</p>
-          ) : (
-            filteredEvents.map(ev => {
-              const isJJWL = ev.id && ev.id.toLowerCase().startsWith('jjwl');
-              const isADCC = (ev.id && ev.id.toLowerCase().includes('adcc')) || (ev.name && ev.name.toLowerCase().includes('adcc'));
-              const evBorderColor = isADCC ? '#F1C40F' : ev.type === 'Super Fight' ? '#e31837' : (isJJWL ? '#ffffff' : (ev.color || '#ff9f43'));
+        {viewMode === 'calendar' ? (
+          <div style={{ backgroundColor: '#fff', padding: '15px', borderRadius: '8px', color: '#000' }}>
+            <Calendar
+              localizer={localizer}
+              events={calendarEvents}
+              startAccessor="start"
+              endAccessor="end"
+              style={{ height: 750 }}
               
-              return (
-                <div key={ev.id} style={{ backgroundColor: '#111', borderLeft: `5px solid ${evBorderColor}`, padding: '20px', borderRadius: '4px', textAlign: 'left', display: 'flex', flexDirection: 'column' }}>
-                  
-                  <h3 style={{ margin: '0 0 10px 0', fontSize: '1.2rem', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
-                    <span>{ev.name}</span>
-                    {/* Render Tiger Icon based on our new Smart Logic */}
-                    {ev.isKidsEvent && (
-                      <span style={{ fontSize: '1.3rem', flexShrink: 0 }} title="Kids Event">🐯</span>
-                    )}
-                  </h3>
-                  
-                  <div style={{ flexGrow: 1 }}>
-                    <p style={{ margin: '5px 0', color: '#aaa' }}>📅 {ev.date}</p>
-                    <p style={{ margin: '5px 0', color: '#aaa' }}>📍 {ev.location}</p>
+              /* NEW: Manually controlling the state overrides the glitch */
+              date={calendarDate}
+              onNavigate={(newDate) => setCalendarDate(newDate)}
+              view={calendarView}
+              onView={(newView) => setCalendarView(newView)}
+              views={['month', 'week', 'agenda']}
+
+              eventPropGetter={(event) => {
+                const evId = event.resource.id ? event.resource.id.toLowerCase() : "";
+                const isJJWL = evId.startsWith('jjwl');
+                const isADCC = evId.includes('adcc') || event.resource.name.toLowerCase().includes('adcc');
+                const bgColor = isADCC ? '#F1C40F' : event.resource.type === 'Super Fight' ? '#e31837' : (isJJWL ? '#555' : (event.resource.color || '#ff9f43'));
+                return { style: { backgroundColor: bgColor, color: isADCC || isJJWL ? '#000' : '#fff', fontWeight: 'bold' } };
+              }}
+              onSelectEvent={(event) => {
+                if(event.resource.link) {
+                  window.open(event.resource.link, '_blank');
+                } else {
+                  alert(`${event.title}\n📍 ${event.resource.location}`);
+                }
+              }}
+            />
+          </div>
+        ) : (
+          <div style={{ 
+            display: viewMode === 'grid' ? 'grid' : 'flex', 
+            flexDirection: viewMode === 'list' ? 'column' : 'row',
+            gridTemplateColumns: viewMode === 'grid' ? 'repeat(auto-fill, minmax(300px, 1fr))' : 'none',
+            gap: '20px' 
+          }}>
+            {filteredEvents.length === 0 ? (
+              <p style={{ color: '#aaa', fontSize: '1.2rem', textAlign: 'center', marginTop: '40px', width: '100%' }}>No events found matching your filters.</p>
+            ) : (
+              filteredEvents.map(ev => {
+                const isJJWL = ev.id && ev.id.toLowerCase().startsWith('jjwl');
+                const isADCC = (ev.id && ev.id.toLowerCase().includes('adcc')) || (ev.name && ev.name.toLowerCase().includes('adcc'));
+                const evBorderColor = isADCC ? '#F1C40F' : ev.type === 'Super Fight' ? '#e31837' : (isJJWL ? '#ffffff' : (ev.color || '#ff9f43'));
+                
+                return (
+                  <div key={ev.id} style={{ backgroundColor: '#111', borderLeft: `5px solid ${evBorderColor}`, padding: '20px', borderRadius: '4px', textAlign: 'left', display: 'flex', flexDirection: 'column' }}>
                     
-                    {ev.cost && ev.cost !== "See Smoothcomp.com" && !ev.cost.includes("Watch on") && (
-                      <p style={{ margin: '5px 0', color: '#aaa' }}>💰 {ev.cost}</p>
-                    )}
+                    <h3 style={{ margin: '0 0 10px 0', fontSize: '1.2rem', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
+                      <span>{ev.name}</span>
+                      {ev.isKidsEvent && (
+                        <span style={{ fontSize: '1.3rem', flexShrink: 0 }} title="Kids Event">🐯</span>
+                      )}
+                    </h3>
                     
-                    {ev.deadline && <p style={{ margin: '5px 0', color: '#ff4d4d', fontSize: '0.95rem', fontWeight: 'bold' }}>⏰ Deadline: {ev.deadline}</p>}
+                    <div style={{ flexGrow: 1 }}>
+                      <p style={{ margin: '5px 0', color: '#aaa' }}>📅 {ev.date}</p>
+                      <p style={{ margin: '5px 0', color: '#aaa' }}>📍 {ev.location}</p>
+                      
+                      {ev.cost && ev.cost !== "See Smoothcomp.com" && !ev.cost.includes("Watch on") && (
+                        <p style={{ margin: '5px 0', color: '#aaa' }}>💰 {ev.cost}</p>
+                      )}
+                      
+                      {ev.deadline && <p style={{ margin: '5px 0', color: '#ff4d4d', fontSize: '0.95rem', fontWeight: 'bold' }}>⏰ Deadline: {ev.deadline}</p>}
+                    </div>
+                    
+                    {ev.link && (
+                      <a href={ev.link} target="_blank" rel="noreferrer" style={{ 
+                        display: 'inline-block', 
+                        alignSelf: 'flex-start',
+                        marginTop: '15px', 
+                        color: '#fff', 
+                        textDecoration: 'none', 
+                        textAlign: 'center',
+                        backgroundColor: ev.type === 'Super Fight' 
+                           ? ((ev.id && ev.id.includes('ufc')) || (ev.link && ev.link.includes('ufc')) ? '#1a1a1a' : '#2563eb') 
+                           : '#333',
+                        border: ev.type === 'Super Fight' && ((ev.id && ev.id.includes('ufc')) || (ev.link && ev.link.includes('ufc'))) ? '1px solid #e31837' : 'none',
+                        padding: '8px 18px', 
+                        borderRadius: '4px', 
+                        fontSize: '0.9rem',
+                        fontWeight: 'bold'
+                      }}>
+                        {ev.type === 'Super Fight' 
+                           ? ((ev.id && ev.id.includes('ufc')) || (ev.link && ev.link.includes('ufc')) ? '🥊 Watch on UFC Fight Pass' : '📺 Watch on FloGrappling') 
+                           : '🎟️ More Info / Tickets'}
+                      </a>
+                    )}
                   </div>
-                  
-                  {ev.link && (
-                    <a href={ev.link} target="_blank" rel="noreferrer" style={{ 
-                      display: 'inline-block', 
-                      alignSelf: 'flex-start',
-                      marginTop: '15px', 
-                      color: '#fff', 
-                      textDecoration: 'none', 
-                      textAlign: 'center',
-                      backgroundColor: ev.type === 'Super Fight' 
-                         ? ((ev.id && ev.id.includes('ufc')) || (ev.link && ev.link.includes('ufc')) ? '#1a1a1a' : '#2563eb') 
-                         : '#333',
-                      border: ev.type === 'Super Fight' && ((ev.id && ev.id.includes('ufc')) || (ev.link && ev.link.includes('ufc'))) ? '1px solid #e31837' : 'none',
-                      padding: '8px 18px', 
-                      borderRadius: '4px', 
-                      fontSize: '0.9rem',
-                      fontWeight: 'bold'
-                    }}>
-                      {ev.type === 'Super Fight' 
-                         ? ((ev.id && ev.id.includes('ufc')) || (ev.link && ev.link.includes('ufc')) ? '🥊 Watch on UFC Fight Pass' : '📺 Watch on FloGrappling') 
-                         : '🎟️ More Info / Tickets'}
-                    </a>
-                  )}
-                </div>
-              )
-            })
-          )}
-        </div>
+                )
+              })
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
