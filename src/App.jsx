@@ -39,12 +39,10 @@ export default function App() {
         return eventDate >= today;
       })
       .map(ev => {
-        // THE FIX: Regex \b checks for the exact standalone word (no "campeonato")
         const evNameLow = ev.name ? ev.name.toLowerCase() : '';
         const isSeminarOrCamp = /\b(seminar|camp|clinic)\b/.test(evNameLow);
         const isTournament = /\b(tournament|championship|campeonato|open|cup|league|classic)\b/.test(evNameLow);
 
-        // Priority: If it's a seminar/camp BUT NOT a tournament, make it a Seminar
         if (isSeminarOrCamp && !isTournament) {
             return { ...ev, type: 'Seminar', color: '#9b59b6' };
         }
@@ -99,7 +97,6 @@ export default function App() {
   const filteredEvents = events.filter(ev => {
     const evNameLow = ev.name ? ev.name.toLowerCase() : '';
     
-    // THE FIX: Strict word boundaries for non-BJJ martial arts filtering
     if (/\b(judo|wrestling|karate|taekwondo|kickboxing|muay thai)\b/.test(evNameLow)) {
         return false; 
     }
@@ -136,6 +133,7 @@ export default function App() {
       federationFilter === 'All' ? true :
       federationFilter === 'IBJJF' ? evId.startsWith('ibjjf') :
       federationFilter === 'JJWL' ? evId.startsWith('jjwl') :
+      federationFilter === 'ADCC' ? (evId.includes('adcc') || evNameLow.includes('adcc')) :
       federationFilter === 'Smoothcomp' ? evId.startsWith('smoothcomp') :
       federationFilter === 'Super Fight' ? (ev.type === 'Super Fight' || evId.startsWith('flograp') || evId.startsWith('ufcfightpass')) :
       federationFilter === 'Seminars' ? (ev.type === 'Seminar' || evId.startsWith('seminar')) : false;
@@ -167,12 +165,14 @@ export default function App() {
         </header>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px', marginBottom: '20px' }}>
-          <div style={{ display: 'flex', gap: '15px', fontSize: '0.95rem', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '15px', fontSize: '0.95rem', flexWrap: 'wrap', alignItems: 'center' }}>
             <span><span style={{ color: '#ff9f43' }}>■</span> Smoothcomp</span>
             <span><span style={{ color: '#0055a4' }}>■</span> IBJJF</span>
             <span><span style={{ color: '#ffffff', textShadow: '0 0 2px #000' }}>■</span> JJWL</span>
+            <span><span style={{ color: '#F1C40F' }}>■</span> ADCC</span>
             <span><span style={{ color: '#e31837' }}>■</span> Super Fights</span>
             <span><span style={{ color: '#9b59b6' }}>■</span> Seminars</span>
+            <span style={{ marginLeft: '10px' }}><span style={{ fontSize: '1.2rem' }}>🐯</span> Kids/Youth Events</span>
           </div>
           
           <div style={{ display: 'flex', gap: '5px' }}>
@@ -195,6 +195,7 @@ export default function App() {
             <option value="All">All Federations</option>
             <option value="IBJJF">IBJJF Only</option>
             <option value="JJWL">JJWL Only</option>
+            <option value="ADCC">ADCC Only</option>
             <option value="Smoothcomp">Smoothcomp</option>
             <option value="Super Fight">Super Fights</option>
             <option value="Seminars">Seminars</option>
@@ -209,7 +210,7 @@ export default function App() {
 
           <select value={ageFilter} onChange={(e) => setAgeFilter(e.target.value)} style={{ padding: '12px', borderRadius: '5px', border: '1px solid #333', backgroundColor: '#111', color: '#fff', fontSize: '1rem', cursor: 'pointer' }}>
             <option value="All">All Ages</option>
-            <option value="Kids">Kids Events 🧸</option>
+            <option value="Kids">Kids Events 🐯</option>
             <option value="Adults">Adult Events</option>
           </select>
         </div>
@@ -225,7 +226,8 @@ export default function App() {
           ) : (
             filteredEvents.map(ev => {
               const isJJWL = ev.id && ev.id.toLowerCase().startsWith('jjwl');
-              const evBorderColor = ev.type === 'Super Fight' ? '#e31837' : (isJJWL ? '#ffffff' : (ev.color || '#ff9f43'));
+              const isADCC = (ev.id && ev.id.toLowerCase().includes('adcc')) || (ev.name && ev.name.toLowerCase().includes('adcc'));
+              const evBorderColor = isADCC ? '#F1C40F' : ev.type === 'Super Fight' ? '#e31837' : (isJJWL ? '#ffffff' : (ev.color || '#ff9f43'));
               
               return (
                 <div key={ev.id} style={{ backgroundColor: '#111', borderLeft: `5px solid ${evBorderColor}`, padding: '20px', borderRadius: '4px', textAlign: 'left', display: 'flex', flexDirection: 'column' }}>
@@ -233,7 +235,7 @@ export default function App() {
                   <h3 style={{ margin: '0 0 10px 0', fontSize: '1.2rem', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
                     <span>{ev.name}</span>
                     {ev.name && (ev.name.toLowerCase().includes('kids') || ev.name.toLowerCase().includes('youth') || ev.name.toLowerCase().includes('juvenile')) && (
-                      <span style={{ fontSize: '1.3rem', flexShrink: 0 }} title="Kids Event">🧸</span>
+                      <span style={{ fontSize: '1.3rem', flexShrink: 0 }} title="Kids Event">🐯</span>
                     )}
                   </h3>
                   
