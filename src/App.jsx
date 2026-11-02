@@ -5,6 +5,7 @@ import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay } from 'date-fns';
 import { enUS } from 'date-fns/locale';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
+import { calculateWeightClass } from './rulesets'; 
 
 const locales = {
   'en-US': enUS,
@@ -30,9 +31,15 @@ export default function App() {
   const [monthFilter, setMonthFilter] = useState('All');
   const [viewMode, setViewMode] = useState('list'); 
 
-  // NEW: Explicitly track the Calendar's internal state so the navigation buttons work
   const [calendarDate, setCalendarDate] = useState(new Date());
   const [calendarView, setCalendarView] = useState('month');
+
+  const [showCalcModal, setShowCalcModal] = useState(false);
+  const [selectedCalcEvent, setSelectedCalcEvent] = useState(null);
+  
+  // NEW: Added belt rank to the calculator state
+  const [calcData, setCalcData] = useState({ gender: 'Male', age: 18, weight: '', belt: 'White' });
+  const [calcResult, setCalcResult] = useState('');
 
   const [formData, setFormData] = useState({
     name: '', date: '', location: '', link: '', cost: '', type: 'Tournament', color: '#ff9f43'
@@ -118,15 +125,28 @@ export default function App() {
     setFormData({ name: '', date: '', location: '', link: '', cost: '', type: 'Tournament', color: '#ff9f43' });
   };
 
-  const approveEvent = async (eventData) => {
-    await addDoc(collection(db, "live_events"), eventData);
-    await deleteDoc(doc(db, "pending_events", eventData.id));
-    fetchEvents();
+  const handleOpenCalc = (ev) => {
+    setSelectedCalcEvent(ev);
+    setCalcResult('');
+    setShowCalcModal(true);
   };
 
-  const deletePending = async (id) => {
-    await deleteDoc(doc(db, "pending_events", id));
-    fetchEvents();
+  const handleCalculate = (e) => {
+    e.preventDefault();
+    if (!selectedCalcEvent) return;
+    
+    let federation = 'Other';
+    const evId = selectedCalcEvent.id ? selectedCalcEvent.id.toLowerCase() : "";
+    const evNameLow = selectedCalcEvent.name ? selectedCalcEvent.name.toLowerCase() : "";
+    
+    if (evId.startsWith('ibjjf')) federation = 'IBJJF';
+    else if (evId.includes('adcc') || evNameLow.includes('adcc')) federation = 'ADCC';
+    else if (evId.startsWith('jjwl')) federation = 'JJWL';
+    else if (selectedCalcEvent.type === 'Super Fight' || evId.startsWith('ufc') || evId.startsWith('flograp')) federation = 'Super Fight';
+    
+    // NEW: Passing the belt value into the calculation
+    const result = calculateWeightClass(federation, parseInt(calcData.age), calcData.gender, calcData.weight, calcData.belt);
+    setCalcResult(result);
   };
 
   const monthOptions = Array.from(new Set(events.map(ev => ev.sort_date ? ev.sort_date.substring(0, 7) : null).filter(Boolean))).sort();
@@ -183,15 +203,58 @@ export default function App() {
   });
 
   return (
-    <div style={{ backgroundColor: '#000', minHeight: '100vh', color: '#fff', padding: '20px', fontFamily: 'sans-serif' }}>
+    <div style={{ backgroundColor: '#000', minHeight: '100vh', color: '#fff', padding: '20px', fontFamily: 'sans-serif', position: 'relative' }}>
+      
+      {showCalcModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+          <div style={{ backgroundColor: '#111', padding: '30px', borderRadius: '12px', border: '1px solid #444', width: '90%', maxWidth: '400px' }}>
+            <h2 style={{ margin: '0 0 5px 0', fontSize: '1.5rem', color: '#fff' }}>⚖️ Weight Class Check</h2>
+            <p style={{ margin: '0 0 20px 0', color: '#aaa', fontSize: '0.9rem' }}>Event: {selectedCalcEvent?.name}</p>
+            
+            <form onSubmit={handleCalculate} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <select value={calcData.gender} onChange={e => setCalcData({...calcData, gender: e.target.value})} style={{ flex: 1, padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }}>
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                </select>
+                <input type="number" placeholder="Age" value={calcData.age} onChange={e => setCalcData({...calcData, age: e.target.value})} style={{ flex: 1, padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }} required />
+              </div>
+
+              {/* NEW: Belt Dropdown */}
+              <select value={calcData.belt} onChange={e => setCalcData({...calcData, belt: e.target.value})} style={{ padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }}>
+                <option value="White">White Belt</option>
+                <option value="Grey">Grey Belt</option>
+                <option value="Yellow">Yellow Belt</option>
+                <option value="Orange">Orange Belt</option>
+                <option value="Green">Green Belt</option>
+                <option value="Blue">Blue Belt</option>
+                <option value="Purple">Purple Belt</option>
+                <option value="Brown">Brown Belt</option>
+                <option value="Black">Black Belt</option>
+              </select>
+
+              <input type="number" placeholder="Enter Weight in LBS" value={calcData.weight} step="0.1" onChange={e => setCalcData({...calcData, weight: e.target.value})} style={{ padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }} required />
+              
+              <button type="submit" style={{ padding: '14px', backgroundColor: '#ff9f43', color: '#000', border: 'none', borderRadius: '6px', fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer' }}>Calculate Division</button>
+            </form>
+
+            {calcResult && (
+              <div style={{ marginTop: '20px', padding: '15px', backgroundColor: '#222', borderRadius: '6px', textAlign: 'center', border: '1px solid #ff9f43' }}>
+                <p style={{ margin: 0, color: '#aaa', fontSize: '0.9rem' }}>Your Division is:</p>
+                <p style={{ margin: '5px 0 0 0', fontSize: '1.3rem', fontWeight: 'bold', color: '#fff' }}>{calcResult}</p>
+              </div>
+            )}
+
+            <button onClick={() => setShowCalcModal(false)} style={{ marginTop: '20px', padding: '12px', width: '100%', backgroundColor: 'transparent', color: '#aaa', border: '1px solid #444', borderRadius: '6px', cursor: 'pointer', fontSize: '1rem' }}>Close</button>
+          </div>
+        </div>
+      )}
+
       <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
-        
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
           <div style={{ textAlign: 'left' }}>
-            <h1 onClick={handleLogoClick} style={{ 
-              cursor: 'pointer', margin: 0, padding: 0, fontSize: '3.2rem', userSelect: 'none',
-              fontWeight: '900', letterSpacing: '2px'
-            }}>
+            <h1 onClick={handleLogoClick} style={{ cursor: 'pointer', margin: 0, padding: 0, fontSize: '3.2rem', userSelect: 'none', fontWeight: '900', letterSpacing: '2px' }}>
               <span style={{ color: '#ffffff' }}>Mat</span><span style={{ color: '#e31837' }}>Dates</span>
             </h1>
             <p style={{ color: '#aaa', margin: '10px 0 0 0', fontSize: '1.1rem' }}>The Ultimate BJJ Event Hub</p>
@@ -202,59 +265,14 @@ export default function App() {
         </header>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px', marginBottom: '20px' }}>
-          
           <div style={{ display: 'flex', gap: '15px', fontSize: '0.95rem', flexWrap: 'wrap', alignItems: 'center', userSelect: 'none' }}>
-            <span 
-              onClick={() => setFederationFilter(prev => prev === 'Smoothcomp' ? 'All' : 'Smoothcomp')}
-              style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'Smoothcomp' ? 1 : 0.4, transition: 'opacity 0.2s' }}
-            >
-              <span style={{ color: '#ff9f43' }}>■</span> Smoothcomp
-            </span>
-            <span 
-              onClick={() => setFederationFilter(prev => prev === 'IBJJF' ? 'All' : 'IBJJF')}
-              style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'IBJJF' ? 1 : 0.4, transition: 'opacity 0.2s' }}
-            >
-              <span style={{ color: '#0055a4' }}>■</span> IBJJF
-            </span>
-            <span 
-              onClick={() => setFederationFilter(prev => prev === 'JJWL' ? 'All' : 'JJWL')}
-              style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'JJWL' ? 1 : 0.4, transition: 'opacity 0.2s' }}
-            >
-              <span style={{ color: '#ffffff', textShadow: '0 0 2px #000' }}>■</span> JJWL
-            </span>
-            <span 
-              onClick={() => setFederationFilter(prev => prev === 'ADCC' ? 'All' : 'ADCC')}
-              style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'ADCC' ? 1 : 0.4, transition: 'opacity 0.2s' }}
-            >
-              <span style={{ color: '#F1C40F' }}>■</span> ADCC
-            </span>
-            <span 
-              onClick={() => setFederationFilter(prev => prev === 'Super Fight' ? 'All' : 'Super Fight')}
-              style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'Super Fight' ? 1 : 0.4, transition: 'opacity 0.2s' }}
-            >
-              <span style={{ color: '#e31837' }}>■</span> Super Fights
-            </span>
-            <span 
-              onClick={() => setFederationFilter(prev => prev === 'Seminars' ? 'All' : 'Seminars')}
-              style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'Seminars' ? 1 : 0.4, transition: 'opacity 0.2s' }}
-            >
-              <span style={{ color: '#9b59b6' }}>■</span> Seminars
-            </span>
-            <span 
-              onClick={() => setAgeFilter(prev => prev === 'Kids' ? 'All' : 'Kids')}
-              style={{ 
-                cursor: 'pointer', 
-                marginLeft: '10px', 
-                padding: '4px 10px',
-                backgroundColor: ageFilter === 'Kids' ? '#222' : 'transparent',
-                borderRadius: '6px',
-                border: ageFilter === 'Kids' ? '1px solid #555' : '1px solid transparent',
-                opacity: ageFilter === 'Kids' ? 1 : 0.8,
-                transition: 'all 0.2s' 
-              }}
-            >
-              <span style={{ fontSize: '1.2rem' }}>🐯</span> Kids/Youth Events
-            </span>
+            <span onClick={() => setFederationFilter(prev => prev === 'Smoothcomp' ? 'All' : 'Smoothcomp')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'Smoothcomp' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#ff9f43' }}>■</span> Smoothcomp</span>
+            <span onClick={() => setFederationFilter(prev => prev === 'IBJJF' ? 'All' : 'IBJJF')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'IBJJF' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#0055a4' }}>■</span> IBJJF</span>
+            <span onClick={() => setFederationFilter(prev => prev === 'JJWL' ? 'All' : 'JJWL')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'JJWL' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#ffffff', textShadow: '0 0 2px #000' }}>■</span> JJWL</span>
+            <span onClick={() => setFederationFilter(prev => prev === 'ADCC' ? 'All' : 'ADCC')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'ADCC' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#F1C40F' }}>■</span> ADCC</span>
+            <span onClick={() => setFederationFilter(prev => prev === 'Super Fight' ? 'All' : 'Super Fight')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'Super Fight' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#e31837' }}>■</span> Super Fights</span>
+            <span onClick={() => setFederationFilter(prev => prev === 'Seminars' ? 'All' : 'Seminars')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'Seminars' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#9b59b6' }}>■</span> Seminars</span>
+            <span onClick={() => setAgeFilter(prev => prev === 'Kids' ? 'All' : 'Kids')} style={{ cursor: 'pointer', marginLeft: '10px', padding: '4px 10px', backgroundColor: ageFilter === 'Kids' ? '#222' : 'transparent', borderRadius: '6px', border: ageFilter === 'Kids' ? '1px solid #555' : '1px solid transparent', opacity: ageFilter === 'Kids' ? 1 : 0.8, transition: 'all 0.2s' }}><span style={{ fontSize: '1.2rem' }}>🐯</span> Kids/Youth Events</span>
           </div>
           
           <div style={{ display: 'flex', gap: '0' }}>
@@ -283,14 +301,10 @@ export default function App() {
             <option value="Super Fight">Super Fights</option>
             <option value="Seminars">Seminars</option>
           </select>
-
           <select value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)} style={{ padding: '12px', borderRadius: '5px', border: '1px solid #333', backgroundColor: '#111', color: '#fff', fontSize: '1rem', cursor: 'pointer' }}>
             <option value="All">All Months</option>
-            {monthOptions.map(m => (
-              <option key={m} value={m}>{formatMonthDisplay(m)}</option>
-            ))}
+            {monthOptions.map(m => (<option key={m} value={m}>{formatMonthDisplay(m)}</option>))}
           </select>
-
           <select value={ageFilter} onChange={(e) => setAgeFilter(e.target.value)} style={{ padding: '12px', borderRadius: '5px', border: '1px solid #333', backgroundColor: '#111', color: '#fff', fontSize: '1rem', cursor: 'pointer' }}>
             <option value="All">All Ages</option>
             <option value="Kids">Kids Events 🐯</option>
@@ -306,14 +320,11 @@ export default function App() {
               startAccessor="start"
               endAccessor="end"
               style={{ height: 750 }}
-              
-              /* NEW: Manually controlling the state overrides the glitch */
               date={calendarDate}
               onNavigate={(newDate) => setCalendarDate(newDate)}
               view={calendarView}
               onView={(newView) => setCalendarView(newView)}
               views={['month', 'week', 'agenda']}
-
               eventPropGetter={(event) => {
                 const evId = event.resource.id ? event.resource.id.toLowerCase() : "";
                 const isJJWL = evId.startsWith('jjwl');
@@ -322,11 +333,8 @@ export default function App() {
                 return { style: { backgroundColor: bgColor, color: isADCC || isJJWL ? '#000' : '#fff', fontWeight: 'bold' } };
               }}
               onSelectEvent={(event) => {
-                if(event.resource.link) {
-                  window.open(event.resource.link, '_blank');
-                } else {
-                  alert(`${event.title}\n📍 ${event.resource.location}`);
-                }
+                if(event.resource.link) window.open(event.resource.link, '_blank');
+                else alert(`${event.title}\n📍 ${event.resource.location}`);
               }}
             />
           </div>
@@ -366,28 +374,17 @@ export default function App() {
                       {ev.deadline && <p style={{ margin: '5px 0', color: '#ff4d4d', fontSize: '0.95rem', fontWeight: 'bold' }}>⏰ Deadline: {ev.deadline}</p>}
                     </div>
                     
-                    {ev.link && (
-                      <a href={ev.link} target="_blank" rel="noreferrer" style={{ 
-                        display: 'inline-block', 
-                        alignSelf: 'flex-start',
-                        marginTop: '15px', 
-                        color: '#fff', 
-                        textDecoration: 'none', 
-                        textAlign: 'center',
-                        backgroundColor: ev.type === 'Super Fight' 
-                           ? ((ev.id && ev.id.includes('ufc')) || (ev.link && ev.link.includes('ufc')) ? '#1a1a1a' : '#2563eb') 
-                           : '#333',
-                        border: ev.type === 'Super Fight' && ((ev.id && ev.id.includes('ufc')) || (ev.link && ev.link.includes('ufc'))) ? '1px solid #e31837' : 'none',
-                        padding: '8px 18px', 
-                        borderRadius: '4px', 
-                        fontSize: '0.9rem',
-                        fontWeight: 'bold'
-                      }}>
-                        {ev.type === 'Super Fight' 
-                           ? ((ev.id && ev.id.includes('ufc')) || (ev.link && ev.link.includes('ufc')) ? '🥊 Watch on UFC Fight Pass' : '📺 Watch on FloGrappling') 
-                           : '🎟️ More Info / Tickets'}
-                      </a>
-                    )}
+                    <div style={{ display: 'flex', gap: '10px', marginTop: '15px', flexWrap: 'wrap' }}>
+                      <button onClick={() => handleOpenCalc(ev)} style={{ flex: 1, backgroundColor: '#222', color: '#fff', border: '1px solid #444', padding: '8px 12px', borderRadius: '4px', fontSize: '0.9rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
+                        ⚖️ Find Division
+                      </button>
+                      
+                      {ev.link && (
+                        <a href={ev.link} target="_blank" rel="noreferrer" style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', textDecoration: 'none', backgroundColor: ev.type === 'Super Fight' ? ((ev.id && ev.id.includes('ufc')) || (ev.link && ev.link.includes('ufc')) ? '#1a1a1a' : '#2563eb') : '#333', border: ev.type === 'Super Fight' && ((ev.id && ev.id.includes('ufc')) || (ev.link && ev.link.includes('ufc'))) ? '1px solid #e31837' : 'none', padding: '8px 12px', borderRadius: '4px', fontSize: '0.9rem', fontWeight: 'bold' }}>
+                          {ev.type === 'Super Fight' ? ((ev.id && ev.id.includes('ufc')) || (ev.link && ev.link.includes('ufc')) ? '🥊 UFC Pass' : '📺 FloGrappling') : '🎟️ Register'}
+                        </a>
+                      )}
+                    </div>
                   </div>
                 )
               })
