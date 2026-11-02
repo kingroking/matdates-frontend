@@ -40,13 +40,43 @@ export default function App() {
       })
       .map(ev => {
         const evNameLow = ev.name ? ev.name.toLowerCase() : '';
+        const evId = ev.id ? ev.id.toLowerCase() : "";
+        
         const isSeminarOrCamp = /\b(seminar|camp|clinic)\b/.test(evNameLow);
         const isTournament = /\b(tournament|championship|campeonato|open|cup|league|classic)\b/.test(evNameLow);
 
+        let type = ev.type || 'Tournament';
+        let color = ev.color || '#ff9f43';
+
         if (isSeminarOrCamp && !isTournament) {
-            return { ...ev, type: 'Seminar', color: '#9b59b6' };
+            type = 'Seminar';
+            color = '#9b59b6';
         }
-        return ev;
+
+        // --- NEW SMART AGE LOGIC ---
+        // Assume standard events (JJWL, ADCC Opens, Grappling Industries) host BOTH kids and adults
+        let isKids = true;  
+        let isAdult = true; 
+        
+        if (type === 'Super Fight' || evId.startsWith('flograp') || evId.startsWith('ufc') || evId.includes('fightpass')) {
+            isKids = false; // Super fights are adult professionals
+        } else if (evId.startsWith('ibjjf')) {
+            // IBJJF strictly separates events. If it doesn't say "kids", it's adults.
+            isKids = evNameLow.includes('kids');
+            isAdult = !evNameLow.includes('kids');
+        } else {
+            // For all others (JJWL, Smoothcomp, ADCC): Exclude kids ONLY if explicitly adult/pro
+            if (evNameLow.includes('adult only') || evNameLow.includes('masters only') || /\b(pro)\b/.test(evNameLow)) {
+                isKids = false;
+            }
+            // Exclude adults ONLY if explicitly a youth-only event
+            if ((evNameLow.includes('kids') || evNameLow.includes('youth') || evNameLow.includes('juvenile')) && !evNameLow.includes('adult') && !evNameLow.includes('all ages')) {
+                isAdult = false;
+            }
+        }
+
+        // We attach these directly to the event object so the Filter and the Tiger Icon perfectly match
+        return { ...ev, type, color, isKidsEvent: isKids, isAdultEvent: isAdult };
       })
       .sort((a, b) => (a.sort_date > b.sort_date ? 1 : -1));
     
@@ -96,38 +126,18 @@ export default function App() {
 
   const filteredEvents = events.filter(ev => {
     const evNameLow = ev.name ? ev.name.toLowerCase() : '';
+    const evId = ev.id ? ev.id.toLowerCase() : "";
     
     if (/\b(judo|wrestling|karate|taekwondo|kickboxing|muay thai)\b/.test(evNameLow)) {
         return false; 
     }
 
     const matchesSearch = (evNameLow + (ev.location || '').toLowerCase() + (ev.date || '').toLowerCase()).includes(searchTerm.toLowerCase());
-    const evId = ev.id ? ev.id.toLowerCase() : "";
     
-    let isKidsEvent = true;
-    let isAdultEvent = true;
-    
-    if (evId.startsWith('ibjjf')) {
-        isKidsEvent = evNameLow.includes('kids');
-        isAdultEvent = !evNameLow.includes('kids');
-    } else if (ev.type === 'Super Fight') {
-        isKidsEvent = false;
-        isAdultEvent = true;
-    } else {
-        if ((evNameLow.includes('kids') || evNameLow.includes('youth') || evNameLow.includes('juvenile')) && 
-            !evNameLow.includes('adult') && !evNameLow.includes('master') && !evNameLow.includes('all ages')) {
-            isAdultEvent = false; 
-        }
-        if ((evNameLow.includes('adult') || evNameLow.includes('master')) && 
-            !evNameLow.includes('kids') && !evNameLow.includes('youth')) {
-            isKidsEvent = false;
-        }
-    }
-
     const matchesAge = 
       ageFilter === 'All' ? true :
-      ageFilter === 'Kids' ? isKidsEvent :
-      ageFilter === 'Adults' ? isAdultEvent : false;
+      ageFilter === 'Kids' ? ev.isKidsEvent :
+      ageFilter === 'Adults' ? ev.isAdultEvent : false;
 
     const matchesFed = 
       federationFilter === 'All' ? true :
@@ -165,14 +175,59 @@ export default function App() {
         </header>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px', marginBottom: '20px' }}>
-          <div style={{ display: 'flex', gap: '15px', fontSize: '0.95rem', flexWrap: 'wrap', alignItems: 'center' }}>
-            <span><span style={{ color: '#ff9f43' }}>■</span> Smoothcomp</span>
-            <span><span style={{ color: '#0055a4' }}>■</span> IBJJF</span>
-            <span><span style={{ color: '#ffffff', textShadow: '0 0 2px #000' }}>■</span> JJWL</span>
-            <span><span style={{ color: '#F1C40F' }}>■</span> ADCC</span>
-            <span><span style={{ color: '#e31837' }}>■</span> Super Fights</span>
-            <span><span style={{ color: '#9b59b6' }}>■</span> Seminars</span>
-            <span style={{ marginLeft: '10px' }}><span style={{ fontSize: '1.2rem' }}>🐯</span> Kids/Youth Events</span>
+          
+          <div style={{ display: 'flex', gap: '15px', fontSize: '0.95rem', flexWrap: 'wrap', alignItems: 'center', userSelect: 'none' }}>
+            <span 
+              onClick={() => setFederationFilter(prev => prev === 'Smoothcomp' ? 'All' : 'Smoothcomp')}
+              style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'Smoothcomp' ? 1 : 0.4, transition: 'opacity 0.2s' }}
+            >
+              <span style={{ color: '#ff9f43' }}>■</span> Smoothcomp
+            </span>
+            <span 
+              onClick={() => setFederationFilter(prev => prev === 'IBJJF' ? 'All' : 'IBJJF')}
+              style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'IBJJF' ? 1 : 0.4, transition: 'opacity 0.2s' }}
+            >
+              <span style={{ color: '#0055a4' }}>■</span> IBJJF
+            </span>
+            <span 
+              onClick={() => setFederationFilter(prev => prev === 'JJWL' ? 'All' : 'JJWL')}
+              style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'JJWL' ? 1 : 0.4, transition: 'opacity 0.2s' }}
+            >
+              <span style={{ color: '#ffffff', textShadow: '0 0 2px #000' }}>■</span> JJWL
+            </span>
+            <span 
+              onClick={() => setFederationFilter(prev => prev === 'ADCC' ? 'All' : 'ADCC')}
+              style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'ADCC' ? 1 : 0.4, transition: 'opacity 0.2s' }}
+            >
+              <span style={{ color: '#F1C40F' }}>■</span> ADCC
+            </span>
+            <span 
+              onClick={() => setFederationFilter(prev => prev === 'Super Fight' ? 'All' : 'Super Fight')}
+              style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'Super Fight' ? 1 : 0.4, transition: 'opacity 0.2s' }}
+            >
+              <span style={{ color: '#e31837' }}>■</span> Super Fights
+            </span>
+            <span 
+              onClick={() => setFederationFilter(prev => prev === 'Seminars' ? 'All' : 'Seminars')}
+              style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'Seminars' ? 1 : 0.4, transition: 'opacity 0.2s' }}
+            >
+              <span style={{ color: '#9b59b6' }}>■</span> Seminars
+            </span>
+            <span 
+              onClick={() => setAgeFilter(prev => prev === 'Kids' ? 'All' : 'Kids')}
+              style={{ 
+                cursor: 'pointer', 
+                marginLeft: '10px', 
+                padding: '4px 10px',
+                backgroundColor: ageFilter === 'Kids' ? '#222' : 'transparent',
+                borderRadius: '6px',
+                border: ageFilter === 'Kids' ? '1px solid #555' : '1px solid transparent',
+                opacity: ageFilter === 'Kids' ? 1 : 0.8,
+                transition: 'all 0.2s' 
+              }}
+            >
+              <span style={{ fontSize: '1.2rem' }}>🐯</span> Kids/Youth Events
+            </span>
           </div>
           
           <div style={{ display: 'flex', gap: '5px' }}>
@@ -234,7 +289,8 @@ export default function App() {
                   
                   <h3 style={{ margin: '0 0 10px 0', fontSize: '1.2rem', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
                     <span>{ev.name}</span>
-                    {ev.name && (ev.name.toLowerCase().includes('kids') || ev.name.toLowerCase().includes('youth') || ev.name.toLowerCase().includes('juvenile')) && (
+                    {/* Render Tiger Icon based on our new Smart Logic */}
+                    {ev.isKidsEvent && (
                       <span style={{ fontSize: '1.3rem', flexShrink: 0 }} title="Kids Event">🐯</span>
                     )}
                   </h3>
