@@ -1,22 +1,201 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, addDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, getDocs, addDoc, query, where, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db } from './firebase'; 
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay } from 'date-fns';
 import { enUS } from 'date-fns/locale';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
-import { calculateWeightClass } from './rulesets'; 
+import { calculateWeightClass } from './rulesets';
 
-const locales = {
-  'en-US': enUS,
+const cleanProfileUrl = (url) => {
+  if (!url || url === "#") return "#";
+  const path = url.split('smoothcomp.com').pop();
+  return `https://smoothcomp.com${path.startsWith('/') ? path : '/' + path}`;
+};
+
+function CompetitorTable({ calcResult, event, onClose }) {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [liveCompetitors, setLiveCompetitors] = useState([]);
+  const [loading, setLoading] = useState(true);
+  
+  const [editingCompId, setEditingCompId] = useState(null);
+  const [tempUrl, setTempUrl] = useState("");
+
+  useEffect(() => {
+    const fetchCompetitors = async () => {
+      try {
+        const q = query(collection(db, "event_competitors"), where("event_id", "==", event.id));
+        const compSnapshot = await getDocs(q);
+        const comps = compSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setLiveCompetitors(comps);
+      } catch (error) {
+        console.error("Error fetching live competitors:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchCompetitors();
+  }, [event.id]);
+
+  useEffect(() => {
+    if (calcResult) {
+      setSearchTerm(calcResult);
+    } else {
+      setSearchTerm("");
+    }
+  }, [calcResult]);
+
+  const handleSaveUrl = async (compId) => {
+    if (!tempUrl.includes('jits.gg') && !tempUrl.includes('smoothcomp.com')) {
+      alert('Please enter a valid Jits.gg or Smoothcomp URL.');
+      return;
+    }
+    try {
+      await setDoc(doc(db, "event_competitors", compId), { JitsProfile: tempUrl }, { merge: true });
+      setLiveCompetitors(prev => prev.map(c => c.id === compId ? { ...c, JitsProfile: tempUrl } : c));
+      setEditingCompId(null);
+      setTempUrl("");
+    } catch (error) {
+      console.error("Error saving profile:", error);
+    }
+  };
+
+  const filteredCompetitors = liveCompetitors.filter(comp => {
+    if (!searchTerm) return true;
+    const term = searchTerm.toLowerCase();
+    
+    if (
+      (comp.Name && comp.Name.toLowerCase().includes(term)) ||
+      (comp.Academy && comp.Academy.toLowerCase().includes(term)) ||
+      (comp.Division && comp.Division.toLowerCase().includes(term))
+    ) {
+      return true;
+    }
+    
+    const keywords = term.split(/[\s/]+/).filter(k => k.length > 2);
+    if (keywords.length > 1 && comp.Division) {
+      const divLow = comp.Division.toLowerCase();
+      return keywords.every(kw => divLow.includes(kw));
+    }
+    
+    return false;
+  });
+
+  const groupedCompetitors = filteredCompetitors.reduce((acc, comp) => {
+    const div = comp.Division || "Unassigned Division";
+    if (!acc[div]) acc[div] = [];
+    acc[div].push(comp);
+    return acc;
+  }, {});
+  
+  const sortedDivisions = Object.keys(groupedCompetitors).sort();
+
+  const isKid = (comp) => {
+    if (/boys|girls|youth|kids|juvenile|tiny|little|teen/i.test(comp.Division || "")) return true;
+    if (/adult|master|senior|mens|womens|men|women/i.test(comp.Division || "")) return false;
+    return event.isKidsEvent && !event.isAdultEvent;
+  };
+
+  const getProfileLink = (comp) => {
+    if (comp.JitsProfile) return comp.JitsProfile; 
+    if (comp.Profile && comp.Profile !== "#") return cleanProfileUrl(comp.Profile); 
+    
+    if (isKid(comp)) {
+      return `https://jits.gg/search?q=${encodeURIComponent(comp.Name)}`;
+    } else {
+      return `https://www.google.com/search?q=site:smoothcomp.com/profile+${encodeURIComponent(comp.Name)}`;
+    }
+  };
+
+  return (
+    <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px', boxSizing: 'border-box' }}>
+      <div style={{ backgroundColor: '#111', padding: '24px', borderRadius: '12px', border: '1px solid #444', width: '100%', maxWidth: '1000px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+        
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
+          <div>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0, color: '#fff' }}>
+              📋 {event.name} Competitors
+            </h2>
+            <p style={{ color: '#aaa', margin: '5px 0 0 0', fontSize: '0.9rem' }}>
+              {loading ? <span style={{ color: '#ff9f43' }}>Fetching live brackets...</span> : `${liveCompetitors.length} athletes registered`}
+            </p>
+          </div>
+          
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <div style={{ position: 'relative' }}>
+              <input
+                type="text"
+                placeholder="Search name, academy, or division..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                style={{ padding: '10px 35px 10px 15px', borderRadius: '5px', border: '1px solid #444', backgroundColor: '#222', color: '#fff', width: '250px' }}
+              />
+              {searchTerm && (
+                <button onClick={() => setSearchTerm('')} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#aaa', fontSize: '1.2rem', cursor: 'pointer' }}>&times;</button>
+              )}
+            </div>
+            <button onClick={onClose} style={{ padding: '10px 15px', backgroundColor: '#333', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
+              Close
+            </button>
+          </div>
+        </div>
+
+        <div style={{ overflowY: 'auto', backgroundColor: '#1a1a1a', borderRadius: '8px', border: '1px solid #333', padding: '10px' }}>
+          {loading ? (
+            <div style={{ padding: '20px', textAlign: 'center', color: '#ff9f43' }}>Loading athletes from database...</div>
+          ) : sortedDivisions.length > 0 ? (
+            sortedDivisions.map(division => (
+              <div key={division} style={{ marginBottom: '20px', backgroundColor: '#222', borderRadius: '8px', overflow: 'hidden' }}>
+                <div style={{ backgroundColor: '#333', padding: '10px 15px', fontWeight: 'bold', color: '#ff9f43', borderBottom: '2px solid #444' }}>
+                  {division} ({groupedCompetitors[division].length} Competitors)
+                </div>
+                <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
+                  <tbody>
+                    {groupedCompetitors[division].map(comp => (
+                      <tr key={comp.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
+                        <td style={{ padding: '12px', fontWeight: 'bold', color: '#fff', width: '30%' }}>{comp.Name}</td>
+                        <td style={{ padding: '12px', color: '#ccc', width: '35%' }}>{comp.Academy}</td>
+                        <td style={{ padding: '12px', textAlign: 'right', width: '35%' }}>
+                          {!comp.JitsProfile && (comp.Profile === "#" || isKid(comp)) ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
+                              <a href={getProfileLink(comp)} target="_blank" rel="noreferrer" style={{ color: isKid(comp) ? '#3498db' : '#ff9f43', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                                🔍 Search {isKid(comp) ? 'Jits.gg' : 'Smoothcomp'}
+                              </a>
+                              {editingCompId === comp.id ? (
+                                <div style={{ display: 'flex', gap: '5px' }}>
+                                  <input type="url" placeholder="Paste link..." value={tempUrl} onChange={e => setTempUrl(e.target.value)} style={{ padding: '4px 8px', fontSize: '0.8rem', borderRadius: '4px', border: '1px solid #555', backgroundColor: '#000', color: '#fff', width: '130px' }} />
+                                  <button onClick={() => handleSaveUrl(comp.id)} style={{ backgroundColor: '#2ecc71', color: '#000', border: 'none', borderRadius: '4px', cursor: 'pointer', padding: '4px 8px', fontSize: '0.8rem', fontWeight: 'bold' }}>Save</button>
+                                  <button onClick={() => { setEditingCompId(null); setTempUrl(""); }} style={{ backgroundColor: '#444', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', padding: '4px 8px', fontSize: '0.8rem' }}>X</button>
+                                </div>
+                              ) : (
+                                <button onClick={() => setEditingCompId(comp.id)} style={{ backgroundColor: 'transparent', color: '#aaa', border: '1px solid #444', borderRadius: '4px', cursor: 'pointer', padding: '2px 8px', fontSize: '0.75rem' }}>
+                                  🔗 Add Profile Link
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <a href={getProfileLink(comp)} target="_blank" rel="noreferrer" style={{ color: isKid(comp) ? '#3498db' : '#ff9f43', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                              {isKid(comp) ? 'Jits.gg Profile' : 'Smoothcomp Profile'}
+                            </a>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))
+          ) : (
+            <div style={{ padding: '30px', textAlign: 'center', color: '#777' }}>No competitors found matching "{searchTerm}"</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
-const localizer = dateFnsLocalizer({
-  format,
-  parse,
-  startOfWeek,
-  getDay,
-  locales,
-})
+
+const locales = { 'en-US': enUS }
+const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales })
 
 export default function App() {
   const [events, setEvents] = useState([]);
@@ -36,9 +215,14 @@ export default function App() {
 
   const [showCalcModal, setShowCalcModal] = useState(false);
   const [selectedCalcEvent, setSelectedCalcEvent] = useState(null);
-  
-  // NEW: Added belt rank to the calculator state
-  const [calcData, setCalcData] = useState({ gender: 'Male', age: 18, weight: '', belt: 'White' });
+  const [selectedCompetitorEvent, setSelectedCompetitorEvent] = useState(null);
+
+  const [showReminderModal, setShowReminderModal] = useState(false);
+  const [selectedReminderEvent, setSelectedReminderEvent] = useState(null);
+  const [reminderEmail, setReminderEmail] = useState('');
+  const [reminderSubmitted, setReminderSubmitted] = useState(false);
+
+  const [calcData, setCalcData] = useState({ gender: 'Male', age: 18, weight: '', belt: 'White', type: 'Gi' });
   const [calcResult, setCalcResult] = useState('');
 
   const [formData, setFormData] = useState({
@@ -51,57 +235,69 @@ export default function App() {
 
   const fetchEvents = async () => {
     const liveSnapshot = await getDocs(collection(db, "live_events"));
-    
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    const fetchedEvents = liveSnapshot.docs
+    const rawEvents = liveSnapshot.docs
       .map(doc => ({ id: doc.id, ...doc.data() }))
       .filter(ev => {
         if (!ev.sort_date) return true;
         if (ev.sort_date.includes('2099')) return true; 
-        
         const eventDate = new Date(ev.sort_date + 'T00:00:00');
         return eventDate >= today;
       })
       .map(ev => {
-        const evNameLow = ev.name ? ev.name.toLowerCase() : '';
+        const evName = ev.name || '';
+        const evNameLow = evName.toLowerCase();
         const evId = ev.id ? ev.id.toLowerCase() : "";
-        
+
         const isSeminarOrCamp = /\b(seminar|camp|clinic)\b/.test(evNameLow);
         const isTournament = /\b(tournament|championship|campeonato|open|cup|league|classic)\b/.test(evNameLow);
 
         let type = ev.type || 'Tournament';
         let color = ev.color || '#ff9f43';
 
-        if (isSeminarOrCamp && !isTournament) {
-            type = 'Seminar';
-            color = '#9b59b6';
-        }
+        if (isSeminarOrCamp && !isTournament) { type = 'Seminar'; color = '#9b59b6'; }
 
-        let isKids = true;  
-        let isAdult = true; 
-        
-        if (type === 'Super Fight' || evId.startsWith('flograp') || evId.startsWith('ufc') || evId.includes('fightpass')) {
-            isKids = false; 
-        } else if (evId.startsWith('ibjjf')) {
-            isKids = evNameLow.includes('kids');
-            isAdult = !evNameLow.includes('kids');
+        // Accurate Kids vs Adult Classification & Tiger Icon Flag
+        const isKidsWord = /\b(kids|youth|juvenile|boy|girl|child|tots|peewee|mighty)\b/.test(evNameLow);
+        const isAdultWord = /\b(adult|masters|senior|pro|executive)\b/.test(evNameLow);
+
+        let isKids = false;
+        let isAdult = true;
+
+        if (evId.startsWith('ibjjf') || evId.startsWith('jjwl')) {
+          isKids = isKidsWord;
+          isAdult = !isKidsWord || isAdultWord;
+        } else if (type === 'Super Fight' || evId.startsWith('flograp') || evId.startsWith('ufc')) {
+          isKids = false;
+          isAdult = true;
         } else {
-            if (evNameLow.includes('adult only') || evNameLow.includes('masters only') || /\b(pro)\b/.test(evNameLow)) {
-                isKids = false;
-            }
-            if ((evNameLow.includes('kids') || evNameLow.includes('youth') || evNameLow.includes('juvenile')) && !evNameLow.includes('adult') && !evNameLow.includes('all ages')) {
-                isAdult = false;
-            }
+          isKids = isKidsWord;
+          isAdult = !isKidsWord || isAdultWord;
         }
+        
+        return { ...ev, name: evName, type, color, isKidsEvent: isKids, isAdultEvent: isAdult };
+      });
 
-        return { ...ev, type, color, isKidsEvent: isKids, isAdultEvent: isAdult };
-      })
-      .sort((a, b) => (a.sort_date > b.sort_date ? 1 : -1));
+    // Deduplication filter: Prevent duplicate event cards by unique Name + Date combination
+    const seenMap = new Map();
+    const fetchedEvents = [];
+    for (const ev of rawEvents) {
+      const uniqueKey = `${ev.name.toLowerCase().trim()}_${ev.sort_date || ev.date}`;
+      if (!seenMap.has(uniqueKey)) {
+        seenMap.set(uniqueKey, true);
+        fetchedEvents.push(ev);
+      }
+    }
+
+    fetchedEvents.sort((a, b) => {
+      if (!a.sort_date) return 1;
+      if (!b.sort_date) return -1;
+      return new Date(a.sort_date) - new Date(b.sort_date);
+    });
     
     setEvents(fetchedEvents);
-    
     if (isAdmin) {
       const pendingSnapshot = await getDocs(collection(db, "pending_events"));
       setPendingEvents(pendingSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -109,12 +305,15 @@ export default function App() {
   };
 
   const handleLogoClick = () => {
-    setClickCount(prev => prev + 1);
-    if (clickCount >= 2) {
-      setIsAdmin(true);
-      setClickCount(0);
-      fetchEvents();
-    }
+    setClickCount(prev => {
+      const nextCount = prev + 1;
+      if (nextCount >= 3) {
+        setIsAdmin(true);
+        fetchEvents();
+        return 0;
+      }
+      return nextCount;
+    });
   };
 
   const handlePublicSubmit = async (e) => {
@@ -128,13 +327,15 @@ export default function App() {
   const handleOpenCalc = (ev) => {
     setSelectedCalcEvent(ev);
     setCalcResult('');
+    // If event is ADCC, default calculator to No-Gi
+    const isAdcc = ev.id.toLowerCase().includes('adcc') || ev.name.toLowerCase().includes('adcc');
+    setCalcData(prev => ({ ...prev, type: isAdcc ? 'No-Gi' : 'Gi' }));
     setShowCalcModal(true);
   };
 
   const handleCalculate = (e) => {
     e.preventDefault();
     if (!selectedCalcEvent) return;
-    
     let federation = 'Other';
     const evId = selectedCalcEvent.id ? selectedCalcEvent.id.toLowerCase() : "";
     const evNameLow = selectedCalcEvent.name ? selectedCalcEvent.name.toLowerCase() : "";
@@ -144,46 +345,57 @@ export default function App() {
     else if (evId.startsWith('jjwl')) federation = 'JJWL';
     else if (selectedCalcEvent.type === 'Super Fight' || evId.startsWith('ufc') || evId.startsWith('flograp')) federation = 'Super Fight';
     
-    // NEW: Passing the belt value into the calculation
-    const result = calculateWeightClass(federation, parseInt(calcData.age), calcData.gender, calcData.weight, calcData.belt);
+    const isGi = calcData.type === 'Gi';
+    const result = calculateWeightClass(federation, parseInt(calcData.age), calcData.gender, calcData.weight, calcData.belt, isGi);
     setCalcResult(result);
   };
 
+  const handleReminderSubmit = async (e) => {
+    e.preventDefault();
+    if (!reminderEmail || !selectedReminderEvent) return;
+    
+    try {
+      await addDoc(collection(db, "reminders"), {
+        eventId: selectedReminderEvent.id,
+        eventName: selectedReminderEvent.name,
+        email: reminderEmail,
+        requestedAt: new Date().toISOString()
+      });
+      setReminderSubmitted(true);
+      setTimeout(() => {
+        setShowReminderModal(false);
+        setReminderSubmitted(false);
+        setReminderEmail('');
+      }, 2000);
+    } catch (error) {
+      console.error("Error saving reminder:", error);
+    }
+  };
+
   const monthOptions = Array.from(new Set(events.map(ev => ev.sort_date ? ev.sort_date.substring(0, 7) : null).filter(Boolean))).sort();
-  
   const formatMonthDisplay = (yyyy_mm) => {
     const [y, m] = yyyy_mm.split('-');
-    const date = new Date(y, m - 1);
-    return date.toLocaleString('default', { month: 'short', year: 'numeric' });
+    return new Date(y, m - 1).toLocaleString('default', { month: 'short', year: 'numeric' });
   };
 
   const filteredEvents = events.filter(ev => {
     const evNameLow = ev.name ? ev.name.toLowerCase() : '';
     const evId = ev.id ? ev.id.toLowerCase() : "";
-    
-    if (/\b(judo|wrestling|karate|taekwondo|kickboxing|muay thai)\b/.test(evNameLow)) {
-        return false; 
-    }
+    if (/\b(judo|wrestling|karate|taekwondo|kickboxing|muay thai|ping pong|table tennis|sumo)\b/.test(evNameLow)) return false; 
 
-    const matchesSearch = (evNameLow + (ev.location || '').toLowerCase() + (ev.date || '').toLowerCase()).includes(searchTerm.toLowerCase());
-    
-    const matchesAge = 
-      ageFilter === 'All' ? true :
-      ageFilter === 'Kids' ? ev.isKidsEvent :
-      ageFilter === 'Adults' ? ev.isAdultEvent : false;
+    const searchTarget = `${evNameLow} ${(ev.location || '').toLowerCase()} ${(ev.date || '').toLowerCase()}`;
+    const searchKeywords = searchTerm.toLowerCase().split(/\s+/).filter(kw => kw.length > 0);
+    const matchesSearch = searchKeywords.every(kw => searchTarget.includes(kw));
 
-    const matchesFed = 
-      federationFilter === 'All' ? true :
+    const matchesAge = ageFilter === 'All' ? true : ageFilter === 'Kids' ? ev.isKidsEvent : ageFilter === 'Adults' ? ev.isAdultEvent : false;
+    const matchesFed = federationFilter === 'All' ? true :
       federationFilter === 'IBJJF' ? evId.startsWith('ibjjf') :
       federationFilter === 'JJWL' ? evId.startsWith('jjwl') :
       federationFilter === 'ADCC' ? (evId.includes('adcc') || evNameLow.includes('adcc')) :
       federationFilter === 'Smoothcomp' ? evId.startsWith('smoothcomp') :
       federationFilter === 'Super Fight' ? (ev.type === 'Super Fight' || evId.startsWith('flograp') || evId.startsWith('ufcfightpass')) :
       federationFilter === 'Seminars' ? (ev.type === 'Seminar' || evId.startsWith('seminar')) : false;
-
-    const matchesMonth = 
-      monthFilter === 'All' ? true :
-      (ev.sort_date && ev.sort_date.startsWith(monthFilter));
+    const matchesMonth = monthFilter === 'All' ? true : (ev.sort_date && ev.sort_date.startsWith(monthFilter));
       
     return matchesSearch && matchesFed && matchesAge && matchesMonth;
   });
@@ -194,74 +406,117 @@ export default function App() {
       const [y, m, d] = ev.sort_date.split('-');
       startDate = new Date(y, m - 1, d);
     }
-    return {
-      title: `${ev.isKidsEvent ? '🐯 ' : ''}${ev.name}`,
-      start: startDate,
-      end: startDate,
-      resource: ev 
-    };
+    return { title: `${ev.isKidsEvent ? '🐯 ' : ''}${ev.name}`, start: startDate, end: startDate, resource: ev };
   });
+
+  const isAdccEvent = selectedCalcEvent && (selectedCalcEvent.id.toLowerCase().includes('adcc') || selectedCalcEvent.name.toLowerCase().includes('adcc'));
 
   return (
     <div style={{ backgroundColor: '#000', minHeight: '100vh', color: '#fff', padding: '20px', fontFamily: 'sans-serif', position: 'relative' }}>
       
+      {showSubmitModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+          <div style={{ backgroundColor: '#111', padding: '30px', borderRadius: '12px', border: '1px solid #444', width: '90%', maxWidth: '500px' }}>
+            <h2 style={{ margin: '0 0 20px 0', fontSize: '1.5rem', color: '#fff' }}>Submit an Event</h2>
+            <form onSubmit={handlePublicSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              <input type="text" placeholder="Event Name" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} style={{ padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }} required />
+              <input type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} style={{ padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }} required />
+              <input type="text" placeholder="Location (City, State)" value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} style={{ padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }} required />
+              <input type="url" placeholder="Registration Link" value={formData.link} onChange={e => setFormData({...formData, link: e.target.value})} style={{ padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }} required />
+              <button type="submit" style={{ padding: '14px', backgroundColor: '#ff9f43', color: '#000', border: 'none', borderRadius: '6px', fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer' }}>Submit for Review</button>
+            </form>
+            <button onClick={() => setShowSubmitModal(false)} style={{ marginTop: '20px', padding: '12px', width: '100%', backgroundColor: 'transparent', color: '#aaa', border: '1px solid #444', borderRadius: '6px', cursor: 'pointer', fontSize: '1rem' }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {showReminderModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+          <div style={{ backgroundColor: '#111', padding: '30px', borderRadius: '12px', border: '1px solid #444', width: '90%', maxWidth: '400px' }}>
+            <h2 style={{ margin: '0 0 5px 0', fontSize: '1.5rem', color: '#fff' }}>⏰ Set a Reminder</h2>
+            <p style={{ margin: '0 0 20px 0', color: '#aaa', fontSize: '0.9rem' }}>We will email you 48 hours before the registration deadline for: <br/><strong style={{color: '#fff'}}>{selectedReminderEvent?.name}</strong></p>
+            
+            {reminderSubmitted ? (
+              <div style={{ padding: '20px', backgroundColor: '#2ecc71', color: '#fff', borderRadius: '6px', textAlign: 'center', fontWeight: 'bold' }}>
+                ✅ Reminder Saved!
+              </div>
+            ) : (
+              <form onSubmit={handleReminderSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                <input type="email" placeholder="Enter your email address" value={reminderEmail} onChange={e => setReminderEmail(e.target.value)} style={{ padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }} required />
+                <button type="submit" style={{ padding: '14px', backgroundColor: '#ff9f43', color: '#000', border: 'none', borderRadius: '6px', fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer' }}>Save Reminder</button>
+              </form>
+            )}
+            <button onClick={() => setShowReminderModal(false)} style={{ marginTop: '20px', padding: '12px', width: '100%', backgroundColor: 'transparent', color: '#aaa', border: '1px solid #444', borderRadius: '6px', cursor: 'pointer', fontSize: '1rem' }}>Close</button>
+          </div>
+        </div>
+      )}
+
       {showCalcModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
           <div style={{ backgroundColor: '#111', padding: '30px', borderRadius: '12px', border: '1px solid #444', width: '90%', maxWidth: '400px' }}>
             <h2 style={{ margin: '0 0 5px 0', fontSize: '1.5rem', color: '#fff' }}>⚖️ Weight Class Check</h2>
             <p style={{ margin: '0 0 20px 0', color: '#aaa', fontSize: '0.9rem' }}>Event: {selectedCalcEvent?.name}</p>
-            
             <form onSubmit={handleCalculate} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <select value={calcData.gender} onChange={e => setCalcData({...calcData, gender: e.target.value})} style={{ flex: 1, padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }}>
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
+              {!isAdccEvent ? (
+                <select value={calcData.type} onChange={e => setCalcData({...calcData, type: e.target.value})} style={{ padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }}>
+                  <option value="Gi">Gi (Uniform)</option>
+                  <option value="No-Gi">No-Gi</option>
                 </select>
+              ) : (
+                <div style={{ padding: '10px 12px', backgroundColor: '#222', borderRadius: '6px', color: '#F1C40F', border: '1px solid #F1C40F', fontWeight: 'bold', textAlign: 'center' }}>
+                  ⚡ ADCC is No-Gi Only
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <select value={calcData.gender} onChange={e => setCalcData({...calcData, gender: e.target.value})} style={{ flex: 1, padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }}><option value="Male">Male</option><option value="Female">Female</option></select>
                 <input type="number" placeholder="Age" value={calcData.age} onChange={e => setCalcData({...calcData, age: e.target.value})} style={{ flex: 1, padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }} required />
               </div>
-
-              {/* NEW: Belt Dropdown */}
               <select value={calcData.belt} onChange={e => setCalcData({...calcData, belt: e.target.value})} style={{ padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }}>
-                <option value="White">White Belt</option>
-                <option value="Grey">Grey Belt</option>
-                <option value="Yellow">Yellow Belt</option>
-                <option value="Orange">Orange Belt</option>
-                <option value="Green">Green Belt</option>
-                <option value="Blue">Blue Belt</option>
-                <option value="Purple">Purple Belt</option>
-                <option value="Brown">Brown Belt</option>
-                <option value="Black">Black Belt</option>
+                <option value="White">White Belt</option><option value="Grey">Grey Belt</option><option value="Yellow">Yellow Belt</option><option value="Orange">Orange Belt</option><option value="Green">Green Belt</option><option value="Blue">Blue Belt</option><option value="Purple">Purple Belt</option><option value="Brown">Brown Belt</option><option value="Black">Black Belt</option>
               </select>
-
-              <input type="number" placeholder="Enter Weight in LBS" value={calcData.weight} step="0.1" onChange={e => setCalcData({...calcData, weight: e.target.value})} style={{ padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }} required />
-              
+              <input type="number" placeholder="Weight in LBS" value={calcData.weight} step="0.1" onChange={e => setCalcData({...calcData, weight: e.target.value})} style={{ padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }} required />
               <button type="submit" style={{ padding: '14px', backgroundColor: '#ff9f43', color: '#000', border: 'none', borderRadius: '6px', fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer' }}>Calculate Division</button>
             </form>
-
             {calcResult && (
               <div style={{ marginTop: '20px', padding: '15px', backgroundColor: '#222', borderRadius: '6px', textAlign: 'center', border: '1px solid #ff9f43' }}>
-                <p style={{ margin: 0, color: '#aaa', fontSize: '0.9rem' }}>Your Division is:</p>
-                <p style={{ margin: '5px 0 0 0', fontSize: '1.3rem', fontWeight: 'bold', color: '#fff' }}>{calcResult}</p>
+                <p style={{ margin: '0 0 10px 0', color: '#aaa', fontSize: '0.9rem' }}>Based on your entry, you should register for:</p>
+                <p style={{ margin: 0, fontSize: '1.2rem', fontWeight: 'bold', color: '#ff9f43' }}>{calcResult}</p>
+                
+                {selectedCalcEvent.id.startsWith('smoothcomp') && (
+                  <button 
+                    onClick={() => {
+                      setShowCalcModal(false);
+                      setSelectedCompetitorEvent(selectedCalcEvent);
+                    }}
+                    style={{ marginTop: '15px', padding: '10px', width: '100%', backgroundColor: '#ff9f43', color: '#000', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}
+                  >
+                    🔍 Find Opponents in this Division
+                  </button>
+                )}
               </div>
             )}
-
             <button onClick={() => setShowCalcModal(false)} style={{ marginTop: '20px', padding: '12px', width: '100%', backgroundColor: 'transparent', color: '#aaa', border: '1px solid #444', borderRadius: '6px', cursor: 'pointer', fontSize: '1rem' }}>Close</button>
           </div>
         </div>
       )}
 
-      <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+      {selectedCompetitorEvent && (
+        <CompetitorTable 
+          calcResult={calcResult} 
+          event={selectedCompetitorEvent} 
+          onClose={() => setSelectedCompetitorEvent(null)} 
+        />
+      )}
+
+      <div style={{ maxWidth: '1200px', margin: '0 auto', minHeight: 'calc(100vh - 120px)' }}>
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
           <div style={{ textAlign: 'left' }}>
-            <h1 onClick={handleLogoClick} style={{ cursor: 'pointer', margin: 0, padding: 0, fontSize: '3.2rem', userSelect: 'none', fontWeight: '900', letterSpacing: '2px' }}>
-              <span style={{ color: '#ffffff' }}>Mat</span><span style={{ color: '#e31837' }}>Dates</span>
-            </h1>
+            <h1 onClick={handleLogoClick} style={{ cursor: 'pointer', margin: 0, padding: 0, fontSize: '3.2rem', userSelect: 'none', fontWeight: '900', letterSpacing: '2px' }}><span style={{ color: '#ffffff' }}>Mat</span><span style={{ color: '#e31837' }}>Dates</span></h1>
             <p style={{ color: '#aaa', margin: '10px 0 0 0', fontSize: '1.1rem' }}>The Ultimate BJJ Event Hub</p>
           </div>
-          <button onClick={() => setShowSubmitModal(true)} style={{ backgroundColor: '#ff9f43', color: '#000', padding: '10px 20px', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer' }}>
-            + Submit Event
-          </button>
+          <button onClick={() => setShowSubmitModal(true)} style={{ backgroundColor: '#ff9f43', color: '#000', padding: '10px 20px', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer' }}>+ Submit Event</button>
         </header>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px', marginBottom: '20px' }}>
@@ -314,84 +569,108 @@ export default function App() {
 
         {viewMode === 'calendar' ? (
           <div style={{ backgroundColor: '#fff', padding: '15px', borderRadius: '8px', color: '#000' }}>
-            <Calendar
-              localizer={localizer}
-              events={calendarEvents}
-              startAccessor="start"
-              endAccessor="end"
-              style={{ height: 750 }}
-              date={calendarDate}
-              onNavigate={(newDate) => setCalendarDate(newDate)}
-              view={calendarView}
-              onView={(newView) => setCalendarView(newView)}
-              views={['month', 'week', 'agenda']}
-              eventPropGetter={(event) => {
-                const evId = event.resource.id ? event.resource.id.toLowerCase() : "";
-                const isJJWL = evId.startsWith('jjwl');
-                const isADCC = evId.includes('adcc') || event.resource.name.toLowerCase().includes('adcc');
-                const bgColor = isADCC ? '#F1C40F' : event.resource.type === 'Super Fight' ? '#e31837' : (isJJWL ? '#555' : (event.resource.color || '#ff9f43'));
-                return { style: { backgroundColor: bgColor, color: isADCC || isJJWL ? '#000' : '#fff', fontWeight: 'bold' } };
-              }}
-              onSelectEvent={(event) => {
-                if(event.resource.link) window.open(event.resource.link, '_blank');
-                else alert(`${event.title}\n📍 ${event.resource.location}`);
-              }}
-            />
+            <Calendar localizer={localizer} events={calendarEvents} startAccessor="start" endAccessor="end" style={{ height: 750 }} date={calendarDate} onNavigate={setCalendarDate} view={calendarView} onView={setCalendarView} views={['month', 'week', 'agenda']} onSelectEvent={(event) => { if(event.resource.link) window.open(event.resource.link, '_blank'); }} />
           </div>
         ) : (
-          <div style={{ 
-            display: viewMode === 'grid' ? 'grid' : 'flex', 
-            flexDirection: viewMode === 'list' ? 'column' : 'row',
-            gridTemplateColumns: viewMode === 'grid' ? 'repeat(auto-fill, minmax(300px, 1fr))' : 'none',
-            gap: '20px' 
-          }}>
-            {filteredEvents.length === 0 ? (
-              <p style={{ color: '#aaa', fontSize: '1.2rem', textAlign: 'center', marginTop: '40px', width: '100%' }}>No events found matching your filters.</p>
-            ) : (
-              filteredEvents.map(ev => {
-                const isJJWL = ev.id && ev.id.toLowerCase().startsWith('jjwl');
-                const isADCC = (ev.id && ev.id.toLowerCase().includes('adcc')) || (ev.name && ev.name.toLowerCase().includes('adcc'));
-                const evBorderColor = isADCC ? '#F1C40F' : ev.type === 'Super Fight' ? '#e31837' : (isJJWL ? '#ffffff' : (ev.color || '#ff9f43'));
-                
-                return (
-                  <div key={ev.id} style={{ backgroundColor: '#111', borderLeft: `5px solid ${evBorderColor}`, padding: '20px', borderRadius: '4px', textAlign: 'left', display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: viewMode === 'grid' ? 'grid' : 'flex', flexDirection: viewMode === 'list' ? 'column' : 'row', gridTemplateColumns: viewMode === 'grid' ? 'repeat(auto-fill, minmax(300px, 1fr))' : 'none', gap: '20px' }}>
+            {filteredEvents.map(ev => {
+              const isJJWL = ev.id && ev.id.toLowerCase().startsWith('jjwl');
+              const isADCC = (ev.id && ev.id.toLowerCase().includes('adcc')) || (ev.name && ev.name.toLowerCase().includes('adcc'));
+              
+              const isStreamOnly = ev.type === 'Super Fight' || (ev.id && (ev.id.toLowerCase().startsWith('flograp') || ev.id.toLowerCase().startsWith('ufc') || ev.id.toLowerCase().includes('fightpass')));
+              const evBorderColor = isADCC ? '#F1C40F' : (ev.type === 'Super Fight' || isStreamOnly) ? '#e31837' : (isJJWL ? '#ffffff' : (ev.color || '#ff9f43'));
+              
+              return (
+                <div key={ev.id} style={{ backgroundColor: '#111', borderLeft: `5px solid ${evBorderColor}`, padding: '20px', borderRadius: '4px', display: 'flex', flexDirection: 'column' }}>
+                  <h3 style={{ margin: '0 0 10px 0', fontSize: '1.2rem', display: 'flex', justifyContent: 'space-between' }}>
+                    <span>{ev.name}</span> {ev.isKidsEvent && <span>🐯</span>}
+                  </h3>
+                  <div style={{ flexGrow: 1, color: '#aaa', fontSize: '0.95rem', lineHeight: '1.6', margin: '8px 0' }}>
+                    📅 {ev.date} &nbsp;|&nbsp; 📍 {ev.location}<br/>
+                    {ev.cost && <span style={{ color: '#2ecc71', fontWeight: 'bold' }}>💳 {ev.cost}</span>}
+                    {ev.deadline && <span style={{ color: '#e31837', display: 'block', fontSize: '0.85rem' }}>⏳ Deadline: {ev.deadline}</span>}
+                  </div>
+                  
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '15px', flexWrap: 'wrap' }}>
                     
-                    <h3 style={{ margin: '0 0 10px 0', fontSize: '1.2rem', display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px' }}>
-                      <span>{ev.name}</span>
-                      {ev.isKidsEvent && (
-                        <span style={{ fontSize: '1.3rem', flexShrink: 0 }} title="Kids Event">🐯</span>
-                      )}
-                    </h3>
-                    
-                    <div style={{ flexGrow: 1 }}>
-                      <p style={{ margin: '5px 0', color: '#aaa' }}>📅 {ev.date}</p>
-                      <p style={{ margin: '5px 0', color: '#aaa' }}>📍 {ev.location}</p>
-                      
-                      {ev.cost && ev.cost !== "See Smoothcomp.com" && !ev.cost.includes("Watch on") && (
-                        <p style={{ margin: '5px 0', color: '#aaa' }}>💰 {ev.cost}</p>
-                      )}
-                      
-                      {ev.deadline && <p style={{ margin: '5px 0', color: '#ff4d4d', fontSize: '0.95rem', fontWeight: 'bold' }}>⏰ Deadline: {ev.deadline}</p>}
-                    </div>
-                    
-                    <div style={{ display: 'flex', gap: '10px', marginTop: '15px', flexWrap: 'wrap' }}>
-                      <button onClick={() => handleOpenCalc(ev)} style={{ flex: 1, backgroundColor: '#222', color: '#fff', border: '1px solid #444', padding: '8px 12px', borderRadius: '4px', fontSize: '0.9rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px' }}>
+                    {!isStreamOnly && (
+                      <button onClick={() => handleOpenCalc(ev)} style={{ flex: 1, backgroundColor: '#222', color: '#fff', border: '1px solid #444', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', minWidth: '120px' }}>
                         ⚖️ Find Division
                       </button>
-                      
-                      {ev.link && (
-                        <a href={ev.link} target="_blank" rel="noreferrer" style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: '#fff', textDecoration: 'none', backgroundColor: ev.type === 'Super Fight' ? ((ev.id && ev.id.includes('ufc')) || (ev.link && ev.link.includes('ufc')) ? '#1a1a1a' : '#2563eb') : '#333', border: ev.type === 'Super Fight' && ((ev.id && ev.id.includes('ufc')) || (ev.link && ev.link.includes('ufc'))) ? '1px solid #e31837' : 'none', padding: '8px 12px', borderRadius: '4px', fontSize: '0.9rem', fontWeight: 'bold' }}>
-                          {ev.type === 'Super Fight' ? ((ev.id && ev.id.includes('ufc')) || (ev.link && ev.link.includes('ufc')) ? '🥊 UFC Pass' : '📺 FloGrappling') : '🎟️ Register'}
-                        </a>
-                      )}
-                    </div>
+                    )}
+                    
+                    {isStreamOnly && (
+                      <button 
+                        onClick={() => {
+                          setCalcResult(''); 
+                          setSelectedCompetitorEvent(ev);
+                        }} 
+                        style={{ flex: 1, backgroundColor: '#1a1a1a', color: evBorderColor, border: `1px solid ${evBorderColor}`, padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', minWidth: '120px' }}
+                      >
+                        🥊 View Fight Card
+                      </button>
+                    )}
+
+                    {!isStreamOnly && ev.type !== 'Seminar' && (
+                      <button 
+                        onClick={() => {
+                          setCalcResult(''); 
+                          setSelectedCompetitorEvent(ev);
+                        }} 
+                        style={{ flex: 1, backgroundColor: '#1a1a1a', color: '#ff9f43', border: '1px solid #ff9f43', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', minWidth: '120px' }}
+                      >
+                        👥 Brackets
+                      </button>
+                    )}
                   </div>
-                )
-              })
-            )}
+                  
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '10px', flexWrap: 'wrap' }}>
+                    <button 
+                      onClick={() => {
+                        setSelectedReminderEvent(ev);
+                        setShowReminderModal(true);
+                      }} 
+                      style={{ flex: 1, backgroundColor: '#222', color: '#fff', border: '1px solid #444', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', minWidth: '120px' }}
+                    >
+                      ⏰ Remind Me
+                    </button>
+
+                    {!isStreamOnly && ev.link && (
+                      <a href={ev.link} target="_blank" rel="noreferrer" style={{ flex: 1, textAlign: 'center', color: '#fff', textDecoration: 'none', backgroundColor: '#333', padding: '8px 12px', borderRadius: '4px', fontWeight: 'bold', minWidth: '120px' }}>
+                        🎟️ Register
+                      </a>
+                    )}
+
+                    {(isStreamOnly && ev.link) || ev.stream_link ? (
+                      <a href={ev.stream_link || ev.link} target="_blank" rel="noreferrer" style={{ flex: 1, textAlign: 'center', color: evBorderColor, textDecoration: 'none', backgroundColor: '#1a1a1a', border: `1px solid ${evBorderColor}`, padding: '8px 12px', borderRadius: '4px', fontWeight: 'bold', minWidth: '120px' }}>
+                        📺 Watch
+                      </a>
+                    ) : null}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
+
+      <footer style={{ marginTop: '50px', padding: '30px 20px', borderTop: '1px solid #333', textAlign: 'center', backgroundColor: '#0a0a0a', color: '#777', fontSize: '0.85rem', lineHeight: '1.6' }}>
+        <div style={{ marginBottom: '15px' }}>
+          <h2 style={{ margin: 0, padding: 0, fontSize: '1.5rem', fontWeight: '900', letterSpacing: '1px' }}>
+            <span style={{ color: '#ffffff' }}>Mat</span><span style={{ color: '#e31837' }}>Dates</span>
+          </h2>
+        </div>
+        <p style={{ maxWidth: '800px', margin: '0 auto 15px auto' }}>
+          MatDates is an independent BJJ event aggregator built for the community. We are not affiliated with, officially endorsed by, or sponsored by IBJJF, ADCC, Smoothcomp, Jiu Jitsu World League, or any listed federations. All trademarks and event data belong to their respective owners.
+        </p>
+        <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', flexWrap: 'wrap' }}>
+          <a href="mailto:contact@matdates.com" style={{ color: '#ff9f43', textDecoration: 'none', fontWeight: 'bold' }}>Partner With Us</a>
+          <span>|</span>
+          <span style={{ color: '#777' }}>Privacy Policy</span>
+          <span>|</span>
+          <span>© {new Date().getFullYear()} MatDates. All Rights Reserved.</span>
+        </div>
+      </footer>
     </div>
   );
 }
