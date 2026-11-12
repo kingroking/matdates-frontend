@@ -47,17 +47,31 @@ function CompetitorTable({ calcResult, event, onClose }) {
   }, [calcResult]);
 
   const handleSaveUrl = async (compId) => {
-    if (!tempUrl.includes('jits.gg') && !tempUrl.includes('smoothcomp.com')) {
+    let cleaned = tempUrl.trim();
+    if (cleaned && !cleaned.startsWith('http')) {
+      cleaned = `https://${cleaned}`;
+    }
+    if (!cleaned.includes('jits.gg') && !cleaned.includes('smoothcomp.com')) {
       alert('Please enter a valid Jits.gg or Smoothcomp URL.');
       return;
     }
     try {
-      await setDoc(doc(db, "event_competitors", compId), { JitsProfile: tempUrl }, { merge: true });
-      setLiveCompetitors(prev => prev.map(c => c.id === compId ? { ...c, JitsProfile: tempUrl } : c));
+      const targetComp = liveCompetitors.find(c => c.id === compId);
+      const matchingRows = targetComp
+        ? liveCompetitors.filter(c => c.Name === targetComp.Name)
+        : [{ id: compId }];
+
+      for (const row of matchingRows) {
+        await setDoc(doc(db, "event_competitors", row.id), { JitsProfile: cleaned }, { merge: true });
+      }
+
+      const updatedIds = new Set(matchingRows.map(r => r.id));
+      setLiveCompetitors(prev => prev.map(c => updatedIds.has(c.id) ? { ...c, JitsProfile: cleaned } : c));
       setEditingCompId(null);
       setTempUrl("");
     } catch (error) {
       console.error("Error saving profile:", error);
+      alert("Firebase blocked saving this link (" + (error.code || error.message) + "). Updating Firestore rules fixes this!");
     }
   };
 
