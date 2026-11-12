@@ -606,7 +606,7 @@ export default function App() {
                   
                   <div style={{ display: 'flex', gap: '10px', marginTop: '15px', flexWrap: 'wrap' }}>
                     
-                    {!isStreamOnly && (
+                  {!isStreamOnly && ev.type !== 'Seminar' && (
                       <button onClick={() => handleOpenCalc(ev)} style={{ flex: 1, backgroundColor: '#222', color: '#fff', border: '1px solid #444', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', minWidth: '120px' }}>
                         ⚖️ Find Division
                       </button>
