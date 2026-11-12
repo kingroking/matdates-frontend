@@ -9,8 +9,9 @@ import { calculateWeightClass } from './rulesets';
 
 const cleanProfileUrl = (url) => {
   if (!url || url === "#") return "#";
-  const path = url.split('smoothcomp.com').pop();
-  return `https://smoothcomp.com${path.startsWith('/') ? path : '/' + path}`;
+  if (url.startsWith("http")) return url;
+  const path = url.split("smoothcomp.com").pop();
+  return `https://smoothcomp.com${path.startsWith("/") ? path : "/" + path}`;
 };
 
 function CompetitorTable({ calcResult, event, onClose }) {
@@ -97,14 +98,12 @@ function CompetitorTable({ calcResult, event, onClose }) {
   };
 
   const getProfileLink = (comp) => {
-    if (comp.JitsProfile) return comp.JitsProfile; 
-    if (comp.Profile && comp.Profile !== "#") return cleanProfileUrl(comp.Profile); 
-    
     if (isKid(comp)) {
+      if (comp.JitsProfile) return comp.JitsProfile;
       return `https://jits.gg/search?q=${encodeURIComponent(comp.Name)}`;
-    } else {
-      return `https://www.google.com/search?q=site:smoothcomp.com/profile+${encodeURIComponent(comp.Name)}`;
     }
+    if (comp.Profile && comp.Profile !== "#") return cleanProfileUrl(comp.Profile);
+    return `https://www.google.com/search?q=site:smoothcomp.com/profile+${encodeURIComponent(comp.Name)}`;
   };
 
   return (
@@ -153,10 +152,10 @@ function CompetitorTable({ calcResult, event, onClose }) {
                   <tbody>
                     {groupedCompetitors[division].map(comp => (
                       <tr key={comp.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
-                        <td style={{ padding: '12px', fontWeight: 'bold', color: '#fff', width: '30%' }}>{comp.Name}</td>
+                        <td style={{ padding: "12px", fontWeight: "bold", color: "#fff", width: "30%" }}><a href={getProfileLink(comp)} target="_blank" rel="noreferrer" style={{ color: "#fff", textDecoration: "none" }}>{comp.Name}</a></td>
                         <td style={{ padding: '12px', color: '#ccc', width: '35%' }}>{comp.Academy}</td>
                         <td style={{ padding: '12px', textAlign: 'right', width: '35%' }}>
-                          {!comp.JitsProfile && (comp.Profile === "#" || isKid(comp)) ? (
+                          {(isKid(comp) && !comp.JitsProfile) || (!isKid(comp) && (!comp.Profile || comp.Profile === "#")) ? (
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
                               <a href={getProfileLink(comp)} target="_blank" rel="noreferrer" style={{ color: isKid(comp) ? '#3498db' : '#ff9f43', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.9rem' }}>
                                 🔍 Search {isKid(comp) ? 'Jits.gg' : 'Smoothcomp'}
