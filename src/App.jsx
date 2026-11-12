@@ -129,6 +129,7 @@ function CompetitorTable({ calcResult, event, onClose }) {
         if (cleanTok === 'male' || cleanTok === 'men' || cleanTok === 'mens') {
           return /\b(male|men|mens)\b/.test(normDiv);
         }
+        if (cleanTok === 'professional') return /\b(professional|pro|championship|advanced)\b/.test(normDiv);
         if (cleanTok === 'female' || cleanTok === 'women' || cleanTok === 'womens') {
           return /\b(female|women|womens)\b/.test(normDiv);
         }
@@ -409,7 +410,18 @@ export default function App() {
     setCalcResult('');
     // If event is ADCC, default calculator to No-Gi
     const isAdcc = ev.id.toLowerCase().includes('adcc') || ev.name.toLowerCase().includes('adcc');
-    setCalcData(prev => ({ ...prev, type: isAdcc ? 'No-Gi' : 'Gi' }));
+    setCalcData(prev => {
+      let nextBelt = prev.belt;
+      const adccTiers = ['Beginner', 'Intermediate', 'Advanced', 'Professional'];
+      if (isAdcc && !adccTiers.includes(nextBelt)) {
+        if (nextBelt === 'White') nextBelt = 'Beginner';
+        else if (['Grey', 'Yellow', 'Blue', 'Purple'].includes(nextBelt)) nextBelt = 'Intermediate';
+        else nextBelt = 'Advanced';
+      } else if (!isAdcc && adccTiers.includes(nextBelt)) {
+        nextBelt = 'White';
+      }
+      return { ...prev, type: isAdcc ? 'No-Gi' : 'Gi', belt: nextBelt };
+    });
     setShowCalcModal(true);
   };
 
@@ -554,8 +566,19 @@ export default function App() {
                 <input type="number" placeholder="Age" value={calcData.age} onChange={e => setCalcData({...calcData, age: e.target.value})} style={{ flex: 1, padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }} required />
               </div>
               <select value={calcData.belt} onChange={e => setCalcData({...calcData, belt: e.target.value})} style={{ padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }}>
-                <option value="White">White Belt</option><option value="Grey">Grey Belt</option><option value="Yellow">Yellow Belt</option><option value="Orange">Orange Belt</option><option value="Green">Green Belt</option><option value="Blue">Blue Belt</option><option value="Purple">Purple Belt</option><option value="Brown">Brown Belt</option><option value="Black">Black Belt</option>
-              </select>
+                    {isAdccEvent ? (
+                      <>
+                        <option value="Beginner">Beginner (White Belt / &lt;2 yrs)</option>
+                        <option value="Intermediate">Intermediate (Grey–Yellow / Blue–Purple)</option>
+                        <option value="Advanced">Advanced (Orange–Green+ / Brown–Black)</option>
+                        <option value="Professional">Professional / Championship (Adults)</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="White">White Belt</option><option value="Grey">Grey Belt</option><option value="Yellow">Yellow Belt</option><option value="Orange">Orange Belt</option><option value="Green">Green Belt</option><option value="Blue">Blue Belt</option><option value="Purple">Purple Belt</option><option value="Brown">Brown Belt</option><option value="Black">Black Belt</option>
+                      </>
+                    )}
+                  </select>
               <input type="number" placeholder="Weight in LBS" value={calcData.weight} step="0.1" onChange={e => setCalcData({...calcData, weight: e.target.value})} style={{ padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }} required />
               <button type="submit" style={{ padding: '14px', backgroundColor: '#ff9f43', color: '#000', border: 'none', borderRadius: '6px', fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer' }}>Calculate Division</button>
             </form>

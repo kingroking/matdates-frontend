@@ -201,134 +201,147 @@ export const calculateWeightClass = (federation, ageNum, gender, weightLbs, belt
 
   // --- OFFICIAL ADCC RULES MATRIX FOR ALL DIVISIONS ---
   if (fed === 'ADCC') {
+    const bLow = (belt || '').toLowerCase();
+    let adccSkill = 'Intermediate';
+    if (['beginner', 'intermediate', 'advanced', 'professional'].includes(bLow)) {
+      adccSkill = bLow.charAt(0).toUpperCase() + bLow.slice(1);
+    } else if (age < 18) {
+      if (bLow === 'white') adccSkill = 'Beginner';
+      else if (bLow === 'grey' || bLow === 'yellow') adccSkill = 'Intermediate';
+      else adccSkill = 'Advanced';
+    } else {
+      if (bLow === 'white') adccSkill = 'Beginner';
+      else if (bLow === 'blue' || bLow === 'purple') adccSkill = 'Intermediate';
+      else adccSkill = 'Advanced';
+    }
     if (age >= 18) {
       if (gender === 'Male') {
-        if (weight <= 143.0) return `ADCC Adult Male -65.0 kg (143 lbs) No-Gi`;
-        if (weight <= 168.0) return `ADCC Adult Male -76.0 kg (168 lbs) No-Gi`;
-        if (weight <= 183.0) return `ADCC Adult Male -83.0 kg (183 lbs) No-Gi`;
-        if (weight <= 201.0) return `ADCC Adult Male -91.0 kg (201 lbs) No-Gi`;
-        if (weight <= 220.0) return `ADCC Adult Male -100.0 kg (220 lbs) No-Gi`;
-        return `ADCC Adult Male +100.0 kg (220+ lbs) No-Gi`;
+        if (weight <= 143.0) return `ADCC Adult Male ${adccSkill} -65.0 kg (143 lbs) No-Gi`;
+        if (weight <= 168.0) return `ADCC Adult Male ${adccSkill} -76.0 kg (168 lbs) No-Gi`;
+        if (weight <= 183.0) return `ADCC Adult Male ${adccSkill} -83.0 kg (183 lbs) No-Gi`;
+        if (weight <= 201.0) return `ADCC Adult Male ${adccSkill} -91.0 kg (201 lbs) No-Gi`;
+        if (weight <= 220.0) return `ADCC Adult Male ${adccSkill} -100.0 kg (220 lbs) No-Gi`;
+        return `ADCC Adult Male ${adccSkill} +100.0 kg (220+ lbs) No-Gi`;
       }
       if (gender === 'Female') {
-        if (weight <= 132.0) return `ADCC Adult Female -60.0 kg (132 lbs) No-Gi`;
-        return `ADCC Adult Female +60.0 kg (132+ lbs) No-Gi`;
+        if (weight <= 132.0) return `ADCC Adult Female ${adccSkill} -60.0 kg (132 lbs) No-Gi`;
+        return `ADCC Adult Female ${adccSkill} +60.0 kg (132+ lbs) No-Gi`;
       }
     } else {
       // Official ADCC Youth & Teens Matrix (Ages 4 to 17)
       if (gender === 'Female') {
         if (age <= 6) {
-          if (weight <= 44.0) return `ADCC Girls (6 & Under) -20.0 kg (44 lbs) No-Gi`;
-          if (weight <= 53.0) return `ADCC Girls (6 & Under) -24.0 kg (53 lbs) No-Gi`;
-          if (weight <= 62.0) return `ADCC Girls (6 & Under) -28.0 kg (62 lbs) No-Gi`;
-          if (weight <= 71.0) return `ADCC Girls (6 & Under) -32.0 kg (71 lbs) No-Gi`;
-          if (weight <= 80.0) return `ADCC Girls (6 & Under) -36.0 kg (80 lbs) No-Gi`;
-          if (weight <= 88.0) return `ADCC Girls (6 & Under) -40.0 kg (88 lbs) No-Gi`;
-          return `ADCC Girls (6 & Under) +40.0 kg (89+ lbs) No-Gi`;
+          if (weight <= 44.0) return `ADCC Girls (6 & Under) ${adccSkill} -20.0 kg (44 lbs) No-Gi`;
+          if (weight <= 53.0) return `ADCC Girls (6 & Under) ${adccSkill} -24.0 kg (53 lbs) No-Gi`;
+          if (weight <= 62.0) return `ADCC Girls (6 & Under) ${adccSkill} -28.0 kg (62 lbs) No-Gi`;
+          if (weight <= 71.0) return `ADCC Girls (6 & Under) ${adccSkill} -32.0 kg (71 lbs) No-Gi`;
+          if (weight <= 80.0) return `ADCC Girls (6 & Under) ${adccSkill} -36.0 kg (80 lbs) No-Gi`;
+          if (weight <= 88.0) return `ADCC Girls (6 & Under) ${adccSkill} -40.0 kg (88 lbs) No-Gi`;
+          return `ADCC Girls (6 & Under) ${adccSkill} +40.0 kg (89+ lbs) No-Gi`;
         }
         if (age >= 7 && age <= 8) {
-          if (weight <= 53.0) return `ADCC Girls (7-8) -24.0 kg (53 lbs) No-Gi`;
-          if (weight <= 62.0) return `ADCC Girls (7-8) -28.0 kg (62 lbs) No-Gi`;
-          if (weight <= 71.0) return `ADCC Girls (7-8) -32.0 kg (71 lbs) No-Gi`;
-          if (weight <= 80.0) return `ADCC Girls (7-8) -36.0 kg (80 lbs) No-Gi`;
-          if (weight <= 88.0) return `ADCC Girls (7-8) -40.0 kg (88 lbs) No-Gi`;
-          if (weight <= 97.0) return `ADCC Girls (7-8) -44.0 kg (97 lbs) No-Gi`;
-          return `ADCC Girls (7-8) +44.0 kg (98+ lbs) No-Gi`;
+          if (weight <= 53.0) return `ADCC Girls (7-8) ${adccSkill} -24.0 kg (53 lbs) No-Gi`;
+          if (weight <= 62.0) return `ADCC Girls (7-8) ${adccSkill} -28.0 kg (62 lbs) No-Gi`;
+          if (weight <= 71.0) return `ADCC Girls (7-8) ${adccSkill} -32.0 kg (71 lbs) No-Gi`;
+          if (weight <= 80.0) return `ADCC Girls (7-8) ${adccSkill} -36.0 kg (80 lbs) No-Gi`;
+          if (weight <= 88.0) return `ADCC Girls (7-8) ${adccSkill} -40.0 kg (88 lbs) No-Gi`;
+          if (weight <= 97.0) return `ADCC Girls (7-8) ${adccSkill} -44.0 kg (97 lbs) No-Gi`;
+          return `ADCC Girls (7-8) ${adccSkill} +44.0 kg (98+ lbs) No-Gi`;
         }
         if (age >= 9 && age <= 10) {
-          if (weight <= 53.0) return `ADCC Girls (9-10) -24.0 kg (53 lbs) No-Gi`;
-          if (weight <= 62.0) return `ADCC Girls (9-10) -28.0 kg (62 lbs) No-Gi`;
-          if (weight <= 71.0) return `ADCC Girls (9-10) -32.0 kg (71 lbs) No-Gi`;
-          if (weight <= 79.0) return `ADCC Girls (9-10) -36.0 kg (79 lbs) No-Gi`;
-          if (weight <= 99.0) return `ADCC Girls (9-10) -45.0 kg (99 lbs) No-Gi`;
-          if (weight <= 121.0) return `ADCC Girls (9-10) -55.0 kg (121 lbs) No-Gi`;
-          return `ADCC Girls (9-10) +55.0 kg (121+ lbs) No-Gi`;
+          if (weight <= 53.0) return `ADCC Girls (9-10) ${adccSkill} -24.0 kg (53 lbs) No-Gi`;
+          if (weight <= 62.0) return `ADCC Girls (9-10) ${adccSkill} -28.0 kg (62 lbs) No-Gi`;
+          if (weight <= 71.0) return `ADCC Girls (9-10) ${adccSkill} -32.0 kg (71 lbs) No-Gi`;
+          if (weight <= 79.0) return `ADCC Girls (9-10) ${adccSkill} -36.0 kg (79 lbs) No-Gi`;
+          if (weight <= 99.0) return `ADCC Girls (9-10) ${adccSkill} -45.0 kg (99 lbs) No-Gi`;
+          if (weight <= 121.0) return `ADCC Girls (9-10) ${adccSkill} -55.0 kg (121 lbs) No-Gi`;
+          return `ADCC Girls (9-10) ${adccSkill} +55.0 kg (121+ lbs) No-Gi`;
         }
         if (age >= 11 && age <= 12) {
-          if (weight <= 62.0) return `ADCC Girls (11-12) -28.0 kg (62 lbs) No-Gi`;
-          if (weight <= 71.0) return `ADCC Girls (11-12) -32.0 kg (71 lbs) No-Gi`;
-          if (weight <= 79.0) return `ADCC Girls (11-12) -36.0 kg (79 lbs) No-Gi`;
-          if (weight <= 88.0) return `ADCC Girls (11-12) -40.0 kg (88 lbs) No-Gi`;
-          if (weight <= 110.0) return `ADCC Girls (11-12) -50.0 kg (110 lbs) No-Gi`;
-          return `ADCC Girls (11-12) +50.0 kg (110+ lbs) No-Gi`;
+          if (weight <= 62.0) return `ADCC Girls (11-12) ${adccSkill} -28.0 kg (62 lbs) No-Gi`;
+          if (weight <= 71.0) return `ADCC Girls (11-12) ${adccSkill} -32.0 kg (71 lbs) No-Gi`;
+          if (weight <= 79.0) return `ADCC Girls (11-12) ${adccSkill} -36.0 kg (79 lbs) No-Gi`;
+          if (weight <= 88.0) return `ADCC Girls (11-12) ${adccSkill} -40.0 kg (88 lbs) No-Gi`;
+          if (weight <= 110.0) return `ADCC Girls (11-12) ${adccSkill} -50.0 kg (110 lbs) No-Gi`;
+          return `ADCC Girls (11-12) ${adccSkill} +50.0 kg (110+ lbs) No-Gi`;
         }
         if (age >= 13 && age <= 14) {
-          if (weight <= 77.0) return `ADCC Girls (13-14) -35.0 kg (77 lbs) No-Gi`;
-          if (weight <= 88.0) return `ADCC Girls (13-14) -40.0 kg (88 lbs) No-Gi`;
-          if (weight <= 99.0) return `ADCC Girls (13-14) -45.0 kg (99 lbs) No-Gi`;
-          if (weight <= 110.0) return `ADCC Girls (13-14) -50.0 kg (110 lbs) No-Gi`;
-          if (weight <= 121.0) return `ADCC Girls (13-14) -55.0 kg (121 lbs) No-Gi`;
-          if (weight <= 132.0) return `ADCC Girls (13-14) -60.0 kg (132 lbs) No-Gi`;
-          if (weight <= 154.0) return `ADCC Girls (13-14) -70.0 kg (154 lbs) No-Gi`;
-          return `ADCC Girls (13-14) +70.0 kg (154+ lbs) No-Gi`;
+          if (weight <= 77.0) return `ADCC Girls (13-14) ${adccSkill} -35.0 kg (77 lbs) No-Gi`;
+          if (weight <= 88.0) return `ADCC Girls (13-14) ${adccSkill} -40.0 kg (88 lbs) No-Gi`;
+          if (weight <= 99.0) return `ADCC Girls (13-14) ${adccSkill} -45.0 kg (99 lbs) No-Gi`;
+          if (weight <= 110.0) return `ADCC Girls (13-14) ${adccSkill} -50.0 kg (110 lbs) No-Gi`;
+          if (weight <= 121.0) return `ADCC Girls (13-14) ${adccSkill} -55.0 kg (121 lbs) No-Gi`;
+          if (weight <= 132.0) return `ADCC Girls (13-14) ${adccSkill} -60.0 kg (132 lbs) No-Gi`;
+          if (weight <= 154.0) return `ADCC Girls (13-14) ${adccSkill} -70.0 kg (154 lbs) No-Gi`;
+          return `ADCC Girls (13-14) ${adccSkill} +70.0 kg (154+ lbs) No-Gi`;
         }
         if (age >= 15 && age <= 17) {
-          if (weight <= 88.0) return `ADCC Juveniles (15-17) Girls -40.0 kg (88 lbs) No-Gi`;
-          if (weight <= 99.0) return `ADCC Juveniles (15-17) Girls -45.0 kg (99 lbs) No-Gi`;
-          if (weight <= 110.0) return `ADCC Juveniles (15-17) Girls -50.0 kg (110 lbs) No-Gi`;
-          if (weight <= 121.0) return `ADCC Juveniles (15-17) Girls -55.0 kg (121 lbs) No-Gi`;
-          if (weight <= 132.0) return `ADCC Juveniles (15-17) Girls -60.0 kg (132 lbs) No-Gi`;
-          if (weight <= 143.0) return `ADCC Juveniles (15-17) Girls -65.0 kg (143 lbs) No-Gi`;
-          return `ADCC Juveniles (15-17) Girls +65.0 kg (144+ lbs) No-Gi`;
+          if (weight <= 88.0) return `ADCC Juveniles (15-17) Girls ${adccSkill} -40.0 kg (88 lbs) No-Gi`;
+          if (weight <= 99.0) return `ADCC Juveniles (15-17) Girls ${adccSkill} -45.0 kg (99 lbs) No-Gi`;
+          if (weight <= 110.0) return `ADCC Juveniles (15-17) Girls ${adccSkill} -50.0 kg (110 lbs) No-Gi`;
+          if (weight <= 121.0) return `ADCC Juveniles (15-17) Girls ${adccSkill} -55.0 kg (121 lbs) No-Gi`;
+          if (weight <= 132.0) return `ADCC Juveniles (15-17) Girls ${adccSkill} -60.0 kg (132 lbs) No-Gi`;
+          if (weight <= 143.0) return `ADCC Juveniles (15-17) Girls ${adccSkill} -65.0 kg (143 lbs) No-Gi`;
+          return `ADCC Juveniles (15-17) Girls ${adccSkill} +65.0 kg (144+ lbs) No-Gi`;
         }
       } else {
         // Boys divisions
         if (age <= 6) {
-          if (weight <= 44.0) return `ADCC Boys (6 & Under) -20.0 kg (44 lbs) No-Gi`;
-          if (weight <= 53.0) return `ADCC Boys (6 & Under) -24.0 kg (53 lbs) No-Gi`;
-          if (weight <= 62.0) return `ADCC Boys (6 & Under) -28.0 kg (62 lbs) No-Gi`;
-          if (weight <= 71.0) return `ADCC Boys (6 & Under) -32.0 kg (71 lbs) No-Gi`;
-          if (weight <= 88.0) return `ADCC Boys (6 & Under) -40.0 kg (88 lbs) No-Gi`;
-          return `ADCC Boys (6 & Under) +40.0 kg (88+ lbs) No-Gi`;
+          if (weight <= 44.0) return `ADCC Boys (6 & Under) ${adccSkill} -20.0 kg (44 lbs) No-Gi`;
+          if (weight <= 53.0) return `ADCC Boys (6 & Under) ${adccSkill} -24.0 kg (53 lbs) No-Gi`;
+          if (weight <= 62.0) return `ADCC Boys (6 & Under) ${adccSkill} -28.0 kg (62 lbs) No-Gi`;
+          if (weight <= 71.0) return `ADCC Boys (6 & Under) ${adccSkill} -32.0 kg (71 lbs) No-Gi`;
+          if (weight <= 88.0) return `ADCC Boys (6 & Under) ${adccSkill} -40.0 kg (88 lbs) No-Gi`;
+          return `ADCC Boys (6 & Under) ${adccSkill} +40.0 kg (88+ lbs) No-Gi`;
         }
         if (age >= 7 && age <= 8) {
-          if (weight <= 53.0) return `ADCC Boys (7-8) -24.0 kg (53 lbs) No-Gi`;
-          if (weight <= 62.0) return `ADCC Boys (7-8) -28.0 kg (62 lbs) No-Gi`;
-          if (weight <= 71.0) return `ADCC Boys (7-8) -32.0 kg (71 lbs) No-Gi`;
-          if (weight <= 79.0) return `ADCC Boys (7-8) -36.0 kg (79 lbs) No-Gi`;
-          if (weight <= 99.0) return `ADCC Boys (7-8) -45.0 kg (99 lbs) No-Gi`;
-          if (weight <= 121.0) return `ADCC Boys (7-8) -55.0 kg (121 lbs) No-Gi`;
-          return `ADCC Boys (7-8) +55.0 kg (121+ lbs) No-Gi`;
+          if (weight <= 53.0) return `ADCC Boys (7-8) ${adccSkill} -24.0 kg (53 lbs) No-Gi`;
+          if (weight <= 62.0) return `ADCC Boys (7-8) ${adccSkill} -28.0 kg (62 lbs) No-Gi`;
+          if (weight <= 71.0) return `ADCC Boys (7-8) ${adccSkill} -32.0 kg (71 lbs) No-Gi`;
+          if (weight <= 79.0) return `ADCC Boys (7-8) ${adccSkill} -36.0 kg (79 lbs) No-Gi`;
+          if (weight <= 99.0) return `ADCC Boys (7-8) ${adccSkill} -45.0 kg (99 lbs) No-Gi`;
+          if (weight <= 121.0) return `ADCC Boys (7-8) ${adccSkill} -55.0 kg (121 lbs) No-Gi`;
+          return `ADCC Boys (7-8) ${adccSkill} +55.0 kg (121+ lbs) No-Gi`;
         }
         if (age >= 9 && age <= 10) {
-          if (weight <= 62.0) return `ADCC Boys (9-10) -28.0 kg (62 lbs) No-Gi`;
-          if (weight <= 71.0) return `ADCC Boys (9-10) -32.0 kg (71 lbs) No-Gi`;
-          if (weight <= 79.0) return `ADCC Boys (9-10) -36.0 kg (79 lbs) No-Gi`;
-          if (weight <= 88.0) return `ADCC Boys (9-10) -40.0 kg (88 lbs) No-Gi`;
-          if (weight <= 110.0) return `ADCC Boys (9-10) -50.0 kg (110 lbs) No-Gi`;
-          if (weight <= 132.0) return `ADCC Boys (9-10) -60.0 kg (132 lbs) No-Gi`;
-          return `ADCC Boys (9-10) +60.0 kg (132+ lbs) No-Gi`;
+          if (weight <= 62.0) return `ADCC Boys (9-10) ${adccSkill} -28.0 kg (62 lbs) No-Gi`;
+          if (weight <= 71.0) return `ADCC Boys (9-10) ${adccSkill} -32.0 kg (71 lbs) No-Gi`;
+          if (weight <= 79.0) return `ADCC Boys (9-10) ${adccSkill} -36.0 kg (79 lbs) No-Gi`;
+          if (weight <= 88.0) return `ADCC Boys (9-10) ${adccSkill} -40.0 kg (88 lbs) No-Gi`;
+          if (weight <= 110.0) return `ADCC Boys (9-10) ${adccSkill} -50.0 kg (110 lbs) No-Gi`;
+          if (weight <= 132.0) return `ADCC Boys (9-10) ${adccSkill} -60.0 kg (132 lbs) No-Gi`;
+          return `ADCC Boys (9-10) ${adccSkill} +60.0 kg (132+ lbs) No-Gi`;
         }
         if (age >= 11 && age <= 12) {
-          if (weight <= 71.0) return `ADCC Boys (11-12) -32.0 kg (71 lbs) No-Gi`;
-          if (weight <= 79.0) return `ADCC Boys (11-12) -36.0 kg (79 lbs) No-Gi`;
-          if (weight <= 88.0) return `ADCC Boys (11-12) -40.0 kg (88 lbs) No-Gi`;
-          if (weight <= 97.0) return `ADCC Boys (11-12) -44.0 kg (97 lbs) No-Gi`;
-          if (weight <= 121.0) return `ADCC Boys (11-12) -55.0 kg (121 lbs) No-Gi`;
-          if (weight <= 143.0) return `ADCC Boys (11-12) -65.0 kg (143 lbs) No-Gi`;
-          return `ADCC Boys (11-12) +65.0 kg (143+ lbs) No-Gi`;
+          if (weight <= 71.0) return `ADCC Boys (11-12) ${adccSkill} -32.0 kg (71 lbs) No-Gi`;
+          if (weight <= 79.0) return `ADCC Boys (11-12) ${adccSkill} -36.0 kg (79 lbs) No-Gi`;
+          if (weight <= 88.0) return `ADCC Boys (11-12) ${adccSkill} -40.0 kg (88 lbs) No-Gi`;
+          if (weight <= 97.0) return `ADCC Boys (11-12) ${adccSkill} -44.0 kg (97 lbs) No-Gi`;
+          if (weight <= 121.0) return `ADCC Boys (11-12) ${adccSkill} -55.0 kg (121 lbs) No-Gi`;
+          if (weight <= 143.0) return `ADCC Boys (11-12) ${adccSkill} -65.0 kg (143 lbs) No-Gi`;
+          return `ADCC Boys (11-12) ${adccSkill} +65.0 kg (143+ lbs) No-Gi`;
         }
         if (age >= 13 && age <= 14) {
-          if (weight <= 75.0) return `ADCC Boys (13-14) -34.0 kg (75 lbs) No-Gi`;
-          if (weight <= 88.0) return `ADCC Boys (13-14) -40.0 kg (88 lbs) No-Gi`;
-          if (weight <= 99.0) return `ADCC Boys (13-14) -45.0 kg (99 lbs) No-Gi`;
-          if (weight <= 110.0) return `ADCC Boys (13-14) -50.0 kg (110 lbs) No-Gi`;
-          if (weight <= 121.0) return `ADCC Boys (13-14) -55.0 kg (121 lbs) No-Gi`;
-          if (weight <= 132.0) return `ADCC Boys (13-14) -60.0 kg (132 lbs) No-Gi`;
-          if (weight <= 143.0) return `ADCC Boys (13-14) -65.0 kg (143 lbs) No-Gi`;
-          if (weight <= 154.0) return `ADCC Boys (13-14) -70.0 kg (154 lbs) No-Gi`;
-          if (weight <= 165.0) return `ADCC Boys (13-14) -75.0 kg (165 lbs) No-Gi`;
-          return `ADCC Boys (13-14) +75.0 kg (165+ lbs) No-Gi`;
+          if (weight <= 75.0) return `ADCC Boys (13-14) ${adccSkill} -34.0 kg (75 lbs) No-Gi`;
+          if (weight <= 88.0) return `ADCC Boys (13-14) ${adccSkill} -40.0 kg (88 lbs) No-Gi`;
+          if (weight <= 99.0) return `ADCC Boys (13-14) ${adccSkill} -45.0 kg (99 lbs) No-Gi`;
+          if (weight <= 110.0) return `ADCC Boys (13-14) ${adccSkill} -50.0 kg (110 lbs) No-Gi`;
+          if (weight <= 121.0) return `ADCC Boys (13-14) ${adccSkill} -55.0 kg (121 lbs) No-Gi`;
+          if (weight <= 132.0) return `ADCC Boys (13-14) ${adccSkill} -60.0 kg (132 lbs) No-Gi`;
+          if (weight <= 143.0) return `ADCC Boys (13-14) ${adccSkill} -65.0 kg (143 lbs) No-Gi`;
+          if (weight <= 154.0) return `ADCC Boys (13-14) ${adccSkill} -70.0 kg (154 lbs) No-Gi`;
+          if (weight <= 165.0) return `ADCC Boys (13-14) ${adccSkill} -75.0 kg (165 lbs) No-Gi`;
+          return `ADCC Boys (13-14) ${adccSkill} +75.0 kg (165+ lbs) No-Gi`;
         }
         if (age >= 15 && age <= 17) {
-          if (weight <= 110.0) return `ADCC Juveniles (15-17) Boys -50.0 kg (110 lbs) No-Gi`;
-          if (weight <= 121.0) return `ADCC Juveniles (15-17) Boys -55.0 kg (121 lbs) No-Gi`;
-          if (weight <= 132.0) return `ADCC Juveniles (15-17) Boys -60.0 kg (132 lbs) No-Gi`;
-          if (weight <= 143.0) return `ADCC Juveniles (15-17) Boys -65.0 kg (143 lbs) No-Gi`;
-          if (weight <= 154.0) return `ADCC Juveniles (15-17) Boys -70.0 kg (154 lbs) No-Gi`;
-          if (weight <= 165.0) return `ADCC Juveniles (15-17) Boys -75.0 kg (165 lbs) No-Gi`;
-          if (weight <= 176.0) return `ADCC Juveniles (15-17) Boys -80.0 kg (176 lbs) No-Gi`;
-          return `ADCC Juveniles (15-17) Boys +80.0 kg (177+ lbs) No-Gi`;
+          if (weight <= 110.0) return `ADCC Juveniles (15-17) Boys ${adccSkill} -50.0 kg (110 lbs) No-Gi`;
+          if (weight <= 121.0) return `ADCC Juveniles (15-17) Boys ${adccSkill} -55.0 kg (121 lbs) No-Gi`;
+          if (weight <= 132.0) return `ADCC Juveniles (15-17) Boys ${adccSkill} -60.0 kg (132 lbs) No-Gi`;
+          if (weight <= 143.0) return `ADCC Juveniles (15-17) Boys ${adccSkill} -65.0 kg (143 lbs) No-Gi`;
+          if (weight <= 154.0) return `ADCC Juveniles (15-17) Boys ${adccSkill} -70.0 kg (154 lbs) No-Gi`;
+          if (weight <= 165.0) return `ADCC Juveniles (15-17) Boys ${adccSkill} -75.0 kg (165 lbs) No-Gi`;
+          if (weight <= 176.0) return `ADCC Juveniles (15-17) Boys ${adccSkill} -80.0 kg (176 lbs) No-Gi`;
+          return `ADCC Juveniles (15-17) Boys ${adccSkill} +80.0 kg (177+ lbs) No-Gi`;
         }
       }
     }
