@@ -614,7 +614,7 @@ export default function App() {
               const isJJWL = ev.id && ev.id.toLowerCase().startsWith('jjwl');
               const isADCC = (ev.id && ev.id.toLowerCase().includes('adcc')) || (ev.name && ev.name.toLowerCase().includes('adcc'));
               
-              const isStreamOnly = ev.type === 'Super Fight' || (ev.id && (ev.id.toLowerCase().startsWith('flograp') || ev.id.toLowerCase().startsWith('ufc') || ev.id.toLowerCase().includes('fightpass')));
+              const isStreamOnly = Boolean(ev.id && (ev.id.toLowerCase().startsWith('flograp') || ev.id.toLowerCase().startsWith('ufc') || ev.id.toLowerCase().includes('fightpass'))) || /subscription|fight pass|flograppling|ppv/i.test(ev.cost || '');
               const evBorderColor = isADCC ? '#F1C40F' : (ev.type === 'Super Fight' || isStreamOnly) ? '#e31837' : (isJJWL ? '#ffffff' : (ev.color || '#ff9f43'));
               
               return (
@@ -624,7 +624,19 @@ export default function App() {
                   </h3>
                   <div style={{ flexGrow: 1, color: '#aaa', fontSize: '0.95rem', lineHeight: '1.6', margin: '8px 0' }}>
                     📅 {ev.date} &nbsp;|&nbsp; 📍 {ev.location}<br/>
-                    {ev.cost && <span style={{ color: '#2ecc71', fontWeight: 'bold' }}>💳 {ev.cost}</span>}
+                    {ev.cost && (
+                      <span style={{ color: '#2ecc71', fontWeight: 'bold' }}>
+                        {isStreamOnly
+                          ? `📺 Stream: ${ev.cost.replace(/^Watch on\s+/i, '')}`
+                          : ev.type === 'Super Fight'
+                            ? (/admission|spectator|ticket|free/i.test(ev.cost)
+                                ? `🎟️ Spectator: ${ev.cost}`
+                                : `🥋 Match Entry: ${ev.cost}`)
+                            : ev.type === 'Seminar'
+                              ? `🎟️ Seminar Fee: ${ev.cost}`
+                              : `💳 Entry: ${ev.cost}`}
+                      </span>
+                    )}
                     {ev.deadline && <span style={{ color: '#e31837', display: 'block', fontSize: '0.85rem' }}>⏳ Deadline: {ev.deadline}</span>}
                   </div>
                   
