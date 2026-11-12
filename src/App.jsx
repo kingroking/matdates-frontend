@@ -264,35 +264,59 @@ export default function App() {
         const evNameLow = evName.toLowerCase();
         const evId = ev.id ? ev.id.toLowerCase() : "";
 
-        const isSeminarOrCamp = /\b(seminar|camp|clinic)\b/.test(evNameLow);
-        const isTournament = /\b(tournament|championship|campeonato|open|cup|league|classic)\b/.test(evNameLow);
+        const isSeminarOrCamp = /\b(seminar|camp|clinic|course)\b/.test(evNameLow);
+        const isSuperFightTitle = /\b(superfight|super\s+fight|invitational|showcase|wno|who's\s+number\s+one|ufc\s+bjj|polaris|cji|quintet|ebi|combat\s+jiu|cage\s+series)\b/.test(evNameLow);
+        const isTournament = /\b(tournament|championship|campeonato|open|cup|league|nationals)\b/.test(evNameLow);
 
         let type = ev.type || 'Tournament';
         let color = ev.color || '#ff9f43';
 
-        if (isSeminarOrCamp && !isTournament) { type = 'Seminar'; color = '#9b59b6'; }
+        if (isSeminarOrCamp && !isTournament) {
+          type = 'Seminar';
+          color = '#9b59b6';
+        } else if (isSuperFightTitle && !/\bopen\b/.test(evNameLow)) {
+          type = 'Super Fight';
+          color = '#e31837';
+        }
+
+        // Clean Price Formatter: Strip "See Smoothcomp.com" placeholders & label Early/Late ranges cleanly
+        let displayCost = (ev.cost || '').trim();
+        if (/^see\s+/i.test(displayCost) || displayCost === 'N/A') {
+          displayCost = '';
+        } else {
+          displayCost = displayCost.replace(/^Registration:\s*/i, '').replace(/\$\s+/g, '$');
+          const rangeMatch = displayCost.match(/^([A-Z$€£R]+\s?\d+(?:\.\d{2})?(?:\s?[A-Z]{3})?)\s*[-–]\s*([A-Z$€£R]*\s?\d+(?:\.\d{2})?(?:\s?[A-Z]{3})?)$/i);
+          if (rangeMatch) {
+            displayCost = `${rangeMatch[1].trim()} Early – ${rangeMatch[2].trim()} Late`;
+          }
+        }
 
         // Accurate Kids vs Adult Classification & Tiger Icon Flag
-        const isKidsWord = /\b(kids|youth|juvenile|boy|girl|child|tots|peewee|mighty)\b/.test(evNameLow);
-        const isAdultWord = /\b(adult|masters|senior|pro|executive)\b/.test(evNameLow);
+        const isKidsWord = /\b(kids|youth|juvenile|boy|girl|boys|girls|child|tots|peewee|pee-wee|mighty|teens?)\b/.test(evNameLow);
+        const isAdultsOnlyWord = /\b(adults?\s+only|adults|master|masters|veterans|trials|pro\s+championship)\b/.test(evNameLow) && !isKidsWord;
+        const isAllAgesOrg = /\b(adcc|jjwl|naga|grappling\s+industries|newbreed|agf|fuji|grappling\s+x|good\s+fight|tap\s+cancer|sub\s+spectrum)\b/.test(evNameLow) || evId.startsWith('jjwl');
 
-        let isKids = false;
+        let isKids = Boolean(ev.has_youth);
         let isAdult = true;
 
-        if (evId.startsWith('ibjjf') || evId.startsWith('jjwl')) {
-          isKids = isKidsWord;
-          isAdult = !isKidsWord || isAdultWord;
-        } else if (type === 'Super Fight' || evId.startsWith('flograp') || evId.startsWith('ufc')) {
+        if (type === 'Super Fight' || type === 'Seminar' || evId.startsWith('flograp') || evId.startsWith('ufc')) {
           isKids = false;
           isAdult = true;
+        } else if (evId.startsWith('ibjjf')) {
+          // IBJJF runs separate "Kids International Open" cards vs Adult/Juvenile cards
+          isKids = isKidsWord || Boolean(ev.has_youth);
+          isAdult = !isKidsWord;
+        } else if (isAllAgesOrg) {
+          // ADCC Opens, JJWL, NAGA, Grappling Industries, AGF, Fuji, Newbreed include Kids + Adults unless marked Adults/Trials!
+          isKids = !isAdultsOnlyWord;
+          isAdult = !isKidsWord || /\b(adcc|jjwl|naga|grappling\s+industries|newbreed|agf|fuji)\b/.test(evNameLow);
         } else {
-          isKids = isKidsWord;
-          isAdult = !isKidsWord || isAdultWord;
+          isKids = isKidsWord || Boolean(ev.has_youth);
+          isAdult = !isKidsWord || !/\bonly\b/.test(evNameLow);
         }
-        
-        return { ...ev, name: evName, type, color, isKidsEvent: isKids, isAdultEvent: isAdult };
-      });
 
+        return { ...ev, name: evName, cost: displayCost, type, color, isKidsEvent: isKids, isAdultEvent: isAdult };
+      });
     // Deduplication filter: Prevent duplicate event cards by unique Name + Date combination
     const seenMap = new Map();
     const fetchedEvents = [];
