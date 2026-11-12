@@ -75,25 +75,68 @@ function CompetitorTable({ calcResult, event, onClose }) {
     }
   };
 
+  const normalizeDivText = (str) => {
+    return (str || '')
+      .toLowerCase()
+      .replace(/(\d),(\d)/g, '$1.$2')          // -50,0 kg -> -50.0 kg
+      .replace(/\.0\b/g, '')                   // 50.0 -> 50 so 50 and 50.0 both match
+      .replace(/\([^)]*lbs?[^)]*\)/gi, ' ')    // strip dual-unit "(110 lbs)" when kg is primary
+      .replace(/[()[\]/,+]/g, ' ')              // strip brackets, parens, slashes
+      .replace(/\s+/g, ' ')
+      .trim();
+  };
+
+  const NOISE_WORDS = new Set([
+    'adcc', 'ibjjf', 'jjwl', 'smoothcomp', 'agf', 'naga', 'grappling', 'industries',
+    'gi', 'no-gi', 'nogi', 'no', 'years', 'year', 'yrs', 'old', 'belt', 'belts',
+    'kg', 'kgs', 'lb', 'lbs', 'division', 'class', 'the', 'and'
+  ]);
+
   const filteredCompetitors = liveCompetitors.filter(comp => {
     if (!searchTerm) return true;
-    const term = searchTerm.toLowerCase();
-    
+    const rawTerm = searchTerm.toLowerCase().trim();
+
     if (
-      (comp.Name && comp.Name.toLowerCase().includes(term)) ||
-      (comp.Academy && comp.Academy.toLowerCase().includes(term)) ||
-      (comp.Division && comp.Division.toLowerCase().includes(term))
+      (comp.Name && comp.Name.toLowerCase().includes(rawTerm)) ||
+      (comp.Academy && comp.Academy.toLowerCase().includes(rawTerm)) ||
+      (comp.Division && comp.Division.toLowerCase().includes(rawTerm))
     ) {
       return true;
     }
-    
-    const keywords = term.split(/[\s/]+/).filter(k => k.length > 2);
-    if (keywords.length > 1 && comp.Division) {
-      const divLow = comp.Division.toLowerCase();
-      return keywords.every(kw => divLow.includes(kw));
+
+    const normSearch = normalizeDivText(searchTerm);
+    const normDiv = normalizeDivText(comp.Division);
+    const normCombined = `${(comp.Name || '').toLowerCase()} ${(comp.Academy || '').toLowerCase()} ${normDiv}`;
+
+    // Extract meaningful division tokens (e.g. "girls", "13-14", "-50" / "50")
+    const rawTokens = normSearch.split(/\s+/).filter(Boolean);
+    const coreTokens = rawTokens.filter(t => {
+      const clean = t.replace(/^-/, '');
+      if (!clean) return false;
+      if (NOISE_WORDS.has(t) || NOISE_WORDS.has(clean)) return false;
+      return clean.length >= 2 || /^\d+$/.test(clean);
+    });
+
+    if (coreTokens.length > 0) {
+      return coreTokens.every(tok => {
+        const cleanTok = tok.replace(/^-/, '');
+        // For numeric weights/ages (e.g. "50" or "13-14"), match cleanly on word/number boundaries
+        if (/^\d+(\.\d+)?(-\d+(\.\d+)?)?$/.test(cleanTok)) {
+          const escaped = cleanTok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          return new RegExp(`(^|[^0-9.])${escaped}([^0-9.]|$)`).test(normDiv);
+        }
+        // Handle Male/Men/Boys & Female/Women/Girls synonyms across federations
+        if (cleanTok === 'male' || cleanTok === 'men' || cleanTok === 'mens') {
+          return /\b(male|men|mens)\b/.test(normDiv);
+        }
+        if (cleanTok === 'female' || cleanTok === 'women' || cleanTok === 'womens') {
+          return /\b(female|women|womens)\b/.test(normDiv);
+        }
+        return normCombined.includes(cleanTok);
+      });
     }
-    
-    return false;
+
+    return normCombined.includes(normSearch);
   });
 
   const groupedCompetitors = filteredCompetitors.reduce((acc, comp) => {
@@ -521,7 +564,7 @@ export default function App() {
                 <p style={{ margin: '0 0 10px 0', color: '#aaa', fontSize: '0.9rem' }}>Based on your entry, you should register for:</p>
                 <p style={{ margin: 0, fontSize: '1.2rem', fontWeight: 'bold', color: '#ff9f43' }}>{calcResult}</p>
                 
-                {selectedCalcEvent.id.startsWith('smoothcomp') && (
+                {(selectedCalcEvent.id.startsWith('smoothcomp') || selectedCalcEvent.id.startsWith('ibjjf') || selectedCalcEvent.id.startsWith('jjwl')) && (
                   <button 
                     onClick={() => {
                       setShowCalcModal(false);
