@@ -385,16 +385,57 @@ export default function App() {
     }
   };
 
+  const loadPendingEvents = async () => {
+    try {
+      const snap = await getDocs(collection(db, "pending_events"));
+      setPendingEvents(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (e) { console.error(e); }
+  };
+
   const handleLogoClick = () => {
     setClickCount(prev => {
-      const nextCount = prev + 1;
-      if (nextCount >= 3) {
-        setIsAdmin(true);
-        fetchEvents();
+      if (prev + 1 >= 3) {
+        setIsAdmin(curr => { if (!curr) loadPendingEvents(); return !curr; });
         return 0;
       }
-      return nextCount;
+      return prev + 1;
     });
+  };
+
+  const handleApprovePending = async (pev) => {
+    try {
+      const id = `custom_${Date.now()}`;
+      const sd = pev.date && /^\d{4}-\d{2}-\d{2}$/.test(pev.date) ? pev.date : new Date().toISOString().slice(0, 10);
+      const evObj = { id, name: pev.name || 'Event', date: pev.date || '', sort_date: sd, location: pev.location || '', venue: pev.venue || '', link: pev.link || '', cost: pev.cost || '', type: pev.type || 'Tournament', color: pev.color || '#ff9f43', isKidsEvent: true, isAdultEvent: true };
+      await setDoc(doc(db, "events", id), evObj);
+      await deleteDoc(doc(db, "pending_events", pev.id));
+      setPendingEvents(p => p.filter(x => x.id !== pev.id));
+      setEvents(p => [...p, evObj].sort((x, y) => (x.sort_date || '').localeCompare(y.sort_date || '')));
+    } catch (e) { alert("Approve error: " + (e.code || e.message)); }
+  };
+
+  const handleRejectPending = async (id) => {
+    try {
+      await deleteDoc(doc(db, "pending_events", id));
+      setPendingEvents(p => p.filter(x => x.id !== id));
+    } catch (e) { alert("Reject error: " + (e.code || e.message)); }
+  };
+
+  const anyModalOpen = Boolean(selectedCompetitorEvent || showCalcModal || showReminderModal || showSubmitModal);
+  useEffect(() => {
+    if (anyModalOpen) {
+      if (!window.history.state?.mdModal) window.history.pushState({ mdModal: true }, '');
+      const onPop = () => { setSelectedCompetitorEvent(null); setShowCalcModal(false); setShowReminderModal(false); setShowSubmitModal(false); };
+      window.addEventListener('popstate', onPop);
+      return () => window.removeEventListener('popstate', onPop);
+    }
+  }, [anyModalOpen]);
+
+  const getMapsUrl = (ev) => {
+    const q = [ev.venue, ev.location].filter(Boolean).join(', ') || ev.name || '';
+    return /iPad|iPhone|iPod|Macintosh/.test(navigator.userAgent || '')
+      ? `https://maps.apple.com/?q=${encodeURIComponent(q)}`
+      : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
   };
 
   const handlePublicSubmit = async (e) => {
@@ -513,6 +554,7 @@ export default function App() {
             <form onSubmit={handlePublicSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               <input type="text" placeholder="Event Name" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} style={{ padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }} required />
               <input type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} style={{ padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }} required />
+              <input type="text" placeholder="Venue Name (Optional)" value={formData.venue || ""} onChange={e => setFormData({...formData, venue: e.target.value})} style={{ padding: "12px", borderRadius: "6px", backgroundColor: "#222", color: "#fff", border: "1px solid #444", fontSize: "1rem" }} />
               <input type="text" placeholder="Location (City, State)" value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} style={{ padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }} required />
               <input type="url" placeholder="Registration Link" value={formData.link} onChange={e => setFormData({...formData, link: e.target.value})} style={{ padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }} required />
               <button type="submit" style={{ padding: '14px', backgroundColor: '#ff9f43', color: '#000', border: 'none', borderRadius: '6px', fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer' }}>Submit for Review</button>
@@ -614,13 +656,38 @@ export default function App() {
       )}
 
       <div style={{ maxWidth: '1200px', margin: '0 auto', minHeight: 'calc(100vh - 120px)' }}>
-        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
-          <div style={{ textAlign: 'left' }}>
-            <h1 onClick={handleLogoClick} style={{ cursor: 'pointer', margin: 0, padding: 0, fontSize: '3.2rem', userSelect: 'none', fontWeight: '900', letterSpacing: '2px' }}><span style={{ color: '#ffffff' }}>Mat</span><span style={{ color: '#e31837' }}>Dates</span></h1>
-            <p style={{ color: '#aaa', margin: '10px 0 0 0', fontSize: '1.1rem' }}>The Ultimate BJJ Event Hub</p>
-          </div>
-          <button onClick={() => setShowSubmitModal(true)} style={{ backgroundColor: '#ff9f43', color: '#000', padding: '10px 20px', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer' }}>+ Submit Event</button>
-        </header>
+        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
+  <div onClick={handleLogoClick} style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', userSelect: 'none' }}>
+    <img src="/mat-icon.png" alt="MatDates" style={{ height: '58px', width: '58px', objectFit: 'contain' }} />
+    <div>
+      <h1 style={{ margin: 0, fontSize: '2.8rem', lineHeight: 1, fontWeight: '900', letterSpacing: '1px' }}>
+        <span style={{ color: '#fff' }}>Mat</span><span style={{ color: '#e31837' }}>Dates</span><span style={{ color: '#e31837', fontSize: '1rem' }}>.com</span>
+      </h1>
+      <p style={{ color: '#9aa4b2', margin: '4px 0 0 0', fontSize: '0.82rem', letterSpacing: '3px', fontWeight: '600', textTransform: 'uppercase' }}>The BJJ Event Hub</p>
+    </div>
+  </div>
+  <button onClick={() => setShowSubmitModal(true)} style={{ backgroundColor: '#ff9f43', color: '#000', padding: '10px 20px', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer' }}>+ Submit Event</button>
+</header>
+{isAdmin && (
+  <div style={{ backgroundColor: '#161616', border: '1px solid #ff9f43', borderRadius: '8px', padding: '16px', marginBottom: '20px' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+      <strong style={{ color: '#ff9f43' }}>Admin Review Queue ({pendingEvents.length} Pending)</strong>
+      <div style={{ display: 'flex', gap: '8px' }}>
+        <button onClick={loadPendingEvents} style={{ backgroundColor: '#222', color: '#fff', border: '1px solid #444', borderRadius: '4px', padding: '4px 10px', cursor: 'pointer' }}>Refresh</button>
+        <button onClick={() => setIsAdmin(false)} style={{ backgroundColor: '#333', color: '#fff', border: 'none', borderRadius: '4px', padding: '4px 10px', cursor: 'pointer' }}>Close</button>
+      </div>
+    </div>
+    {pendingEvents.length === 0 ? <p style={{ margin: 0, color: '#aaa' }}>No pending submissions.</p> : pendingEvents.map(pev => (
+      <div key={pev.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#222', padding: '10px', borderRadius: '6px', marginTop: '8px', flexWrap: 'wrap', gap: '8px' }}>
+        <div><strong style={{ color: '#fff' }}>{pev.name}</strong> <span style={{ color: '#aaa', fontSize: '0.85rem' }}>({pev.date} - {pev.location})</span> {pev.link && <a href={pev.link} target="_blank" rel="noreferrer" style={{ color: '#3498db', marginLeft: '6px' }}>Link</a>}</div>
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <button onClick={() => handleApprovePending(pev)} style={{ backgroundColor: '#2ecc71', color: '#000', border: 'none', borderRadius: '4px', padding: '5px 10px', fontWeight: 'bold', cursor: 'pointer' }}>Approve</button>
+          <button onClick={() => handleRejectPending(pev.id)} style={{ backgroundColor: '#e74c3c', color: '#fff', border: 'none', borderRadius: '4px', padding: '5px 10px', fontWeight: 'bold', cursor: 'pointer' }}>Reject</button>
+        </div>
+      </div>
+    ))}
+  </div>
+)}
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px', marginBottom: '20px' }}>
           <div style={{ display: 'flex', gap: '15px', fontSize: '0.95rem', flexWrap: 'wrap', alignItems: 'center', userSelect: 'none' }}>
@@ -689,7 +756,7 @@ export default function App() {
                     <span>{ev.name}</span> {ev.isKidsEvent && <span>🐯</span>}
                   </h3>
                   <div style={{ flexGrow: 1, color: '#aaa', fontSize: '0.95rem', lineHeight: '1.6', margin: '8px 0' }}>
-                    📅 {ev.date} &nbsp;|&nbsp; 📍 {ev.location}<br/>
+                    📅 {ev.date} &nbsp;|&nbsp; <a href={getMapsUrl(ev)} target="_blank" rel="noreferrer" title="Open in Maps" style={{ color: '#ddd', textDecoration: 'none', borderBottom: '1px dashed #666' }}>📍 {ev.venue && !(ev.location || '').toLowerCase().includes(ev.venue.toLowerCase()) ? `${ev.venue} • ${ev.location}` : (ev.location || ev.venue || 'TBA')} ↗</a><br/>
                     {ev.cost && (
                       <span style={{ color: '#2ecc71', fontWeight: 'bold' }}>
                         {isStreamOnly
@@ -771,9 +838,7 @@ export default function App() {
 
       <footer style={{ marginTop: '50px', padding: '30px 20px', borderTop: '1px solid #333', textAlign: 'center', backgroundColor: '#0a0a0a', color: '#777', fontSize: '0.85rem', lineHeight: '1.6' }}>
         <div style={{ marginBottom: '15px' }}>
-          <h2 style={{ margin: 0, padding: 0, fontSize: '1.5rem', fontWeight: '900', letterSpacing: '1px' }}>
-            <span style={{ color: '#ffffff' }}>Mat</span><span style={{ color: '#e31837' }}>Dates</span>
-          </h2>
+          <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: '900', display: 'inline-flex', alignItems: 'center', gap: '8px' }}><img src="/mat-icon.png" alt="" style={{ height: '28px', width: '28px', objectFit: 'contain' }} /><span style={{ color: '#fff' }}>Mat</span><span style={{ color: '#e31837' }}>Dates</span></h2>
         </div>
         <p style={{ maxWidth: '800px', margin: '0 auto 15px auto' }}>
           MatDates is an independent BJJ event aggregator built for the community. We are not affiliated with, officially endorsed by, or sponsored by IBJJF, ADCC, Smoothcomp, Jiu Jitsu World League, or any listed federations. All trademarks and event data belong to their respective owners.
