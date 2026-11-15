@@ -6,6 +6,7 @@ import { format, parse, startOfWeek, getDay } from 'date-fns';
 import { enUS } from 'date-fns/locale';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { calculateWeightClass } from './rulesets';
+import { downloadStoryCard, EventSquadChips, LeaderboardModal } from './phase4Tools';
 
 const cleanProfileUrl = (url) => {
   if (!url || url === "#") return "#";
@@ -197,14 +198,15 @@ function CompetitorTable({ calcResult, event, onClose }) {
           </div>
         </div>
 
-        <div style={{ overflowY: 'auto', backgroundColor: '#1a1a1a', borderRadius: '8px', border: '1px solid #333', padding: '10px' }}>
+        <EventSquadChips competitors={liveCompetitors} onSelectGym={setSearchTerm} />
+          <div style={{ overflowY: 'auto', backgroundColor: '#1a1a1a', borderRadius: '8px', border: '1px solid #333', padding: '10px' }}>
           {loading ? (
             <div style={{ padding: '20px', textAlign: 'center', color: '#ff9f43' }}>Loading athletes from database...</div>
           ) : sortedDivisions.length > 0 ? (
             sortedDivisions.map(division => (
               <div key={division} style={{ marginBottom: '20px', backgroundColor: '#222', borderRadius: '8px', overflow: 'hidden' }}>
                 <div style={{ backgroundColor: '#333', padding: '10px 15px', fontWeight: 'bold', color: '#ff9f43', borderBottom: '2px solid #444' }}>
-                  {division} ({groupedCompetitors[division].length} Competitors)
+                  <span style={{ display:'flex', justifyContent:'space-between', alignItems:'center', width:'100%' }}><span>{division} ({groupedCompetitors[division].length} Competitors)</span><button onClick={() => downloadStoryCard(event, division, groupedCompetitors[division])} style={{ backgroundColor:'#111', color:'#fff', border:'1px solid #666', borderRadius:'4px', padding:'4px 10px', fontSize:'0.78rem', cursor:'pointer' }}>IG Story Card</button></span>
                 </div>
                 <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
                   <tbody>
@@ -260,6 +262,7 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [clickCount, setClickCount] = useState(0);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [federationFilter, setFederationFilter] = useState('All');
@@ -555,6 +558,7 @@ export default function App() {
   return (
     <div style={{ backgroundColor: '#000', minHeight: '100vh', color: '#fff', padding: '20px', fontFamily: 'sans-serif', position: 'relative' }}>
       
+      {showLeaderboard && <LeaderboardModal onClose={() => setShowLeaderboard(false)} />}
       {showSubmitModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
           <div style={{ backgroundColor: '#111', padding: '30px', borderRadius: '12px', border: '1px solid #444', width: '90%', maxWidth: '500px' }}>
@@ -690,7 +694,7 @@ export default function App() {
       <p style={{ color: '#9aa4b2', margin: '4px 0 0 0', fontSize: '0.82rem', letterSpacing: '3px', fontWeight: '600', textTransform: 'uppercase' }}>The BJJ Event Hub</p>
     </div>
   </div>
-  <button onClick={() => setShowSubmitModal(true)} style={{ backgroundColor: '#ff9f43', color: '#000', padding: '10px 20px', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer' }}>+ Submit Event</button>
+  <div style={{ display:'flex', gap:'10px', flexWrap:'wrap' }}><button onClick={() => setShowLeaderboard(true)} style={{ backgroundColor:'#1a1a1a', color:'#ff9f43', padding:'10px 16px', border:'1px solid #ff9f43', borderRadius:'5px', fontWeight:'bold', cursor:'pointer' }}>Leaderboard</button><button onClick={() => setShowSubmitModal(true)} style={{ backgroundColor: '#ff9f43', color: '#000', padding: '10px 20px', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer' }}>+ Submit Event</button></div>
 </header>
 {isAdmin && (
   <div style={{ backgroundColor: '#161616', border: '1px solid #ff9f43', borderRadius: '8px', padding: '16px', marginBottom: '20px' }}>
