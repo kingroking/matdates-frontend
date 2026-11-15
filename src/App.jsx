@@ -278,6 +278,13 @@ export default function App() {
   const [selectedReminderEvent, setSelectedReminderEvent] = useState(null);
   const [reminderEmail, setReminderEmail] = useState('');
   const [reminderSubmitted, setReminderSubmitted] = useState(false);
+  const [reminderTier, setReminderTier] = useState('final_48h');
+  const [calcUnit, setCalcUnit] = useState('lbs');
+  const [showSavedOnly, setShowSavedOnly] = useState(false);
+  const [savedIds, setSavedIds] = useState(() => { try { return JSON.parse(localStorage.getItem('matdates_saved_events') || '[]'); } catch { return []; } });
+  const toggleSaveEvent = (id) => setSavedIds(prev => { const n = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]; localStorage.setItem('matdates_saved_events', JSON.stringify(n)); return n; });
+  const getGoogleCalUrl = (ev) => { const d = (ev.sort_date && !ev.sort_date.includes('2099')) ? ev.sort_date.replace(/-/g, '') : new Date().toISOString().slice(0,10).replace(/-/g, ''); const n = new Date((ev.sort_date && !ev.sort_date.includes('2099') ? ev.sort_date : new Date().toISOString().slice(0,10)) + 'T12:00:00'); n.setDate(n.getDate() + 1); const d2 = n.toISOString().slice(0,10).replace(/-/g, ''); const loc = [ev.venue, ev.address || ev.location].filter(Boolean).join(', '); const det = [ev.cost ? `Entry: ${ev.cost}` : '', ev.deadline ? `Deadline: ${ev.deadline}` : '', ev.link || ''].filter(Boolean).join(' | '); return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(ev.name || 'BJJ Event')}&dates=${d}/${d2}&location=${encodeURIComponent(loc)}&details=${encodeURIComponent(det)}`; };
+  const downloadIcs = (list, fn = 'matdates-event.ics') => { const r = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//MatDates//EN']; list.forEach(ev => { const d = (ev.sort_date && !ev.sort_date.includes('2099')) ? ev.sort_date.replace(/-/g, '') : new Date().toISOString().slice(0,10).replace(/-/g, ''); r.push('BEGIN:VEVENT',`UID:${ev.id}@matdates.com`,`DTSTART;VALUE=DATE:${d}`,`SUMMARY:${(ev.name||'BJJ').replace(/,/g,' ')}`,`LOCATION:${[ev.venue,ev.address||ev.location].filter(Boolean).join(' - ')}`,`DESCRIPTION:${ev.link||''}`,'END:VEVENT'); }); r.push('END:VCALENDAR'); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([r.join('\r\n')], {type:'text/calendar'})); a.download = fn; a.click(); };
 
   const [calcData, setCalcData] = useState({ gender: 'Male', age: 18, weight: '', belt: 'White', type: 'Gi' });
   const [calcResult, setCalcResult] = useState('');
@@ -479,7 +486,8 @@ export default function App() {
     else if (selectedCalcEvent.type === 'Super Fight' || evId.startsWith('ufc') || evId.startsWith('flograp')) federation = 'Super Fight';
     
     const isGi = calcData.type === 'Gi';
-    const result = calculateWeightClass(federation, parseInt(calcData.age), calcData.gender, calcData.weight, calcData.belt, isGi);
+    const wLbs = calcUnit === 'kg' ? (parseFloat(calcData.weight) * 2.20462).toFixed(1) : calcData.weight;
+    const result = calculateWeightClass(federation, parseInt(calcData.age), calcData.gender, wLbs, calcData.belt, isGi);
     setCalcResult(result);
   };
 
@@ -491,7 +499,7 @@ export default function App() {
       await addDoc(collection(db, "reminders"), {
         eventId: selectedReminderEvent.id,
         eventName: selectedReminderEvent.name,
-        email: reminderEmail,
+        email: reminderEmail, tier: reminderTier, deadline: selectedReminderEvent.deadline || '',
         requestedAt: new Date().toISOString()
       });
       setReminderSubmitted(true);
@@ -516,7 +524,7 @@ export default function App() {
     const evId = ev.id ? ev.id.toLowerCase() : "";
     if (/\b(judo|wrestling|karate|taekwondo|kickboxing|muay thai|ping pong|table tennis|sumo)\b/.test(evNameLow)) return false; 
 
-    const searchTarget = `${evNameLow} ${(ev.location || '').toLowerCase()} ${(ev.date || '').toLowerCase()}`;
+    const searchTarget = `${evNameLow} ${(ev.venue || '').toLowerCase()} ${(ev.address || '').toLowerCase()} ${(ev.location || '').toLowerCase()} ${(ev.date || '').toLowerCase()}`;
     const searchKeywords = searchTerm.toLowerCase().split(/\s+/).filter(kw => kw.length > 0);
     const matchesSearch = searchKeywords.every(kw => searchTarget.includes(kw));
 
@@ -526,11 +534,11 @@ export default function App() {
       federationFilter === 'JJWL' ? evId.startsWith('jjwl') :
       federationFilter === 'ADCC' ? (evId.includes('adcc') || evNameLow.includes('adcc')) :
       federationFilter === 'Smoothcomp' ? evId.startsWith('smoothcomp') :
-      federationFilter === 'Super Fight' ? (ev.type === 'Super Fight' || evId.startsWith('flograp') || evId.startsWith('ufcfightpass')) :
+      federationFilter === 'Super Fight' ? (ev.type === 'Super Fight' || evId.startsWith('flograp') || evId.startsWith('ufcfightpass') || evId.startsWith('one-')) :
       federationFilter === 'Seminars' ? (ev.type === 'Seminar' || evId.startsWith('seminar')) : false;
     const matchesMonth = monthFilter === 'All' ? true : (ev.sort_date && ev.sort_date.startsWith(monthFilter));
       
-    return matchesSearch && matchesFed && matchesAge && matchesMonth;
+    return matchesSearch && matchesFed && matchesAge && matchesMonth && (!showSavedOnly || savedIds.includes(ev.id));
   });
 
   const calendarEvents = filteredEvents.map(ev => {
@@ -575,10 +583,20 @@ export default function App() {
                 ✅ Reminder Saved!
               </div>
             ) : (
-              <form onSubmit={handleReminderSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                <input type="email" placeholder="Enter your email address" value={reminderEmail} onChange={e => setReminderEmail(e.target.value)} style={{ padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }} required />
-                <button type="submit" style={{ padding: '14px', backgroundColor: '#ff9f43', color: '#000', border: 'none', borderRadius: '6px', fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer' }}>Save Reminder</button>
-              </form>
+              <form onSubmit={handleReminderSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <select value={reminderTier} onChange={e => setReminderTier(e.target.value)} style={{ padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '0.95rem' }}>
+                      <option value="early_bird">Alert before Early Bird price jump</option>
+                      <option value="normal_tier">Alert before Normal to Late price jump</option>
+                      <option value="final_48h">Alert 48h before Final Registration closes</option>
+                      <option value="all_tiers">Alert for ALL price jumps & final deadline</option>
+                    </select>
+                    <input type="email" placeholder="Enter your email address" value={reminderEmail} onChange={e => setReminderEmail(e.target.value)} style={{ padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }} required />
+                    <button type="submit" style={{ padding: '14px', backgroundColor: '#ff9f43', color: '#000', border: 'none', borderRadius: '6px', fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer' }}>Save Price & Deadline Alert</button>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <a href={selectedReminderEvent ? getGoogleCalUrl(selectedReminderEvent) : '#'} target="_blank" rel="noreferrer" style={{ flex: 1, textAlign: 'center', padding: '9px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', borderRadius: '6px', textDecoration: 'none', fontSize: '0.85rem' }}>+ Google Cal</a>
+                      <button type="button" onClick={() => selectedReminderEvent && downloadIcs([selectedReminderEvent], `${selectedReminderEvent.id}.ics`)} style={{ flex: 1, padding: '9px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', borderRadius: '6px', cursor: 'pointer', fontSize: '0.85rem' }}>+ Apple .ICS</button>
+                    </div>
+                  </form>
             )}
             <button onClick={() => setShowReminderModal(false)} style={{ marginTop: '20px', padding: '12px', width: '100%', backgroundColor: 'transparent', color: '#aaa', border: '1px solid #444', borderRadius: '6px', cursor: 'pointer', fontSize: '1rem' }}>Close</button>
           </div>
@@ -621,7 +639,13 @@ export default function App() {
                       </>
                     )}
                   </select>
-              <input type="number" placeholder="Weight in LBS" value={calcData.weight} step="0.1" onChange={e => setCalcData({...calcData, weight: e.target.value})} style={{ padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }} required />
+              <div style={{ display: 'flex', gap: '8px' }}>
+                      <input type="number" placeholder={calcUnit === 'lbs' ? "Body Weight in LBS" : "Body Weight in KG"} value={calcData.weight} step="0.1" onChange={e => setCalcData({...calcData, weight: e.target.value})} style={{ flex: 1, padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }} required />
+                      <select value={calcUnit} onChange={e => setCalcUnit(e.target.value)} style={{ width: '88px', padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#ff9f43', border: '1px solid #444', fontWeight: 'bold' }}><option value="lbs">LBS</option><option value="kg">KG</option></select>
+                    </div>
+                    <div style={{ fontSize: '0.8rem', color: '#9aa4b2', backgroundColor: '#191919', padding: '8px 10px', borderRadius: '6px' }}>
+                      {isAdccEvent ? 'ADCC Scale: Weigh-in wearing rashguard & shorts.' : calcData.type === 'Gi' && selectedCalcEvent?.id?.startsWith('ibjjf') ? 'IBJJF Gi Tip: Weigh-in WEARING full Gi & belt (~3-3.8 lbs) right before Match 1.' : selectedCalcEvent?.id?.startsWith('jjwl') ? 'JJWL Tip: 1 lb allowance + No-Gi weigh-in option available.' : 'Check event rules for Gi vs. No-Gi weigh-in allowance.'}
+                    </div>
               <button type="submit" style={{ padding: '14px', backgroundColor: '#ff9f43', color: '#000', border: 'none', borderRadius: '6px', fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer' }}>Calculate Division</button>
             </form>
             {calcResult && (
@@ -697,7 +721,7 @@ export default function App() {
             <span onClick={() => setFederationFilter(prev => prev === 'ADCC' ? 'All' : 'ADCC')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'ADCC' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#F1C40F' }}>■</span> ADCC</span>
             <span onClick={() => setFederationFilter(prev => prev === 'Super Fight' ? 'All' : 'Super Fight')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'Super Fight' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#e31837' }}>■</span> Super Fights</span>
             <span onClick={() => setFederationFilter(prev => prev === 'Seminars' ? 'All' : 'Seminars')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'Seminars' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#9b59b6' }}>■</span> Seminars</span>
-            <span onClick={() => setAgeFilter(prev => prev === 'Kids' ? 'All' : 'Kids')} style={{ cursor: 'pointer', marginLeft: '10px', padding: '4px 10px', backgroundColor: ageFilter === 'Kids' ? '#222' : 'transparent', borderRadius: '6px', border: ageFilter === 'Kids' ? '1px solid #555' : '1px solid transparent', opacity: ageFilter === 'Kids' ? 1 : 0.8, transition: 'all 0.2s' }}><span style={{ fontSize: '1.2rem' }}>🐯</span> Kids/Youth Events</span>
+            <span onClick={() => setAgeFilter(prev => prev === 'Kids' ? 'All' : 'Kids')} style={{ cursor: 'pointer', marginLeft: '10px', padding: '4px 10px', backgroundColor: ageFilter === 'Kids' ? '#222' : 'transparent', borderRadius: '6px', border: ageFilter === 'Kids' ? '1px solid #555' : '1px solid transparent', opacity: ageFilter === 'Kids' ? 1 : 0.8, transition: 'all 0.2s' }}><span style={{ fontSize: '1.2rem' }}>🐯</span> Kids/Youth Events</span> <span onClick={() => setShowSavedOnly(p => !p)} style={{ cursor: 'pointer', padding: '4px 10px', backgroundColor: showSavedOnly ? '#ff9f43' : '#1a1a1a', color: showSavedOnly ? '#000' : '#ff9f43', fontWeight: 'bold', borderRadius: '6px', border: '1px solid #ff9f43' }}>★ My Schedule ({savedIds.length})</span>{showSavedOnly && savedIds.length > 0 && <button onClick={() => downloadIcs(events.filter(x => savedIds.includes(x.id)), 'my-bjj-season.ics')} style={{ marginLeft: '6px', cursor: 'pointer', padding: '4px 10px', backgroundColor: '#222', color: '#2ecc71', border: '1px solid #2ecc71', borderRadius: '6px', fontWeight: 'bold', fontSize: '0.82rem' }}>Export .ICS</button>}
           </div>
           
           <div style={{ display: 'flex', gap: '0' }}>
@@ -747,14 +771,12 @@ export default function App() {
               const isJJWL = ev.id && ev.id.toLowerCase().startsWith('jjwl');
               const isADCC = (ev.id && ev.id.toLowerCase().includes('adcc')) || (ev.name && ev.name.toLowerCase().includes('adcc'));
               
-              const isStreamOnly = Boolean(ev.id && (ev.id.toLowerCase().startsWith('flograp') || ev.id.toLowerCase().startsWith('ufc') || ev.id.toLowerCase().includes('fightpass'))) || /subscription|fight pass|flograppling|ppv/i.test(ev.cost || '');
+              const isStreamOnly = Boolean(ev.id && (ev.id.toLowerCase().startsWith('flograp') || ev.id.toLowerCase().startsWith('ufc') || ev.id.toLowerCase().startsWith('one-') || ev.id.toLowerCase().includes('fightpass'))) || /subscription|fight pass|flograppling|prime video|onefc|ppv/i.test(ev.cost || '');
               const evBorderColor = isADCC ? '#F1C40F' : (ev.type === 'Super Fight' || isStreamOnly) ? '#e31837' : (isJJWL ? '#ffffff' : (ev.color || '#ff9f43'));
               
               return (
                 <div key={ev.id} style={{ backgroundColor: '#111', borderLeft: `5px solid ${evBorderColor}`, padding: '20px', borderRadius: '4px', display: 'flex', flexDirection: 'column' }}>
-                  <h3 style={{ margin: '0 0 10px 0', fontSize: '1.2rem', display: 'flex', justifyContent: 'space-between' }}>
-                    <span>{ev.name}</span> {ev.isKidsEvent && <span>🐯</span>}
-                  </h3>
+                  <h3 style={{ margin: '0 0 10px 0', fontSize: '1.2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}><span>{ev.name} {ev.isKidsEvent && <span>🐯</span>}</span><button onClick={() => toggleSaveEvent(ev.id)} title="Save to My Schedule" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.35rem', lineHeight: 1, color: savedIds.includes(ev.id) ? '#ff9f43' : '#555', padding: 0 }}>{savedIds.includes(ev.id) ? '★' : '☆'}</button></h3>
                   <div style={{ flexGrow: 1, color: '#aaa', fontSize: '0.95rem', lineHeight: '1.6', margin: '8px 0' }}>
                     📅 {ev.date} &nbsp;|&nbsp; <a href={getMapsUrl(ev)} target="_blank" rel="noreferrer" title="Open in Maps" style={{ color: '#ddd', textDecoration: 'none', borderBottom: '1px dashed #666' }}>📍 {ev.venue && !(ev.location || '').toLowerCase().includes(ev.venue.toLowerCase()) ? `${ev.venue} • ${ev.location}` : (ev.location || ev.venue || 'TBA')} ↗</a><br/>
                     {ev.cost && (
@@ -815,7 +837,7 @@ export default function App() {
                       style={{ flex: 1, backgroundColor: '#222', color: '#fff', border: '1px solid #444', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', minWidth: '120px' }}
                     >
                       ⏰ Remind Me
-                    </button>
+                    </button> <button onClick={() => downloadIcs([ev], `${ev.id}.ics`)} title="Add to Calendar (.ics)" style={{ backgroundColor: '#222', color: '#ccc', border: '1px solid #444', padding: '8px 10px', borderRadius: '4px', cursor: 'pointer' }}>+ Cal</button>
 
                     {!isStreamOnly && ev.link && (
                       <a href={ev.link} target="_blank" rel="noreferrer" style={{ flex: 1, textAlign: 'center', color: '#fff', textDecoration: 'none', backgroundColor: '#333', padding: '8px 12px', borderRadius: '4px', fontWeight: 'bold', minWidth: '120px' }}>
