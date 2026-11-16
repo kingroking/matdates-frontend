@@ -199,7 +199,7 @@ function CompetitorTable({ calcResult, event, onClose }) {
             {(() => {
               let rawU = ''; try { const r = typeof resolveEventUrl === 'function' ? resolveEventUrl(event) : ''; rawU = typeof r === 'string' && r ? r : String(event?.link || event?.url || ''); } catch { rawU = String(event?.link || event?.url || ''); }
               if (!rawU || !rawU.startsWith('http')) return null;
-              const bracketU = rawU.includes('smoothcomp.com') ? rU.replace(/\/$/, '') + '/schedule' : rawU;
+              const bracketU = rawU.includes('smoothcomp.com') ? rawU.replace(/\/$/, '') + '/schedule' : rawU;
               return (
                 <a href={bracketU} target="_blank" rel="noopener noreferrer" style={{ padding: '10px 13px', backgroundColor: '#162536', color: '#38bdf8', border: '1px solid #0284c7', borderRadius: '5px', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
                   Official Brackets ↗
