@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { auth } from './firebase';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
+import {
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword
+} from 'firebase/auth';
 
 export default function AuthModal({ isOpen, onClose }) {
   const [email, setEmail] = useState('');
@@ -14,12 +17,22 @@ export default function AuthModal({ isOpen, onClose }) {
     e.preventDefault();
     setErr('');
     try {
-      if (isSignUp) await createUserWithEmailAndPassword(auth, email, password);
-      else await signInWithEmailAndPassword(auth, email, password);
+      if (isSignUp) {
+        await createUserWithEmailAndPassword(auth, email.trim(), password);
+      } else {
+        await signInWithEmailAndPassword(auth, email.trim(), password);
+      }
       onClose();
     } catch (error) {
-      setErr(error.message.replace('Firebase: ', ''));
+      const msg = (error.message || '').replace('Firebase: ', '');
+      setErr(msg);
     }
+  };
+
+  const inp = {
+    width: '100%', boxSizing: 'border-box', padding: '11px 12px',
+    borderRadius: '6px', backgroundColor: '#1a202c', color: '#fff',
+    border: '1px solid #334155', fontSize: '0.95rem'
   };
 
   return (
@@ -29,16 +42,30 @@ export default function AuthModal({ isOpen, onClose }) {
           <h3 style={{ margin:0, color:'#fff', fontSize:'1.15rem' }}>{isSignUp ? 'Create MatDates Account' : 'Sign In to MatDates'}</h3>
           <button onClick={onClose} style={{ background:'none', border:'none', color:'#94a3b8', fontSize:'1.2rem', cursor:'pointer' }}>✕</button>
         </div>
-        <p style={{ margin:'0 0 16px 0', color:'#94a3b8', fontSize:'0.83rem', lineHeight:1.4 }}>Save your personal tournament schedule and sync division alerts across desktop and mobile.</p>
-        {err && <div style={{ backgroundColor:'#2d161a', color:'#f87171', padding:'8px 10px', borderRadius:'6px', fontSize:'0.8rem', marginBottom:'12px' }}>{err}</div>}
-        <form onSubmit={handleAuth}>
-          <input type="email" placehoer="Email address" value={email} onChange={e => setEmail(e.target.value)} required style={{ width:'100%', boxSizing:'border-box', backgroundColor:'#1a202c', color:'#fff', padding:'10px 12px', borderRadius:'6px', border:'1px solid #334155', marginBottom:'10px' }} />
-          <input type="password" placeholder="Password (6+ characters)" value={password} onChange={e => setPassword(e.target.value)} required style={{ width:'100%', boxSizing:'border-box', backgroundColor:'#1a202c', color:'#fff', padding:'10px 12px', borderRadius:'6px', border:'1px solid #334155', marginBottom:'14px' }} />
-          <button type="submit" style={{ width:'100%', backgroundColor:'#e31837', color:'#fff', fontWeight:'bold', padding:'10px', border:'none', borderRadius:'6px', cursor:'pointer' }}>{isSignUp ? 'Create Account' : 'Sign In'}</button>
+        <p style={{ color:'#94a3b8', fontSize:'0.83rem', margin:'0 0 14px', lineHeight:1.4 }}>
+          Save your personal tournament schedule, post venue tips, and sync division alerts.
+        </p>
+        {err && (
+          <div style={{ backgroundColor:'#3b181e', border:'1px solid #7f1d1d', color:'#fca5a5', padding:'9px 11px', borderRadius6px', fontSize:'0.82rem', marginBottom:'12px' }}>
+            {err}
+          </div>
+        )}
+        <form onSubmit={handleAuth} style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
+          <div>
+            <label style={{ display:'block', color:'#cbd5e1', fontSize:'0.78rem', fontWeight:'bold', marginBottom:'4px' }}>Email Address</label>
+            <input type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} style={inp} required />
+          </div>
+          <div>
+            <label style={{ display:'block', color:'#cbd5e1', fontSize:'0.78rem', fontWeight:'bold', marginBottom:'4px' }}>Password {isSignUp ? '(6+ characters)' : ''}</label>
+            <input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} minLength={6} style={inp} required />
+          </div>
+          <button type="submit" style={{ padding:'11px', borderRadius:'6px', backgroundColor:'#e31837', color:'#fff', border:ht:'bold', fontSize:'0.95rem', cursor:'pointer', marginTop:'2px' }}>
+            {isSignUp ? 'Create Account' : 'Sign In'}
+          </button>
         </form>
-        <div style={{ marginTop:'12px', textAlign:'center' }}>
-          <button type="button" onClick={() => { setIsSignUp(!isSignUp); setErr(''); }} style={{ background:'none', border:'none', color:'#cbd5e1', fontSize:'0.82rem', cursor:'pointer', textDecoration:'underline' }}>
-            {isSignUp ? 'Already have an account? Sign in' : 'New here? Create a free account'}
+        <div style={{ textAlign:'center', marginTop:'14px' }}>
+          <button type="button" onClick={() => { setIsSignUp(!isSignUp); setErr(''); }} style={{ background:'none', border:'none', color:'#94a3b8', textDecoration:'underline', fontSize:'0.83rem', cursor:'pointer' }}>
+            {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Create one"}
           </button>
         </div>
       </div>
