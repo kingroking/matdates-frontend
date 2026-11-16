@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, query, where, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
-import { getMessaging, getToken, isSupported } from 'firebase/messaging';
+import { getMessaging, getToken, isSupported, onMessage } from 'firebase/messaging';
 import { db, auth } from './firebase';
 
 const LS_KEY = 'md_watches_v1';
@@ -14,11 +14,33 @@ const writeLocal = (arr) => {
   window.dispatchEvent(new Event('md-watches-updated'));
 };
 
+
+let fgBound = false;
+function bindForegroundPush() {
+  if (fgBound || typeof window === 'undefined') return;
+  fgBound = true;
+  isSupported().then((ok) => {
+    if (!ok) return;
+    try {
+      onMessage(getMessaging(), (payload) => {
+        const d = payload.data || {};
+        const title = (payload.notification && payload.notification.title) || d.title || 'MatDates Live Alert';
+        const body = (payload.notification && payload.notification.body) || d.body || '';
+        if ('Notification' in window && Notification.permission === 'granted') {
+          try { new Notification(title, { body, icon: '/mat-icon.png' }); } catch {}
+        }
+        window.dispatchEvent(new CustomEvent('md-live-push', { detail: { title, body, url: d.url || '' } }));
+      });
+    } catch {}
+  }).catch(() => {});
+}
+
 export function useWatchedAthletes() {
   const [fsList, setFsList] = useState([]);
   const [locList, setLocList] = useState(readLocal);
 
   useEffect(() => {
+    bindForegroundPush();
     const sync = () => setLocList(readLocal());
     window.addEventListener('md-watches-updated', sync);
     let unsubFs = null;

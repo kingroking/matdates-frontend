@@ -286,6 +286,12 @@ export default function App() {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showAthleteSearch, setShowAthleteSearch] = useState(false);
   const [showWatchedModal, setShowWatchedModal] = useState(false);
+  const [livePushToast, setLivePushToast] = useState(null);
+  useEffect(() => {
+    const h = (e) => { setLivePushToast(e.detail); setTimeout(() => setLivePushToast(null), 12000); };
+    window.addEventListener('md-live-push', h);
+    return () => window.removeEventListener('md-live-push', h);
+  }, []);
   const { watches: myWatches, removeWatch: removeMyWatch } = useWatchedAthletes();
   
   const [searchTerm, setSearchTerm] = useState('');
@@ -603,6 +609,15 @@ export default function App() {
     <div style={{ backgroundColor: '#000', minHeight: '100vh', color: '#fff', padding: '20px', fontFamily: 'sans-serif', position: 'relative' }}>
       
       {showAuthModal && <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />}
+      {livePushToast && (
+        <div style={{ position:'fixed', top:'18px', right:'18px', zIndex:10099, background:'#132a1c', border:'2px solid #2ecc71', borderRadius:'10px', padding:'14px 18px', maxWidth:'360px', boxShadow:'0 10px 30px rgba(0,0,0,0.6)', color:'#fff' }}>
+          <div style={{ display:'flex', justifyContent:'space-between', gap:'10px', alignItems:'flex-start' }}>
+            <strong style={{ color:'#2ecc71', fontSize:'0.95rem' }}>{livePushToast.title}</strong>
+            <button onClick={() => setLivePushToast(null)} style={{ background:'none', border:'none', color:'#94a3b8', cursor:'pointer' }}>✕</button>
+          </div>
+          <div style={{ color:'#cbd5e1', fontSize:'0.83rem', marginTop:'4px' }}>{livePushToast.body}</div>
+        </div>
+      )}
       {showWatchedModal && <WatchedAthletesModal watches={myWatches} onRemove={removeMyWatch} onClose={() => setShowWatchedModal(false)} onOpenAthlete={(w) => { const ev = events.find(x => x.id === w.eventId); setShowWatchedModal(false); if (ev) { setCalcResult(w.athleteName); setSelectedCompetitorEvent(ev); } else if (w.eventLink) { window.open(w.eventLink, '_blank'); } }} />}
       {showLeaderboard && <LeaderboardModal onClose={() => setShowLeaderboard(false)} />}
       {showAthleteSearch && <AthleteSearchModal events={events} onClose={() => setShowAthleteSearch(false)} onOpenBracket={(ev, nm) => { setShowAthleteSearch(false); setCalcResult(nm); setSelectedCompetitorEvent(ev); }} />}
