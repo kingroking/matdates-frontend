@@ -5,7 +5,8 @@ import { MatAlertModal, WatchedAthletesModal, useWatchedAthletes } from './MatAl
 import { VenueIntelModal, useVenueTipCounts } from './VenueIntelModal';
 import { db, auth } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import AuthModal from './AuthModal'; 
+import AuthModal from './AuthModal';
+import { SponsorBanner } from './sponsorConfig'; 
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay } from 'date-fns';
 import { enUS } from 'date-fns/locale';
@@ -761,6 +762,7 @@ export default function App() {
         <button onClick={loadPendingEvents} style={{ backgroundColor: '#222', color: '#fff', border: '1px solid #444', borderRadius: '4px', padding: '4px 10px', cursor: 'pointer' }}>Refresh</button>
         <button onClick={() => setIsAdmin(false)} style={{ backgroundColor: '#333', color: '#fff', border: 'none', borderRadius: '4px', padding: '4px 10px', cursor: 'pointer' }}>Close</button>
       </div>
+      <SponsorBanner />
     </div>
     {pendingEvents.length === 0 ? <p style={{ margin: 0, color: '#aaa' }}>No pending submissions.</p> : pendingEvents.map(pev => (
       <div key={pev.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#222', padding: '10px', borderRadius: '6px', marginTop: '8px', flexWrap: 'wrap', gap: '8px' }}>
