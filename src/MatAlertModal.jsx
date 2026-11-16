@@ -112,19 +112,49 @@ export function MatAlertModal({ event, comp, division, existingWatch, onRemove, 
   const [saving, setSaving] = useState(false);
   const [done, setDone] = useState(false);
 
+  const acquirePushToken = async () => {
+    await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    const reg = await navigator.serviceWorker.ready;
+    if (reg.installing || reg.waiting) {
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    const vapid = import.meta.env.VITE_FIREBASE_VAPID_KEY || undefined;
+    const opts = vapid ? { serviceWorkerRegistration: reg, vapidKey: vapid } : { serviceWorkerRegistration: reg };
+    try {
+      return await getToken(getMessaging(), opts);
+    } catch {
+      await new Promise((r) => setTimeout(r, 700));
+      return await getToken(getMessaging(), opts);
+    }
+  };
+
+  useEffect(() => {
+    if (existingWatch || typeof window === 'undefined' || !('Notification' in window)) return;
+    if (Notification.permission === 'granted') {
+      setPushStatus('requesting');
+      isSupported().then((ok) => {
+        if (!ok) return setPushStatus('idle');
+        return acquirePushToken().then((tok) => {
+          if (tok) { setFcmToken(tok); setPushStatus('ready'); }
+          else setPushStatus('idle');
+        });
+      }).catch(() => setPushStatus('idle'));
+    }
+  }, [existingWatch]);
+
   const enablePush = async () => {
     setPushStatus('requesting');
     try {
       const ok = await isSupported();
-      if (!ok || !('Notification' in window)) return setPushStatus('unsupported');
-      const perm = await Notification.requestPermission();
-      if (perm !== 'granted') return setPushStatus('denied');
-      const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-      const vapid = import.meta.env.VITE_FIREBASE_VAPID_KEY || undefined;
-      const tok = await getToken(
-        getMessaging(),
-        vapid ? { serviceWorkerRegistration: reg, vapidKey: vapid } : { serviceWorkerRegistration: reg }
-      );
+      if (!ok || !('Notification' in window) || !('serviceWorker' in navigator)) {
+        return setPushStatus('unsupported');
+      }
+      const perm = Notification.permission === 'granted'
+        ? 'granted'
+        : await Notification.requestPermission();
+      if (perm === 'denied') return setPushStatus('denied');
+      if (perm !== 'granted') return setPushStatus('idle');
+      const tok = await acquirePushToken();
       if (tok) { setFcmToken(tok); setPushStatus('ready'); }
       else setPushStatus('email_only');
     } catch (e) {
@@ -207,9 +237,9 @@ export function MatAlertModal({ event, comp, division, existingWatch, onRemove, 
         ) : (
           <form onSubmit={handleSave} style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
             <button type="button" onClick={enablePush} style={{ padding:'9px 12px', borderRadius:'6px', border: pushStatus === 'ready' ? '1px solid #2ecc71' : '1px solid #0284c7', background: pushStatus === 'ready' ? '#132a1c' : '#162536', color: pushStatus === 'ready' ? '#2ecc71' : '#38bdf8', fontWeight:'bold', cursor:'pointer', fontSize:'0.84rem' }}>
-              {pushStatus === 'ready' ? '\u2713 Browser Push Enabled!' : pushStatus === 'requesting' ? 'Requesting Permission...' : '\u{1F4F2} Enable Instant Browser Push (Optional)'}
+              {pushStatus === 'ready' ? '\u2713 Browser Push Enabled!' : pushStatus === 'requesting' ? 'Connecting Instant Push...' : '\u{1F4F2} Enable Instant Browser Push (Optional)'}
             </button>
-            {pushStatus === 'email_only' && <div style={{ color:'#94a3b8', fontSize:'0.76rem' }}>Browser push unavailable on this device — instant email alerts will be used.</div>}
+            {(pushStatus === 'email_only' || pushStatus === 'unsupported') && <div style={{ color:'#94a3b8', fontSize:'0.76rem' }}>Instant push isn't supported in this browser (e.g. in-app viewer or iOS outside Home Screen) — email alerts below will be used automatically.</div>}
             {pushStatus === 'denied' && <div style={{ color:'#fca5a5', fontSize:'0.76rem' }}>Notifications blocked in browser settings — using email fallback below.</div>}
             <div>
               <label style={{ display:'block', color:'#cbd5e1', fontSize:'0.78rem', fontWeight:'bold', marginBottom:'4px' }}>Alert Email Address</label>
