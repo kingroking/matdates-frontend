@@ -1,9 +1,6 @@
 import React, { useState } from 'react';
 import { auth } from './firebase';
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword
-} from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 
 export default function AuthModal({ isOpen, onClose }) {
   const [email, setEmail] = useState('');
@@ -17,58 +14,28 @@ export default function AuthModal({ isOpen, onClose }) {
     e.preventDefault();
     setErr('');
     try {
-      if (isSignUp) {
-        await createUserWithEmailAndPassword(auth, email.trim(), password);
-      } else {
-        await signInWithEmailAndPassword(auth, email.trim(), password);
-      }
+      if (isSignUp) await createUserWithEmailAndPassword(auth, email.trim(), password);
+      else await signInWithEmailAndPassword(auth, email.trim(), password);
       onClose();
     } catch (error) {
-      const msg = (error.message || '').replace('Firebase: ', '');
-      setErr(msg);
+      setErr((error.message || '').replace('Firebase: ', ''));
     }
   };
 
   const inp = {
-    width: '100%', boxSizing: 'border-box', padding: '11px 12px',
+    width: '100%', boxSizing: 'border-box', padding: '11§12px',
     borderRadius: '6px', backgroundColor: '#1a202c', color: '#fff',
     border: '1px solid #334155', fontSize: '0.95rem'
   };
 
   return (
-    <div onClick={onClose} style={{ position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.82)', zIndex:10000, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
-      <div onClick={e => e.stopPropagation()} style={{ backgroundColor:'#12151c', border:'1px solid #2d3748', borderRadius:'10px', maxWidth:'380px', width:'100%', padding:'22px' }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'6px' }}>
-          <h3 style={{ margin:0, color:'#fff', fontSize:'1.15rem' }}>{isSignUp ? 'Create MatDates Account' : 'Sign In to MatDates'}</h3>
-          <button onClick={onClose} style={{ background:'none', border:'none', color:'#94a3b8', fontSize:'1.2rem', cursor:'pointer' }}>âœ•</button>
-        </div>
-        <p style={{ color:'#94a3b8', fontSize:'0.83rem', margin:'0 0 14px', lineHeight:1.4 }}>
-          Save your personal tournament schedule, post venue tips, and sync division alerts.
-        </p>
-        {err && (
-          <div style={{ backgroundColor:'#3b181e', border:'1px solid #7f1d1d', color:'#fca5a5', padding:'9px 11px', borderRadius6px', fontSize:'0.82rem', marginBottom:'12px' }}>
-            {err}
-          </div>
-        )}
-        <form onSubmit={handleAuth} style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
-          <div>
-            <label style={{ display:'block', color:'#cbd5e1', fontSize:'0.78rem', fontWeight:'bold', marginBottom:'4px' }}>Email Address</label>
-            <input type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} style={inp} required />
-          </div>
-          <div>
-            <label style={{ display:'block', color:'#cbd5e1', fontSize:'0.78rem', fontWeight:'bold', marginBottom:'4px' }}>Password {isSignUp ? '(6+ characters)' : ''}</label>
-            <input type="password" placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" value={password} onChange={e => setPassword(e.target.value)} minLength={6} style={inp} required />
-          </div>
-          <button type="submit" style={{ padding:'11px', borderRadius:'6px', backgroundColor:'#e31837', color:'#fff', border:ht:'bold', fontSize:'0.95rem', cursor:'pointer', marginTop:'2px' }}>
-            {isSignUp ? 'Create Account' : 'Sign In'}
-          </button>
-        </form>
-        <div style={{ textAlign:'center', marginTop:'14px' }}>
-          <button type="button" onClick={() => { setIsSignUp(!isSignUp); setErr(''); }} style={{ background:'none', border:'none', color:'#94a3b8', textDecoration:'underline', fontSize:'0.83rem', cursor:'pointer' }}>
-            {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Create one"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.82)', zB'uìNˆL\Ü^Nˆ	Ù›^	Ë[YÛ’][\Îˆ	ØÙ[\‰Ë\ÝYžPÛÛ[ˆ	ØÙ[\‰ËY[™Îˆ	ÌMœ	È_O‚ˆ]ˆÛÛXÚÏ^ÙHOˆKœÝÜ›ÜYØ][ÛŠ
+_HÝ[O^ÞÈ˜XÚÙÜ›Ý[™ÛÛÜŽˆ	ÈÌLŒMLXÉË›Ü™\Žˆ	Ì\ÛÛYÌ™ÍÍ	Ë›Ü™\”˜Y]\Îˆ	ÌL	ËX^ÚYˆ	ÌÎ	ËÚYˆ	ÌL	IËY[™Îˆ	ÌŒœ	È_O‚ˆ]ˆÝ[O^ÞÈ\Ü^Nˆ	Ù›^	Ë\ÝYžPÛÛ[ˆ	ÜÜXÙKX™]ÙY[‰Ë[YÛ’][\Îˆ	ØÙ[\‰ËX\™Ú[›ÝÛNˆ	Íœ	È_O‚ˆÈÝ[O^ÞÈX\™Ú[ŽˆÛÛÜŽˆ	ÈÙ™™‰Ë›ÛÚ^™Nˆ	ÌKŒM\™[IÈ_OžÚ\ÔÚYÛ•\È	ÐÜ™X]HX]]\ÈXØÛÝ[	Èˆ	ÔÚYÛˆ[ˆÈX]]\É×_OÚÏ‚ˆ]ÛˆÛÛXÚÏ^ÛÛÛÜÙ_HÝ[O^ÞÈ˜XÚÙÜ›Ý[™ˆ	Û›Û™IË›Ü™\Žˆ	Û›Û™IËÛÛÜŽˆ	ÈÎMLØŽ	Ë›ÛÚ^™Nˆ	ÌKŒœ™[IËÝ\œÛÜŽˆ	ÜÚ[\‰Ø_O¸§%OØ]Û‚ˆÙ]‚ˆÝ[O^ÞÈÛÛÜŽˆ	ÈÎMLØŽ	Ë›ÛÚ^™Nˆ	ÌŽÜ™[IËX\™Ú[Žˆ	ÌM	Ë[™RZYÚˆK_O‚ˆØ]™H[Ý\ˆ\œÛÛ˜[Ý\›˜[Y[ØÚY[KÜÝ™[YH\Ë[™Þ[˜È]š\Ú[Ûˆ[\Ë‚ˆÜ‚ˆÙ\œˆ	‰ˆ
+ˆ]ˆÝ[O^ÞÈ˜XÚÙÜ›Ý[™ÛÛÜŽˆ	ÈÌØŒNYIË›Ü™\Žˆ	Ì\ÛÛYÍÙŒYY	ËÛÛÜŽˆ	ÈÙ˜ØMXMIËY[™Îˆ	Î\L\	Ë›Ü™\”˜Y]\Îˆ	Íœ	Ë›ÛÚ^™Nˆ	ÌŽœ™[IËX\™Ú[›ÝÛNˆ	ÌLœ	È_O‚ˆÙ\œŸBˆÙ]‚ˆ
+_Bˆ›Ü›HÛ”ÝX›Z]^Ú[™P]]HÝ[O^ÞÈ\Ü^Nˆ	Ù›^	Ë›^\™XÝ[ÛŽˆ	ØÛÛ[[‰ËØ\ˆ	ÌLœ	È_O‚ˆ]‚ˆX™[Ý[O^ÞÈ\Ü^Nˆ	Ø›ØÚÉËÛÛÜŽˆ	ÈØØ™YLIË›ÛÚ^™Nˆ	ÌÎ™[IË›ÛÙZYÚˆ	Ø›Û	ËX\™Ú[›ÝÛNˆ	Í	È_O‘[XZ[Y™\ÜÏÛX™[‚ˆ[œ]\OH™[XZ[ˆXÙZÛ\Hž[ÝP^[\K˜ÛÛHˆ˜[YO^Ù[XZ[HÛÚ[™ÙO^ÙHOˆÙ][XZ[
+K\™Ù]˜[YJ_HÝ[O^Ú[œH™\]Z\™YÏ‚ˆÙ]‚ˆ]‚ˆX™[Ý[O^ÞÈ\Ü^Nˆ	Ø›ØÚÉËÛÛÜŽˆ	ÈØØ™YLIË›ÛÚ^™Nˆ	ÌÎ™[IË›ÛÙZYÚˆ	Ø›Û	ËX\™Ú[›ÝÛNˆ	Í	È_O”\ÜÝÛÜ™Ú\ÔÚYÛ•\È	ÊŠÈÚ\˜XÝ\œÊIÈˆ	ÉßOÛX™[‚ˆ[œ]\OHœ\ÜÝÛÜ™ˆXÙZÛ\Hº®­º®­º®­º®­º®­º®­º®­º®­ˆˆ˜[YO^Ü\ÜÝÛÜ™HÛÚ[™ÙO^ÙHOˆÙ]\ÜÝÛÜ™
+K\™Ù]˜[YJ_HZ[“[™ÝMˆÝ[O^Ú[œH™\]Z\™YÏ‚ˆÙ]‚ˆ]Ûˆ\OHœÝX›Z]ˆÝ[O^ÞÈY[™Îˆ	ÌL\	Ë›Ü™\”˜Y]\Îˆ	Íœ	Ë˜XÚÙÜ›Ý[™ÛÛÜŽˆ	ÈÙLÌNÍÉËÛÛÜŽˆ	ÈÙ™™‰Ë›Ü™\Žˆ	Û›Û™IË›ÛÙZYÚˆ	Ø›Û	Ë›ÛÚ^™Nˆ	ÌŽM\™[IËÝ\œÛÜŽˆ	ÜÚ[\‰ËX\™Ú[•Üˆ	Ìœ	È_O‚ˆÚ\ÔÚYÛ•\È	ÐÜ™X]HXØÛÝ[	Èˆ	ÔÚYÛˆ[‰ßBˆØ]Û‚ˆÙ›Ü›O‚ˆ]ˆÝ[O^ÞÈ^[YÛŽˆ	ØÙ[\‰ËX\™Ú[•Üˆ	ÌM	È_O‚ˆ]Ûˆ\OH˜]ÛˆˆÛÛXÚÏ^Þ
+HOˆÈÙ]\ÔÚYÛ•\
+Z\ÔÚYÛ•\
+NÈÙ]\œŠ	ÉÊNÈ_HÝ[O^ÞÈ˜XÚÙÜ›Ý[™ˆ	Û›Û™IË›Ü™\Žˆ	Û›Û™IËÛÛÜŽˆ	ÈÎMLØŽ	Ë^XÛÜ˜][ÛŽˆ	Ý[™\›[™IË›ÛÚ^™Nˆ	ÌŽÜ™[IËÝ\œÛÜŽˆ	ÜÚ[\‰È_O‚ˆÚ\ÔÚYÛ•\È	Ð[™XYH]™H[ˆXØÛÝ[ÈÚYÛˆ[‰Èˆ‘Û‰Ý]™H[ˆXØÛÝ[ÈÜ™X]HÛ™HŸBˆØ]Û‚ˆÙ]‚ˆÙ]‚ˆÙ]‚ˆ
+NÂŸ
