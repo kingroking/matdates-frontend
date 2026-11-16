@@ -6,10 +6,11 @@ import {
 } from 'firebase/auth';
 
 export default function AuthModal({ isOpen, onClose }) {
-  const [email, setEmail] = useState('');const [showPw,setShowPw]=useState(false);
-  const [password, setPassword] = useState('');const [showPw,setShowPw]=useState(false);
+  const [email, setEmail] = useState('');
+  const [showPw,setShowPw]=useState(false);
+  const [password, setPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
-  const [err, setErr] = useState('');const [showPw,setShowPw]=useState(false);
+  const [err, setErr] = useState('');
 
   if (!isOpen) return null;
 
