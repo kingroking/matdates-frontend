@@ -99,7 +99,7 @@ export function MatAlertModal({ event, comp, division, onClose }) {
           </div>
         ) : (
           <form onSubmit={handleSave} style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
-            <button type="button" onClick={enablePush} style={padding:'9px 12px', borderRadius:'6px', border: pushStatus === 'ready' ? '1px solid #2ecc71' : '1px solid #0284c7', background: pushStatus === 'ready' ? '#132a1c' : '#162536', color: pushStatus === 'ready' ? '#2ecc71' : '#38bdf8', fontWeight:'bold', cursor:'pointer', fontSize:'0.84rem' }}>
+            <button type="button" onClick={enablePush} style={{ padding:'9px 12px', borderRadius:'6px', border: pushStatus === 'ready' ? '1px solid #2ecc71' : '1px solid #0284c7', background: pushStatus === 'ready' ? '#132a1c' : '#162536', color: pushStatus === 'ready' ? '#2ecc71' : '#38bdf8', fontWeight:'bold', cursor:'pointer', fontSize:'0.84rem' }}>
               {pushStatus === 'ready' ? '✓ Browser Push Enabled!' : pushStatus === 'requesting' ? 'Requesting Permission...' : '\u{1F4F2} Enable Instant Browser Push (Optional)'}
             </button>
             {pushStatus === 'email_only' && <div style={{ color:'#94a3b8', fontSize:'0.76rem' }}>Browser push unavailable on this device — instant email alerts will be used.</div>}
