@@ -1,3 +1,4 @@
+import { resolveEventUrl } from './locationFmt';
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import { db } from './firebase';
@@ -40,8 +41,8 @@ export function StoryShareModal({ payload, onClose }) {
         <p style={{ margin:'0 0 12px 0', color:'#9aa4b2', fontSize:'0.8rem' }}>On iPhone/Android, tap Share below and pick Instagram Stories. On desktop, save PNG to upload.</p>
         <img src={dataUrl} alt="Story card preview" style={{ width:'100%', maxHeight:'52vh', objectFit:'contain', borderRadius:'8px', border:'1px solid #333', marginBottom:'12px' }} />
         <div style={{ display:'flex', gap:'8px' }}>
-          <button onClick={shareNative} style={{ flex:1, padding:'11px', backgroundColor:'#e31837', color:'#fff', border:'none', borborderRadius:'6px', fontWeight:'bold', cursor:'pointer' }}>Share to Instagram / Save</button>
-          <button onClick={onClose} style={{ padding:'11px 14px', backgroundColor:'#222', color:'#ccc', border:'1px solid #444', borborderRadius:'6px', cursor:'pointer' }}>Close</button>
+          <button onClick={shareNative} style={{ flex:1, padding:'11px', backgroundColor:'#e31837', color:'#fff', border:'none', borderRadius:'6px', fontWeight:'bold', cursor:'pointer' }}>Share to Instagram / Save</button>
+          <button onClick={onClose} style={{ padding:'11px 14px', backgroundColor:'#222', color:'#ccc', border:'1px solid #444', borderRadius:'6px', cursor:'pointer' }}>Close</button>
         </div>
       </div>
     </div>
@@ -100,34 +101,42 @@ export function LeaderboardModal({ onClose }) {
   }, [rows, fed, age, qStr]);
 
   const box = { position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.86)', zIndex:9999, display:'flex', justifyContent:'center', alignItems:'center', padding:'16px' };
-  const card = { backgroundColor:'#11141b', padding:'22px', borderRadius:'12px', border:'1px solid #2d3748', width:'100%', maxWidth:'820px', maxHeight:'88vh', display:'flex', flexDirection:'column' };
+  const card = { backgroundColor:'#11141b', padding:'22px', borderRadius:'12px', border:'1px solid #2d3748', width:'100%', maxWidth:'900px', maxHeight:'88vh', display:'flex', flexDirection:'column' };
   return (
     <div onClick={onClose} style={box}><div onClick={e => e.stopPropagation()} style={card}>
       <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'10px', gap:'12px' }}>
         <div><h2 style={{ margin:0, color:'#fff', fontSize:'1.3rem' }}>2026 Academy Medal Standings</h2>
           <p style={{ margin:'4px 0 0', color:'#94a3b8', fontSize:'0.8rem' }}>Overall cross-federation standings — select a circuit or break down Youth vs. Adult medals.</p></div>
-        <button onClick={onClose} style={{ background:'#1e293b', color:'#fff', border:'1px solid #334155', borborderRadius:'6px', padding:'6px 12px', cursor:'pointer' }}>Close</button>
+        <button onClick={onClose} style={{ background:'#1e293b', color:'#fff', border:'1px solid #334155', borderRadius:'6px', padding:'6px 12px', cursor:'pointer' }}>Close</button>
       </div>
       <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', marginBottom:'10px', alignItems:'center' }}>
         {[['ALL','🌐 Overall'],['JJWL','JJWL'],['IBJJF','IBJJF'],['SMOOTHCOMP','Smoothcomp']].map(([k, lbl]) => (
-          <button key={k} onClick={() => { setFed(k); if (k === 'IBJJF') setAge('ALL'); }} style={{ padding:'7px 12px', borborderRadius:'6px', border: fed === k ? '1px solid #38bdf8' : '1px solid #2d3748', background: fed === k ? '#162536' : '#181c24', color: fed === k ? '#38bdf8' : '#cbd5e1', fontWeight:'bold', cursor:'pointer' }}>{lbl}</button>
+          <button key={k} onClick={() => { setFed(k); if (k === 'IBJJF') setAge('ALL'); }} style={{ padding:'7px 12px', borderRadius:'6px', border: fed === k ? '1px solid #38bdf8' : '1px solid #2d3748', background: fed === k ? '#162536' : '#181c24', color: fed === k ? '#38bdf8' : '#cbd5e1', fontWeight:'bold', cursor:'pointer' }}>{lbl}</button>
         ))}
         {[['ALL','All Ages'],['YOUTH','🐯 Youth'],['ADULT','🥋 Adult']].map(([ak, albl]) => (
-          <button key={ak} disabled={fed === 'IBJJF' && ak === 'YOUTH'} onClick={() => setAge(ak)} style={{ padding:'6px 10px', borborderRadius:'6px', border:'1px solid #2d3748', background: age === ak ? '#2d3748' : '#181c24', color: age === ak ? '#fff' : '#94a3b8', fontSize:'0.8rem', fontWeight:'bold', opacity: fed === 'IBJJF' && ak === 'YOUTH' ? 0.4 : 1, cursor:'pointer' }}>{albl}</button>
+          <button key={ak} disabled={fed === 'IBJJF' && ak === 'YOUTH'} onClick={() => setAge(ak)} style={{ padding:'6px 10px', borderRadius:'6px', border:'1px solid #2d3748', background: age === ak ? '#2d3748' : '#181c24', color: age === ak ? '#fff' : '#94a3b8', fontSize:'0.8rem', fontWeight:'bold', opacity: fed === 'IBJJF' && ak === 'YOUTH' ? 0.4 : 1, cursor:'pointer' }}>{albl}</button>
         ))}
-        <input value={qStr} onChange={e => setQStr(e.target.value)} placeholder="Find academy..." style={{ flex:1, minWidth:'140px', padding:'7px 10px', borborderRadius:'6px', background:'#181c24', color:'#fff', border:'1px solid #2d3748' }} />
+        <input value={qStr} onChange={e => setQStr(e.target.value)} placeholder="Find academy..." style={{ flex:1, minWidth:'140px', padding:'7px 10px', borderRadius:'6px', background:'#181c24', color:'#fff', border:'1px solid #2d3748' }} />
       </div>
      <div style={{ overflowY:'auto', border:'1px solid #242b38', borderRadius:'8px', background:'#151922' }}>
         {aggregated.map((r, i) => (
-          <div key={`${r.Academy}_${i}`} style={{ display:'flex', justifyContent:'space-between', padding:'10px 14px', borderBottom:'1px solid #1f2532', alignItems:'center', flexWrap:'wrap', gap:'8px' }}>
-            <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap' }}>
-              <strong style={{ color: i < 3 ? '#facc15' : '#64748b', minWidth:'28px' }}>#{i + 1}</strong>
-              <strong style={{ color:'#fff' }}>{r.Academy}</strong>
-              {Array.from(r.Feds).map(f => <span key={f} style={{ fontSize:'0.68rem', padding:'2px 6px', borderRadius:'4px', background:'#1e293b', color:'#94a3b8' }}>{f}</span>)}
+          <div key={`${r.Academy}_${i}`} style={{ display:'flex', justifyContent:'space-between', padding:'10px 14px', borderBottom:'1px solid #1f2532', alignItems:'center', flexWrap:'nowrap', gap:'12px' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:'7px', flex:1, minWidth:0, overflow:'hidden' }}>
+              <strong style={{ color: i < 3 ? '#facc15' : '#64748b', minWidth:'28px', flexShrink:0 }}>#{i + 1}</strong>
+              <strong style={{ color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }} title={r.Academy}>{r.Academy}</strong>
+              {Array.from(r.Feds).map(f => <span key={f} style={{ fontSize:'0.66rem', padding:'2px 5px', borderRadius:'4px', background:'#1e293b', color:'#94a3b8', flexShrink:0 }}>{f}</span>)}
             </div>
-            <div style={{ display:'flex', gap:'10px', alignItems:'center', fontSize:'0.85rem' }}>
-              {r.hasMedals && <><span>🥇 <strong>{r.Gold}</strong></span><span>🥈 <strong>{r.Silver}</strong></span><span>🥉 <strong>{r.Bronze}</strong></span>
-                {age === 'ALL' && <span style={{ color:'#94a3b8', fontSize:'0.75rem', background:'#1a202c', padding:'2px 6px', borderRadius:'4px' }}>🐯 {r.YouthMedals} · 🥋 {r.AdultMedals}</span>}</>}
+            <div style={{ display:'flex', gap:'9px', alignItems:'center', fontSize:'0.84rem', flexShrink:0, whiteSpace:'nowrap' }}>
+              {r.hasMedals && (
+                <>
+                  <span>🥇 <strong>{r.Gold}</strong></span>
+                  <span>🥈 <strong>{r.Silver}</strong></span>
+                  <span>🥉 <strong>{r.Bronze}</strong></span>
+                  <span style={{ color:'#cbd5e1', fontSize:'0.75rem', background:'#1a202c', border:'1px solid #2d3748', padding:'2px 7px', borderRadius:'4px' }}>
+                    {age === 'YOUTH' ? `🐯 ${r.YouthMedals}` : age === 'ADULT' ? `🥋 ${r.AdultMedals}` : `🐯 ${r.YouthMedals} · 🥋 ${r.AdultMedals}`}
+                  </span>
+                </>
+              )}
               <span style={{ color:'#34d399', fontWeight:'bold', minWidth:'78px', textAlign:'right' }}>{r.Points.toLocaleString()} pts</span>
             </div>
           </div>
@@ -168,7 +177,7 @@ export function AthleteSearchModal({ events, onClose, onOpenBracket }) {
       .slice(0, 80);
   }, [items, qStr, evMap]);
   const box = { position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.86)', zIndex:9999, display:'flex', justifyContent:'center', alignItems:'center', padding:'16px' };
-  const card = { backgroundColor:'#11141b', padding:'22px', borderRadius:'12px', border:'1px solid #2d3748', width:'100%', maxWidth:'820px', maxHeight:'88vh', display:'flex', flexDirection:'column' };
+  const card = { backgroundColor:'#11141b', padding:'22px', borderRadius:'12px', border:'1px solid #2d3748', width:'100%', maxWidth:'900px', maxHeight:'88vh', display:'flex', flexDirection:'column' };
 
   return (
     <div onClick={onClose} style={box}><div onClick={e => e.stopPropagation()} style={card}>
@@ -179,7 +188,7 @@ export function AthleteSearchModal({ events, onClose, onOpenBracket }) {
             {loading ? 'Loading live rosters...' : `Search ${items.length.toLocaleString()} live registrations across upcoming IBJJF, JJWL & Smoothcomp tournaments.`}
           </p>
     </div>
-        <button onClick={onClose} style={{ background:'#1e293b', color:'#fff', border:'1px solid #334155', borborderRadius:'6px', padding:'6px 12px', cursor:'pointer', height:'fit-content' }}>Close</button>
+        <button onClick={onClose} style={{ background:'#1e293b', color:'#fff', border:'1px solid #334155', borderRadius:'6px', padding:'6px 12px', cursor:'pointer', height:'fit-content' }}>Close</button>
       </div>
       <input autoFocus value={qStr} onChange={e => setQStr(e.target.value)} placeholder="Type an athlete name or academy (e.g. Carlson Gracie, Art of Jiu Jitsu)..." style={{ padding:'11px 14px', borderRadius:'8px', background:'#181c24', color:'#fff', border:'1px solid #38bdf8', fontSize:'0.95rem', marginBottom:'12px' }} />
       <div style={{ overflowY:'auto', border:'1px solid #242b38', borderRadius:'8px', background:'#151922' }}>
@@ -196,7 +205,7 @@ export function AthleteSearchModal({ events, onClose, onOpenBracket }) {
                 <div style={{ color:'#cbd5e1', fontSize:'0.8rem', marginTop:'2px' }}>{m.d}</div>
                 <div style={{ color:'#ff9f43', fontSize:'0.8rem', marginTop:'3px' }}>📅 {ev.date} · <strong>{ev.name}</strong></div>
               </div>
-              <div style={{ display:'flex', gap:'6px', alignItems:'center', flexWrap:'wrap' }}><button onClick={() => onOpenBracket(ev, m.n)} style={{ background:'#1e293b', color:'#38bdf8', border:'1px solid #0284c7', borderRadius:'6px', padding:'7px 12px', fontWeight:'bold', cursor:'pointer', fontSize:'0.82rem' }}>View Bracket →</button>{m.p && m.p !== '#' && (<a href={m.p.startsWith('http') ? m.p : 'https://smoothcomp.com' + (m.p.startsWith('/') ? m.p : '/' + m.p)} target='_blank' rel='noopener noreferrer' style={{ background:'#181c24', color:'#a78bfa', border:'1px solid #4c1d95', borderRadius:'6px', padding:'7px 9px', fontSize:'0.78rem', textDecoration:'none', fontWeight:'bold' }}>{m.p.includes('jits.gg') ? 'Jits.gg ↗' : 'Profile ↗'}</a>)}{ev.link && ev.link.startsWith('http') && (<a href={ev.id.includes('smoothcomp') ? ev.link.replace(/\/$/, '') + '/schedule' : ev.link} target='_blank' rel='noopener noreferrer' style={{ background:'#181c24', color:'#94a3b8', border:'1px solid #334155', borderRadius:'6px', padding:'7px 9px', fontSize:'0.78rem', textDecoration:'none' }}>Official ↗</a>)}</div>
+              <div style={{ display:'flex', gap:'6px', alignItems:'center', flexWrap:'wrap' }}><button onClick={() => onOpenBracket(ev, m.n)} style={{ background:'#1e293b', color:'#38bdf8', border:'1px solid #0284c7', borderRadius:'6px', padding:'7px 12px', fontWeight:'bold', cursor:'pointer', fontSize:'0.82rem' }}>View Bracket →</button>{m.p && m.p !== '#' && (<a href={m.p.startsWith('http') ? m.p : 'https://smoothcomp.com' + (m.p.startsWith('/') ? m.p : '/' + m.p)} target='_blank' rel='noopener noreferrer' style={{ background:'#181c24', color:'#a78bfa', border:'1px solid #4c1d95', borderRadius:'6px', padding:'7px 9px', fontSize:'0.78rem', textDecoration:'none', fontWeight:'bold' }}>{m.p.includes('jits.gg') ? 'Jits.gg ↗' : 'Profile ↗'}</a>)}{(() => { const u = resolveEventUrl(ev) || ev.link || ''; return u.startsWith('http') ? (<a href={u.includes('smoothcomp.com') ? u.replace(/\/$/, '') + '/schedule' : u} target='_blank' rel='noopener noreferrer' style={{ background:'#181c24', color:'#cbd5e1', border:'1px solid #38bdf8', borderRadius:'6px', padding:'7px 9px', fontSize:'0.78rem', textDecoration:'none', fontWeight:'bold' }}>Official ↗</a>) : null; })()}</div>
             </div>
           );
         })}

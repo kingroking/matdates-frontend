@@ -196,6 +196,16 @@ function CompetitorTable({ calcResult, event, onClose }) {
                 <button onClick={() => setSearchTerm('')} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#aaa', fontSize: '1.2rem', cursor: 'pointer' }}>&times;</button>
               )}
             </div>
+            {(() => {
+              const rawU = resolveEventUrl(event) || event.link || '';
+              if (!rawU || !rawU.startsWith('http')) return null;
+              const bracketU = rawU.includes('smoothcomp.com') ? rU.replace(/\/$/, '') + '/schedule' : rawU;
+              return (
+                <a href={bracketU} target="_blank" rel="noopener noreferrer" style={{ padding: '10px 13px', backgroundColor: '#162536', color: '#38bdf8', border: '1px solid #0284c7', borderRadius: '5px', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+                  Official Brackets ↗
+                </a>
+              );
+            })()}
             <button onClick={onClose} style={{ padding: '10px 15px', backgroundColor: '#333', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
               Close
             </button>
