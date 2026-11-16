@@ -14,9 +14,10 @@ export function LeaderboardModal({ onClose }) {
   return (
     <div onClick={onClose} style={{ position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.85)', zIndex:9999, display:'flex', justifyContent:'center', alignItems:'center', padding:'16px' }}>
       <div onClick={e => e.stopPropagation()} style={{ backgroundColor:'#11141b', padding:'24px', borderRadius:'12px', border:'1px solid #2d3748', width:'100%', maxWidth:'700px', color:'#fff' }}>
-        <h2>🏆 Medal Standings</h2>
-        <button onClick={onClose} style={{ marginTop:'16px', background:'#1e293b', color:'#fff', border:'1px solid #334155', borderRadius:'6px', padding:'6px 12px', cursor:'pointer' }}>Close</button>
-    </div>
+        <h2>🏆 Medal Standings & Podium Medals</h2>
+        <p style={{ color:'#94a3b8', fontSize:'0.85rem', marginTop:'4px' }}>Aggregated live from IBJJF, JJWL, and Smoothcomp completed tournaments.</p>
+        <button onClick={onClose} yle={{ marginTop:'16px', background:'#1e293b', color:'#fff', border:'1px solid #334155', borderRadius:'6px', padding:'6px 12px', cursor:'pointer' }}>Close</button>
+      </div>
     </div>
   );
 }
@@ -66,7 +67,7 @@ export function AthleteSearchModal({ events, onClose, onOpenBracket }) {
         <div>
           <h2 style={{ margin:0, color:'#fff', fontSize:'1.3rem' }}>🔍 Who's Registered? — Athlete & Gym Lookup</h2>
           <p style={{ margin:'4px 0 0', color:'#94a3b8', fontSize:'0.82rem' }}>
-            {loading ? 'Loading live rosters...' : `Search ${items.length.toLocaleString()} live registrations across upcoming tournaments by athlete name or gym/team (e.g. Carlson Gracie, AOJ).`}
+            {loading ? 'Loading live rosters...' : `Search ${items.length.toLocaleStri} live registrations across upcoming tournaments by athlete name or gym/team (e.g. Carlson Gracie, AOJ).`}
           </p>
         </div>
         <button onClick={onClose} style={{ background:'#1e293b', color:'#fff', border:'1px solid #334155', borderRadius:'6px', padding:'6px 12px', cursor:'pointer', height:'fit-content' }}>Close</button>
@@ -79,14 +80,18 @@ export function AthleteSearchModal({ events, onClose, onOpenBracket }) {
           <div style={{ padding:'28px', textAlign:'center', color:'#94a3b8', fontSize:'0.9rem' }}>No registrations found matching "{qStr}".</div>
         ) : matches.map((m, i) => {
           const ev = evMap[m.e];
+          const externalLink = m.link || ev?.link || (ev?.platform === 'smoothcomp' ? 'https://smoothcomp.com' : 'https://jits.gg');
           return (
             <div key={`${m.e}_${m.n}_${i}`} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 15px', borderBottom:'1px solid #1f2532', gap:'10px', flexWrap:'wrap' }}>
               <div style={{ flex:1, minWidth:'220px' }}>
                 <div style={{ color:'#fff', fontWeight:'bold', fontSize:'0.96rem' }}>{m.n} <span style={{ color:'#38bdf8', fontWeight:'normal', fontSize:'0.84rem' }}>· {m.a || 'Independent'}</span></div>
                 <div style={{ color:'#cbd5e1', fontSize:'0.8rem', marginTop:'2px' }}>{m.d}</div>
-                <div style={{ color:'#ff9f43', fontSize:'0.8rem', marginTop:'3px' }}>📅 {ev.date} · <strong>{ev.name}</strong></div>
+                <div style={{ color:'#ff9f43', fontSize:'0.8rm', marginTop:'3px' }}>📅 {ev.date} · <strong>{ev.name}</strong></div>
               </div>
-              <button onClick={() => onOpenBracket(ev, m.n)} style={{ background:'#1e293b', color:'#38bdf8', border:'1px solid #0284c7', borderRadius:'6px', padding:'7px 12px', fontWeight:'bold', cursor:'pointer', fontSize:'0.82rem' }}>View Bracket →</button>
+              <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
+                <button onClick={() => onOpenBracket(ev, m.n)} style={{ background:'#1e293b', color:'#38bdf8', border:'1px solid #0284c7', borderRadius:'6px', padding:'7px 12px', fontWeight:'bold', cursor:'pointer', fontSize:'0.82rem' }}>View Bracket →</button>
+                <a href={externalLink} target="_blank" rel="noopener noreferrer" title="Open official bracket on platform" style={{ background:'#1e293b', color:'#cbd5e1', border:'1px solid #334155', borderRadius:'6px', padding:'7px 10px', fontSize:'0.82rem', textDecoration:'none' }}>🔗 External</a>
+              </div>
             </div>
           );
         })}
