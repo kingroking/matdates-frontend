@@ -6,10 +6,10 @@ import {
 } from 'firebase/auth';
 
 export default function AuthModal({ isOpen, onClose }) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');const [showPw,setShowPw]=useState(false);
+  const [password, setPassword] = useState('');const [showPw,setShowPw]=useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
-  const [err, setErr] = useState('');
+  const [err, setErr] = useState('');const [showPw,setShowPw]=useState(false);
 
   if (!isOpen) return null;
 
@@ -56,8 +56,8 @@ export default function AuthModal({ isOpen, onClose }) {
             <input type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} style={inp} required />
           </div>
           <div>
-            <label style={{ display:'block', color:'#cbd5e1', fontSize:'0.78rem', fontWeight:'bold', marginBottom:'4px' }}>Password {isSignUp ? '(6+ characters)' : ''}</label>
-            <input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} minLength={6} style={inp} required />
+            <label style={{ display:'block', color:'#cbd5e1', fontSize:'0.78rem', fontWeight:'bold', marginBottom:'4px' }}>Password {isSignUp ? '(6+ characters)':''}</label><span onClick={()=>setShowPw(!showPw)} style={{float:'right',cursor:'pointer',color:'#38bdf8',fontSize:'0.76rem'}}>{showPw?'Hide':'👁️ Show'}</span>
+            <input type={showPw?"text":"password"} placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} minLength={6} style={inp} required />
           </div>
           <button type="submit" style={{ padding:'11px', borderRadius:'6px', backgroundColor:'#e31837', color:'#fff', border:'none', fontWeight:'bold', fontSize:'0.95rem', cursor:'pointer', marginTop:'2px' }}>
             {isSignUp ? 'Create Account' : 'Sign In'}
