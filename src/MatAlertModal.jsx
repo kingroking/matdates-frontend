@@ -87,7 +87,7 @@ export function MatAlertModal({ event, comp, division, onClose }) {
           <button onClick={onClose} style={{ background:'none', border:'none', color:'#94a3b8', fontSize:'1.1rem', cursor:'pointer' }}>✕</button>
         </div>
         <p style={{ margin:'0 0 12px', color:'#cbd5e1', fontSize:'0.85rem', lineHeight:1.4 }}>
-          Watch <strong style={{ color:'#ff9f43' }}>{comp.Name}</strong> ({division}) at <strong>vent.name}</strong>. We check live tournament schedules and alert you when their Mat # or Fight Time posts or shifts.
+          Watch <strong style={{ color:'#ff9f43' }}>{comp.Name}</strong> ({division}) at <strong>{event.name}</strong>. We check live tournament schedules and alert you when their Mat # or Fight Time posts or shifts.
         </p>
         {done ? (
           <div style={{ background:'#132a1c', border:'1px solid #2ecc71', borderRadius:'8px', padding:'14px', textAlign:'center' }}>
