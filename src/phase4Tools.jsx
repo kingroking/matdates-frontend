@@ -62,44 +62,77 @@ export function EventSquadChips({ competitors, onSelectGym }) {
 }
 export function LeaderboardModal({ onClose }) {
   const [rows, setRows] = useState([]);
-  const [tab, setTab] = useState('jjwl_youth');
+  const [fed, setFed] = useState('ALL');
+  const [age, setAge] = useState('ALL');
   const [qStr, setQStr] = useState('');
+
   useEffect(() => {
     getDocs(query(collection(db, 'event_competitors'), where('event_id', '==', '__global_leaderboard__')))
-      .then(s => setRows(s.docs.map(d => d.data())));
+      .then(snap => setRows(snap.docs.map(d => d.data())));
   }, []);
-  const list = rows.filter(r => (r.Board || 'jjwl_youth') === tab && (!qStr || (r.Academy || '').toLowerCase().includes(qStr.toLowerCase()))).sort((a, b) => (a.Rank || 999) - (b.Rank || 999));
+
+  const aggregated = React.useMemo(() => {
+    const map = {};
+    rows.forEach(r => {
+      const b = r.Board || '';
+      const rFed = b.startsWith('ibjjf') ? 'IBJJF' : 'JJWL';
+      const rAge = b.includes('youth') ? 'YOUTH' : 'ADULT';
+      if ((fed !== 'ALL' && rFed !== fed) || (age !== 'ALL' && rAge !== age)) return;
+      const rawK = (r.Academy || '').toLowerCase().replace(/[^a-z0-9]/g, ''); const k = ({aoj:'artofjiujitsu',atosjiujitsu:'atos',carlsongracieteam:'carlsongracie'})[rawK] || rawK;
+      if (!k) return;
+      if (!map[k]) map[k] = {
+        Academy: r.Academy, Gold: 0, Silver: 0, Bronze: 0,
+        Points: 0, YouthMedals: 0, AdultMedals: 0, Feds: new Set(), hasMedals: false
+      };
+      const g = Number(r.Gold || 0), sv = Number(r.Silver || 0), br = Number(r.Bronze || 0);
+      if (r.Gold !== undefined) map[k].hasMedals = true;
+      map[k].Gold += g; map[k].Silver += sv; map[k].Bronze += br;
+      map[k].Points = Math.round((map[k].Points + Number(r.Points || 0)) * 10) / 10;
+      if (rAge === 'YOUTH') map[k].YouthMedals += (g + sv + br);
+      else map[k].AdultMedals += (g + sv + br);
+      map[k].Feds.add(rFed);
+    });
+    const score = x => (x.Gold * 9 + x.Silver * 3 + x.Bronze) + x.Points * 0.05;
+    return Object.values(map)
+      .filter(x => !qStr || x.Academy.toLowerCase().includes(qStr.toLowerCase()))
+      .sort((a, b) => score(b) - score(a) || b.Points - a.Points)
+      .slice(0, 60);
+  }, [rows, fed, age, qStr]);
+
+  const box = { position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.86)', zIndex:9999, display:'flex', justifyContent:'center', alignItems:'center', padding:'16px' };
+  const card = { backgroundColor:'#11141b', padding:'22px', borderRadius:'12px', border:'1px solid #2d3748', width:'100%', maxWidth:'820px', maxHeight:'88vh', display:'flex', flexDirection:'column' };
   return (
-    <div style={{ position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.86)', zIndex:9999, display:'flex', justifyContent:'center', alignItems:'center', padding:'20px' }}>
-      <div style={{ backgroundColor:'#111', padding:'24px', borderRadius:'12px', border:'1px solid #444', width:'100%', maxWidth:'780px', maxHeight:'88vh', display:'flex', flexDirection:'column' }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'10px', gap:'12px' }}>
-          <div>
-            <h2 style={{ margin:0, color:'#fff', fontSize:'1.4rem' }}>2026 Academy Medal & Podium Standings</h2>
-            <p style={{ margin:'4px 0 0 0', color:'#9aa4b2', fontSize:'0.83rem', lineHeight:1.4 }}>Official season podium results synced from completed tournaments — ranked by Gold, Silver, and Bronze medals earned plus official federation team points.</p>
-          </div>
-          <button onClick={onClose} style={{ backgroundColor:'#333', color:'#fff', border:'none', borderRadius:'6px', padding:'8px 14px', cursor:'pointer', fontWeight:'bold' }}>Close</button>
-        </div>
-        <div style={{ display:'flex', gap:'8px', marginBottom:'12px', flexWrap:'wrap' }}>
-          {[['jjwl_youth','JJWL Youth Medals'],['jjwl_adult','JJWL Adult Medals'],['ibjjf_overall','IBJJF 2026 Team Points']].map(([k, lbl]) => (
-            <button key={k} onClick={() => setTab(k)} style={{ padding:'8px 12px', borderRadius:'6px', border: tab === k ? '1px solid #f1c40f' : '1px solid #333', backgroundColor: tab === k ? '#262110' : '#1b1b1b', color: tab === k ? '#f1c40f' : '#ccc', fontWeight:'bold', cursor:'pointer', fontSize:'0.85rem' }}>{lbl}</button>
-          ))}
-          <input value={qStr} onChange={e => setQStr(e.target.value)} placeholder="Search academy..." style={{ flex:1, minWidth:'160px', padding:'8px 12px', borderRadius:'6px', backgroundColor:'#1b1b1b', color:'#fff', border:'1px solid #333' }} />
-        </div>
-        <div style={{ overflowY:'auto', border:'1px solid #2d2d2d', borderRadius:'8px', backgroundColor:'#161616' }}>
-          {list.length === 0 ? <div style={{ padding:'24px', textAlign:'center', color:'#888' }}>Syncing 2026 season medal tables...</div> : list.map((r, i) => (
-            <div key={`${r.Board}_${r.Academy}_${i}`} style={{ display:'flex', justifyContent:'space-between', padding:'11px 16px', borderBottom:'1px solid #242424', alignItems:'center', flexWrap:'wrap', gap:'8px' }}>
-              <div><strong style={{ color: i === 0 ? '#f1c40f' : i === 1 ? '#cbd5e1' : i === 2 ? '#d97706' : '#777', marginRight:'10px' }}>#{r.Rank || i + 1}</strong><strong style={{ color:'#fff' }}>{r.Academy}</strong></div>
-              <div style={{ display:'flex', gap:'12px', alignItems:'center', fontSize:'0.88rem' }}>
-                {r.Gold !== undefined && <span title="Gold Medals">🥇 <strong>{r.Gold}</strong></span>}
-                {r.Silver !== undefined && <span title="Silver Medals">🥈 <strong>{r.Silver}</strong></span>}
-                {r.Bronze !== undefined && <span title="Bronze Medals">🥉 <strong>{r.Bronze}</strong></span>}
-                {r.Subs !== undefined && <span style={{ color:'#9aa4b2', fontSize:'0.8rem' }}>{r.Subs} subs</span>}
-                <span style={{ color:'#2ecc71', fontWeight:'bold', minWidth:'78px', textAlign:'right' }}>{r.Points} pts</span>
-              </div>
-            </div>
-          ))}
-        </div>
+    <div onClick={onClose} style={box}><div onClick={e => e.stopPropagation()} style={card}>
+      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'10px', gap:'12px' }}>
+        <div><h2 style={{ margin:0, color:'#fff', fontSize:'1.3rem' }}>2026 Academy Medal Standings</h2>
+          <p style={{ margin:'4px 0 0', color:'#94a3b8', fontSize:'0.8rem' }}>Overall cross-federation standings — select a circuit or break down Youth vs. Adult medals.</p></div>
+        <button onClick={onClose} style={{ background:'#1e293b', color:'#fff', border:'1px solid #334155', borderRadius:'6px', padding:'6px 12px', cursor:'pointer' }}>Close</button>
       </div>
-    </div>
+      <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', marginBottom:'10px', alignItems:'center' }}>
+        {[['ALL','🌐 Overall'],['JJWL','JJWL'],['IBJJF','IBJJF']].map(([k, lbl]) => (
+          <button key={k} onClick={() => { setFed(k); if (k === 'IBJJF') setAge('ALL'); }} style={{ padding:'7px 12px', borderRadius:'6px', border: fed === k ? '1px solid #38bdf8' : '1px solid #2d3748', background: fed === k ? '#162536' : '#181c24', color: fed === k ? '#38bdf8' : '#cbd5e1', fontWeight:'bold', cursor:'pointer' }}>{lbl}</button>
+        ))}
+        {[['ALL','All Ages'],['YOUTH','🐯 Youth'],['ADULT','🥋 Adult']].map(([ak, albl]) => (
+          <button key={ak} disabled={fed === 'IBJJF' && ak === 'YOUTH'} onClick={() => setAge(ak)} style={{ padding:'6px 10px', borderRadius:'6px', border:'1px solid #2d3748', background: age === ak ? '#2d3748' : '#181c24', color: age === ak ? '#fff' : '#94a3b8', fontSize:'0.8rem', fontWeight:'bold', opacity: fed === 'IBJJF' && ak === 'YOUTH' ? 0.4 : 1, cursor:'pointer' }}>{albl}</button>
+        ))}
+        <input value={qStr} onChange={e => setQStr(e.target.value)} placeholder="Find academy..." style={{ flex:1, minWidth:'140px', padding:'7px 10px', borderRadius:'6px', background:'#181c24', color:'#fff', border:'1px solid #2d3748' }} />
+      </div>
+     <div style={{ overflowY:'auto', border:'1px solid #242b38', borderRadius:'8px', background:'#151922' }}>
+        {aggregated.map((r, i) => (
+          <div key={`${r.Academy}_${i}`} style={{ display:'flex', justifyContent:'space-between', padding:'10px 14px', borderBottom:'1px solid #1f2532', alignItems:'center', flexWrap:'wrap', gap:'8px' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap' }}>
+              <strong style={{ color: i < 3 ? '#facc15' : '#64748b', minWidth:'28px' }}>#{i + 1}</strong>
+              <strong style={{ color:'#fff' }}>{r.Academy}</strong>
+              {Array.from(r.Feds).map(f => <span key={f} style={{ fontSize:'0.68rem', padding:'2px 6px', borderRadius:'4px', background:'#1e293b', color:'#94a3b8' }}>{f}</span>)}
+            </div>
+            <div style={{ display:'flex', gap:'10px', alignItems:'center', fontSize:'0.85rem' }}>
+              {r.hasMedals && <><span>🥇 <strong>{r.Gold}</strong></span><span>🥈 <strong>{r.Silver}</strong></span><span>🥉 <strong>{r.Bronze}</strong></span>
+                {age === 'ALL' && <span style={{ color:'#94a3b8', fontSize:'0.75rem', background:'#1a202c', padding:'2px 6px', borderRadius:'4px' }}>🐯 {r.YouthMedals} · 🥋 {r.AdultMedals}</span>}</>}
+              <span style={{ color:'#34d399', fontWeight:'bold', minWidth:'78px', textAlign:'right' }}>{r.Points.toLocaleString()} pts</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div></div>
   );
 }
