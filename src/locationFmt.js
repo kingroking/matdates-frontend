@@ -20,7 +20,7 @@ export function formatEventLoc(ev) {
     if (code) loc = `${parts[parts.length - 2]}, ${code}`;
   }
   let ven = (ev.venue || '').replace(/\s+/g, ' ').trim();
-  if (/^(tba|tbd|location.*|venue|united states|usa)$/i.test(ven)) ven = '';
+  if (/^(tba|tbd|location.*|venue|united states|usa|hall of fame|championships|rankings)$/i.test(ven)) ven = '';
   if (ven && loc && loc.toLowerCase().includes(ven.toLowerCase())) ven = '';
   if (ven && loc && ven.toLowerCase() === loc.toLowerCase()) ven = '';
   return ven && loc ? `${ven} • ${loc}` : (loc || ven || 'TBA');

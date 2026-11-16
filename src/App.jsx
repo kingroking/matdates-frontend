@@ -1,3 +1,4 @@
+import { formatEventLoc } from './locationFmt';
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, addDoc, query, where, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db, auth } from './firebase';
@@ -546,7 +547,7 @@ export default function App() {
   const filteredEvents = events.filter(ev => {
     const evNameLow = ev.name ? ev.name.toLowerCase() : '';
     const evId = ev.id ? ev.id.toLowerCase() : "";
-    if (/\b(judo|wrestling|karate|taekwondo|kickboxing|muay thai|ping pong|table tennis|sumo)\b/.test(evNameLow)) return false; 
+    if (/\b(judo|wrestling|karate|antarctica|taekwondo|kickboxing|muay thai|ping pong|table tennis|sumo)\b/.test(evNameLow)) return false; 
 
     const searchTarget = `${evNameLow} ${(ev.venue || '').toLowerCase()} ${(ev.address || '').toLowerCase()} ${(ev.location || '').toLowerCase()} ${(ev.date || '').toLowerCase()}`;
     const searchKeywords = searchTerm.toLowerCase().split(/\s+/).filter(kw => kw.length > 0);
@@ -805,7 +806,7 @@ export default function App() {
                 <div key={ev.id} style={{ backgroundColor: '#111', borderLeft: `5px solid ${evBorderColor}`, padding: '20px', borderRadius: '4px', display: 'flex', flexDirection: 'column' }}>
                   <h3 style={{ margin: '0 0 10px 0', fontSize: '1.2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}><span>{ev.name} {ev.isKidsEvent && <span>🐯</span>}</span><button onClick={() => toggleSaveEvent(ev.id)} title="Save to My Schedule" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.35rem', lineHeight: 1, color: savedIds.includes(ev.id) ? '#ff9f43' : '#555', padding: 0 }}>{savedIds.includes(ev.id) ? '★' : '☆'}</button></h3>
                   <div style={{ flexGrow: 1, color: '#aaa', fontSize: '0.95rem', lineHeight: '1.6', margin: '8px 0' }}>
-                    📅 {ev.date} &nbsp;|&nbsp; <a href={getMapsUrl(ev)} target="_blank" rel="noreferrer" title="Open in Maps" style={{ color: '#ddd', textDecoration: 'none', borderBottom: '1px dashed #666' }}>📍 {ev.venue && !(ev.location || '').toLowerCase().includes(ev.venue.toLowerCase()) ? `${ev.venue} • ${ev.location}` : (ev.location || ev.venue || 'TBA')} ↗</a><br/>
+                    <div style={{ marginBottom: '2px' }}>📅 {ev.date}</div><div style={{ marginBottom: '4px' }}>{isStreamOnly || /live stream/i.test(ev.location || '') ? <span>📡 {ev.location || 'Live Stream'}</span> : <a href={getMapsUrl(ev)} target="_blank" rel="noreferrer" title="Open in Maps" style={{ color: '#ddd', textDecoration: 'none' }}>📍 <span style={{ borderBottom: '1px dashed #666' }}>{formatEventLoc(ev)}</span><span style={{ whiteSpace: 'nowrap', color: '#94a3b8', fontSize: '0.85em' }}>{'\u00A0↗'}</span></a>}</div>
                     {ev.cost && (
                       <span style={{ color: '#2ecc71', fontWeight: 'bold' }}>
                         {isStreamOnly
