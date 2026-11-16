@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, addDoc, query, where, doc, setDoc, deleteDoc } from 'firebase/firestore';
-import { db } from './firebase'; 
+import { db, auth } from './firebase';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import AuthModal from './AuthModal'; 
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay } from 'date-fns';
 import { enUS } from 'date-fns/locale';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { calculateWeightClass } from './rulesets';
-import { downloadStoryCard, EventSquadChips, LeaderboardModal } from './phase4Tools';
+import { StoryShareModal, EventSquadChips, LeaderboardModal } from './phase4Tools';
 
 const cleanProfileUrl = (url) => {
   if (!url || url === "#") return "#";
@@ -22,6 +24,7 @@ function CompetitorTable({ calcResult, event, onClose }) {
   
   const [editingCompId, setEditingCompId] = useState(null);
   const [tempUrl, setTempUrl] = useState("");
+  const [storyPayload, setStoryPayload] = useState(null);
 
   useEffect(() => {
     const fetchCompetitors = async () => {
@@ -198,7 +201,8 @@ function CompetitorTable({ calcResult, event, onClose }) {
           </div>
         </div>
 
-        <EventSquadChips competitors={liveCompetitors} onSelectGym={setSearchTerm} />
+        {storyPayload && <StoryShareModal payload={storyPayload} onClose={() => setStoryPayload(null)} />}
+          <EventSquadChips competitors={liveCompetitors} onSelectGym={setSearchTerm} />
           <div style={{ overflowY: 'auto', backgroundColor: '#1a1a1a', borderRadius: '8px', border: '1px solid #333', padding: '10px' }}>
           {loading ? (
             <div style={{ padding: '20px', textAlign: 'center', color: '#ff9f43' }}>Loading athletes from database...</div>
@@ -206,7 +210,7 @@ function CompetitorTable({ calcResult, event, onClose }) {
             sortedDivisions.map(division => (
               <div key={division} style={{ marginBottom: '20px', backgroundColor: '#222', borderRadius: '8px', overflow: 'hidden' }}>
                 <div style={{ backgroundColor: '#333', padding: '10px 15px', fontWeight: 'bold', color: '#ff9f43', borderBottom: '2px solid #444' }}>
-                  <span style={{ display:'flex', justifyContent:'space-between', alignItems:'center', width:'100%' }}><span>{division} ({groupedCompetitors[division].length} Competitors)</span><button onClick={() => downloadStoryCard(event, division, groupedCompetitors[division])} style={{ backgroundColor:'#111', color:'#fff', border:'1px solid #666', borderRadius:'4px', padding:'4px 10px', fontSize:'0.78rem', cursor:'pointer' }}>IG Story Card</button></span>
+                  <span style={{ display:'flex', justifyContent:'space-between', alignItems:'center', width:'100%' }}><span>{division} ({groupedCompetitors[division].length} Competitors)</span><button onClick={() => setStoryPayload({ event, division, comps: groupedCompetitors[division] })} style={{ backgroundColor:'#111', color:'#fff', border:'1px solid #666', borderRadius:'4px', padding:'4px 10px', fontSize:'0.78rem', cursor:'pointer' }}>Share IG Story</button></span>
                 </div>
                 <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
                   <tbody>
@@ -283,9 +287,25 @@ export default function App() {
   const [reminderSubmitted, setReminderSubmitted] = useState(false);
   const [reminderTier, setReminderTier] = useState('final_48h');
   const [calcUnit, setCalcUnit] = useState('lbs');
+  const [user, setUser] = useState(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
   const [showSavedOnly, setShowSavedOnly] = useState(false);
-  const [savedIds, setSavedIds] = useState(() => { try { return JSON.parse(localStorage.getItem('matdates_saved_events') || '[]'); } catch { return []; } });
-  const toggleSaveEvent = (id) => setSavedIds(prev => { const n = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]; localStorage.setItem('matdates_saved_events', JSON.stringify(n)); return n; });
+  const [savedIds, setSavedIds] = useState([]);
+  useEffect(() => onAuthStateChanged(auth, async (u) => {
+    setUser(u);
+    if (u) {
+      try {
+        const snap = await getDocs(query(collection(db, 'reminders'), where('uid', '==', u.uid), where('type', '==', 'saved_schedule')));
+        if (!snap.empty) setSavedIds(snap.docs[0].data().eventIds || []);
+      } catch {}
+    } else { setSavedIds([]); setShowSavedOnly(false); }
+  }), []);
+  const toggleSaveEvent = async (id) => {
+    if (!user) { setShowAuthModal(true); return; }
+    const n = savedIds.includes(id) ? savedIds.filter(x => x !== id) : [...savedIds, id];
+    setSavedIds(n);
+    try { await setDoc(doc(db, 'reminders', `sched_${user.uid}`), { uid: user.uid, email: user.email, type: 'saved_schedule', eventIds: n }, { merge: true }); } catch {}
+  };
   const getGoogleCalUrl = (ev) => { const d = (ev.sort_date && !ev.sort_date.includes('2099')) ? ev.sort_date.replace(/-/g, '') : new Date().toISOString().slice(0,10).replace(/-/g, ''); const n = new Date((ev.sort_date && !ev.sort_date.includes('2099') ? ev.sort_date : new Date().toISOString().slice(0,10)) + 'T12:00:00'); n.setDate(n.getDate() + 1); const d2 = n.toISOString().slice(0,10).replace(/-/g, ''); const loc = [ev.venue, ev.address || ev.location].filter(Boolean).join(', '); const det = [ev.cost ? `Entry: ${ev.cost}` : '', ev.deadline ? `Deadline: ${ev.deadline}` : '', ev.link || ''].filter(Boolean).join(' | '); return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(ev.name || 'BJJ Event')}&dates=${d}/${d2}&location=${encodeURIComponent(loc)}&details=${encodeURIComponent(det)}`; };
   const downloadIcs = (list, fn = 'matdates-event.ics') => { const r = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//MatDates//EN']; list.forEach(ev => { const d = (ev.sort_date && !ev.sort_date.includes('2099')) ? ev.sort_date.replace(/-/g, '') : new Date().toISOString().slice(0,10).replace(/-/g, ''); r.push('BEGIN:VEVENT',`UID:${ev.id}@matdates.com`,`DTSTART;VALUE=DATE:${d}`,`SUMMARY:${(ev.name||'BJJ').replace(/,/g,' ')}`,`LOCATION:${[ev.venue,ev.address||ev.location].filter(Boolean).join(' - ')}`,`DESCRIPTION:${ev.link||''}`,'END:VEVENT'); }); r.push('END:VCALENDAR'); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([r.join('\r\n')], {type:'text/calendar'})); a.download = fn; a.click(); };
 
@@ -353,10 +373,10 @@ export default function App() {
         let isKids = Boolean(ev.has_youth);
         let isAdult = true;
 
-        if (type === 'Super Fight' || type === 'Seminar' || evId.startsWith('flograp') || evId.startsWith('ufc')) {
+        if (type === 'Super Fight' || evId.startsWith('flograp') || evId.startsWith('ufc')) {
           isKids = false;
           isAdult = true;
-        } else if (evId.startsWith('ibjjf')) {
+        } else if (type === 'Seminar') { isKids = isKidsWord || Boolean(ev.has_youth) || /\b(all\s*ages|family)\b/.test(evNameLow); isAdult = true; } else if (evId.startsWith('ibjjf')) {
           // IBJJF runs separate "Kids International Open" cards vs Adult/Juvenile cards
           isKids = isKidsWord || Boolean(ev.has_youth);
           isAdult = !isKidsWord;
@@ -369,7 +389,8 @@ export default function App() {
           isAdult = !isKidsWord || !/\bonly\b/.test(evNameLow);
         }
 
-        return { ...ev, name: evName, cost: displayCost, type, color, isKidsEvent: isKids, isAdultEvent: isAdult };
+        const cleanVenue = /^location(\s*&\s*accommodation)?$/i.test((ev.venue || '').trim()) ? '' : (ev.venue || '');
+        return { ...ev, venue: cleanVenue, name: evName, cost: displayCost, type, color, isKidsEvent: isKids, isAdultEvent: isAdult };
       });
     // Deduplication filter: Prevent duplicate event cards by unique Name + Date combination
     const seenMap = new Map();
@@ -558,6 +579,7 @@ export default function App() {
   return (
     <div style={{ backgroundColor: '#000', minHeight: '100vh', color: '#fff', padding: '20px', fontFamily: 'sans-serif', position: 'relative' }}>
       
+      {showAuthModal && <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />}
       {showLeaderboard && <LeaderboardModal onClose={() => setShowLeaderboard(false)} />}
       {showSubmitModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
@@ -694,7 +716,7 @@ export default function App() {
       <p style={{ color: '#9aa4b2', margin: '4px 0 0 0', fontSize: '0.82rem', letterSpacing: '3px', fontWeight: '600', textTransform: 'uppercase' }}>The BJJ Event Hub</p>
     </div>
   </div>
-  <div style={{ display:'flex', gap:'10px', flexWrap:'wrap' }}><button onClick={() => setShowLeaderboard(true)} style={{ backgroundColor:'#1a1a1a', color:'#ff9f43', padding:'10px 16px', border:'1px solid #ff9f43', borderRadius:'5px', fontWeight:'bold', cursor:'pointer' }}>Leaderboard</button><button onClick={() => setShowSubmitModal(true)} style={{ backgroundColor: '#ff9f43', color: '#000', padding: '10px 20px', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer' }}>+ Submit Event</button></div>
+  <div style={{ display:'flex', gap:'10px', flexWrap:'wrap' }}><button onClick={() => setShowLeaderboard(true)} style={{ backgroundColor:'#141820', color:'#e2e8f0', padding:'10px 16px', border:'1px solid #475569', borderRadius:'5px', fontWeight:'bold', cursor:'pointer' }}>🏆 Medal Standings</button><button onClick={() => user ? signOut(auth) : setShowAuthModal(true)} style={{ backgroundColor:'transparent', color:'#94a3b8', padding:'10px 12px', border:'1px solid #334155', borderRadius:'5px', cursor:'pointer', fontSize:'0.88rem' }}>{user ? 'Sign Out' : 'Sign In'}</button><button onClick={() => setShowSubmitModal(true)} style={{ backgroundColor: '#ff9f43', color: '#000', padding: '10px 20px', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer' }}>+ Submit Event</button></div>
 </header>
 {isAdmin && (
   <div style={{ backgroundColor: '#161616', border: '1px solid #ff9f43', borderRadius: '8px', padding: '16px', marginBottom: '20px' }}>
@@ -725,7 +747,7 @@ export default function App() {
             <span onClick={() => setFederationFilter(prev => prev === 'ADCC' ? 'All' : 'ADCC')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'ADCC' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#F1C40F' }}>■</span> ADCC</span>
             <span onClick={() => setFederationFilter(prev => prev === 'Super Fight' ? 'All' : 'Super Fight')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'Super Fight' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#e31837' }}>■</span> Super Fights</span>
             <span onClick={() => setFederationFilter(prev => prev === 'Seminars' ? 'All' : 'Seminars')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'Seminars' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#9b59b6' }}>■</span> Seminars</span>
-            <span onClick={() => setAgeFilter(prev => prev === 'Kids' ? 'All' : 'Kids')} style={{ cursor: 'pointer', marginLeft: '10px', padding: '4px 10px', backgroundColor: ageFilter === 'Kids' ? '#222' : 'transparent', borderRadius: '6px', border: ageFilter === 'Kids' ? '1px solid #555' : '1px solid transparent', opacity: ageFilter === 'Kids' ? 1 : 0.8, transition: 'all 0.2s' }}><span style={{ fontSize: '1.2rem' }}>🐯</span> Kids/Youth Events</span> <span onClick={() => setShowSavedOnly(p => !p)} style={{ cursor: 'pointer', padding: '4px 10px', backgroundColor: showSavedOnly ? '#ff9f43' : '#1a1a1a', color: showSavedOnly ? '#000' : '#ff9f43', fontWeight: 'bold', borderRadius: '6px', border: '1px solid #ff9f43' }}>★ My Schedule ({savedIds.length})</span>{showSavedOnly && savedIds.length > 0 && <button onClick={() => downloadIcs(events.filter(x => savedIds.includes(x.id)), 'my-bjj-season.ics')} style={{ marginLeft: '6px', cursor: 'pointer', padding: '4px 10px', backgroundColor: '#222', color: '#2ecc71', border: '1px solid #2ecc71', borderRadius: '6px', fontWeight: 'bold', fontSize: '0.82rem' }}>Export .ICS</button>}
+            <span onClick={() => setAgeFilter(prev => prev === 'Kids' ? 'All' : 'Kids')} style={{ cursor: 'pointer', marginLeft: '10px', padding: '4px 10px', backgroundColor: ageFilter === 'Kids' ? '#222' : 'transparent', borderRadius: '6px', border: ageFilter === 'Kids' ? '1px solid #555' : '1px solid transparent', opacity: ageFilter === 'Kids' ? 1 : 0.8, transition: 'all 0.2s' }}><span style={{ fontSize: '1.2rem' }}>🐯</span> Kids/Youth Events</span> <span onClick={() => { if (!user) { setShowAuthModal(true); return; } setShowSavedOnly(p => !p); }} style={{ cursor: 'pointer', padding: '4px 10px', backgroundColor: showSavedOnly ? '#ff9f43' : '#1a1a1a', color: showSavedOnly ? '#000' : '#ff9f43', fontWeight: 'bold', borderRadius: '6px', border: '1px solid #ff9f43' }}>★ My Schedule ({savedIds.length})</span>{showSavedOnly && savedIds.length > 0 && <button onClick={() => downloadIcs(events.filter(x => savedIds.includes(x.id)), 'my-bjj-season.ics')} style={{ marginLeft: '6px', cursor: 'pointer', padding: '4px 10px', backgroundColor: '#222', color: '#2ecc71', border: '1px solid #2ecc71', borderRadius: '6px', fontWeight: 'bold', fontSize: '0.82rem' }}>Export .ICS</button>}
           </div>
           
           <div style={{ display: 'flex', gap: '0' }}>
@@ -765,7 +787,8 @@ export default function App() {
           </select>
         </div>
 
-        {viewMode === 'calendar' ? (
+        {showSavedOnly && user && (<div style={{ backgroundColor:'#141820', border:'1px solid #3155', borderRadius:'8px', padding:'12px 16px', marginBottom:'18px', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'10px' }}><span style={{ color:'#e2e8f0', fontSize:'0.92rem' }}>Showing <strong>{savedIds.length}</strong> saved tournaments in your personal schedule ({user.email}).</span>{savedIds.length > 0 && <button onClick={() => downloadIcs(events.filter(x => savedIds.includes(x.id)), 'my-matdates-schedule.ics')} style={{ backgroundColor:'#1e293b', color:'#38bdf8', border:'1px solid #38bdf8', borderRadius:'6px', padding:'7px 12px', fontWeight:'bold', cursor:'pointer', fontSize:'0.85rem' }}>📅 Add My {savedIds.length} Saved Events to Phone Calendar</button>}</div>)}
+          {viewMode === 'calendar' ? (
           <div style={{ backgroundColor: '#fff', padding: '15px', borderRadius: '8px', color: '#000' }}>
             <Calendar localizer={localizer} events={calendarEvents} startAccessor="start" endAccessor="end" style={{ height: 750 }} date={calendarDate} onNavigate={setCalendarDate} view={calendarView} onView={setCalendarView} views={['month', 'week', 'agenda']} onSelectEvent={(event) => { if(event.resource.link) window.open(event.resource.link, '_blank'); }} />
           </div>
