@@ -6,7 +6,8 @@ import { VenueIntelModal, useVenueTipCounts } from './VenueIntelModal';
 import { db, auth } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import AuthModal from './AuthModal';
-import { SponsorBanner } from './sponsorConfig'; 
+import { SponsorBanner } from './sponsorConfig';
+import { AnalyticsAndPwaManager, trackEvent } from './analytics'; 
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay } from 'date-fns';
 import { enUS } from 'date-fns/locale';
@@ -30,6 +31,7 @@ function CompetitorTable({ calcResult, event, onClose }) {
   const [tempUrl, setTempUrl] = useState("");
   const [storyPayload, setStoryPayload] = useState(null);
   const [watchTarget, setWatchTarget] = useState(null);
+  useEffect(() => { if (event && event.id) trackEvent('bracketOpens'); }, [event?.id]);
   const { getWatch, removeWatch } = useWatchedAthletes();
 
   useEffect(() => {
@@ -778,6 +780,7 @@ export default function App() {
         <button onClick={() => setIsAdmin(false)} style={{ backgroundColor: '#333', color: '#fff', border: 'none', borderRadius: '4px', padding: '4px 10px', cursor: 'pointer' }}>Close</button>
       </div>
       <SponsorBanner />
+      <AnalyticsAndPwaManager />
     </div>
     {pendingEvents.length === 0 ? <p style={{ margin: 0, color: '#aaa' }}>No pending submissions.</p> : pendingEvents.map(pev => (
       <div key={pev.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#222', padding: '10px', borderRadius: '6px', marginTop: '8px', flexWrap: 'wrap', gap: '8px' }}>

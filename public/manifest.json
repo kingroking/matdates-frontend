@@ -1,0 +1,30 @@
+{
+  "name": "MatDates \u2014 BJJ & Grappling Tournament Hub",
+  "short_name": "MatDates",
+  "description": "Track 1,400+ IBJJF, ADCC, JJWL & Smoothcomp tournaments, live rosters, and mat alerts.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0d0f14",
+  "theme_color": "#0d0f14",
+  "icons": [
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "/mat-icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/mat-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

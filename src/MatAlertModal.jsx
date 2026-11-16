@@ -1,3 +1,4 @@
+import { isIosSafariBrowser, trackEvent } from './analytics';
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, query, where, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -188,6 +189,8 @@ export function MatAlertModal({ event, comp, division, existingWatch, onRemove, 
       };
       const ref = await addDoc(collection(db, 'mat_watches'), payload);
       writeLocal([...readLocal(), { id: ref.id, ...payload }]);
+      trackEvent('matAlertsCreated');
+      if (fcmToken) trackEvent('pushAlertsEnabled');
       setDone(true);
     } catch (err) {
       alert('Could not save alert (' + (err.code || err.message) + ')');
@@ -236,9 +239,16 @@ export function MatAlertModal({ event, comp, division, existingWatch, onRemove, 
           </div>
         ) : (
           <form onSubmit={handleSave} style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
+            {isIosSafariBrowser() ? (
+              <div style={{ background:'#131b26', border:'1px solid #0284c7', borderRadius:'7px', padding:'10px 12px', fontSize:'0.79rem', color:'#cbd5e1', lineHeight:1.45 }}>
+                <div style={{ color:'#38bdf8', fontWeight:'bold', marginBottom:'3px' }}>{'\u{1F4F2}'} Want Instant iPhone Push Alerts?</div>
+                Tap Safari's <strong>Share ({'\u2B06\uFE0F'})</strong> {'\u2192'} <strong>"Add to Home Screen"</strong>, then open MatDates from your Home Screen icon — or use instant Email Alerts below right now!
+              </div>
+            ) : (
             <button type="button" onClick={enablePush} style={{ padding:'9px 12px', borderRadius:'6px', border: pushStatus === 'ready' ? '1px solid #2ecc71' : '1px solid #0284c7', background: pushStatus === 'ready' ? '#132a1c' : '#162536', color: pushStatus === 'ready' ? '#2ecc71' : '#38bdf8', fontWeight:'bold', cursor:'pointer', fontSize:'0.84rem' }}>
               {pushStatus === 'ready' ? '\u2713 Browser Push Enabled!' : pushStatus === 'requesting' ? 'Connecting Instant Push...' : '\u{1F4F2} Enable Instant Browser Push (Optional)'}
             </button>
+            )}
             {(pushStatus === 'email_only' || pushStatus === 'unsupported') && <div style={{ color:'#94a3b8', fontSize:'0.76rem' }}>Instant push isn't supported in this browser (e.g. in-app viewer or iOS outside Home Screen) — email alerts below will be used automatically.</div>}
             {pushStatus === 'denied' && <div style={{ color:'#fca5a5', fontSize:'0.76rem' }}>Notifications blocked in browser settings — using email fallback below.</div>}
             <div>

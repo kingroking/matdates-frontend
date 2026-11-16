@@ -1,3 +1,4 @@
+import { trackEvent } from './analytics';
 import { MatAlertModal, useWatchedAthletes } from './MatAlertModal';
 import { resolveEventUrl } from './locationFmt';
 import React, { useState, useEffect } from 'react';
@@ -155,6 +156,7 @@ export function AthleteSearchModal({ events, onClose, onOpenBracket }) {
   const [qStr, setQStr] = useState('');
 
   useEffect(() => {
+    trackEvent('athleteSearches');
     getDocs(query(collection(db, 'event_competitors'), where('event_id', '==', '__athlete_index__')))
       .then(snap => {
         const all = [];
