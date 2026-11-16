@@ -197,7 +197,7 @@ function CompetitorTable({ calcResult, event, onClose }) {
               )}
             </div>
             {(() => {
-              const rawU = resolveEventUrl(event) || event.link || '';
+              let rawU = ''; try { const r = typeof resolveEventUrl === 'function' ? resolveEventUrl(event) : ''; rawU = typeof r === 'string' && r ? r : String(event?.link || event?.url || ''); } catch { rawU = String(event?.link || event?.url || ''); }
               if (!rawU || !rawU.startsWith('http')) return null;
               const bracketU = rawU.includes('smoothcomp.com') ? rU.replace(/\/$/, '') + '/schedule' : rawU;
               return (
