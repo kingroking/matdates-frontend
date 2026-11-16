@@ -1,6 +1,7 @@
 import { formatEventLoc, resolveEventUrl } from './locationFmt';
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, addDoc, query, where, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { VenueIntelModal, useVenueTipCounts } from './VenueIntelModal';
 import { db, auth } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import AuthModal from './AuthModal'; 
@@ -292,6 +293,9 @@ export default function App() {
   const [showCalcModal, setShowCalcModal] = useState(false);
   const [selectedCalcEvent, setSelectedCalcEvent] = useState(null);
   const [selectedCompetitorEvent, setSelectedCompetitorEvent] = useState(null);
+  const [selectedCommentEvent, setSelectedCommentEvent] = useState(null);
+  const [tipRefreshTick, setTipRefreshTick] = useState(0);
+  const getTipCount = useVenueTipCounts(tipRefreshTick);
 
   const [showReminderModal, setShowReminderModal] = useState(false);
   const [selectedReminderEvent, setSelectedReminderEvent] = useState(null);
@@ -718,6 +722,17 @@ export default function App() {
         />
       )}
 
+      {selectedCommentEvent && (
+        <VenueIntelModal
+          event={selectedCommentEvent}
+          user={user}
+          isAdmin={isAdmin}
+          onRequireAuth={() => setShowAuthModal(true)}
+          onClose={() => setSelectedCommentEvent(null)}
+          onChanged={() => setTipRefreshTick(t => t + 1)}
+        />
+      )}
+
       <div style={{ maxWidth: '1200px', margin: '0 auto', minHeight: 'calc(100vh - 120px)' }}>
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
   <div onClick={handleLogoClick} style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', userSelect: 'none' }}>
@@ -879,11 +894,11 @@ export default function App() {
                       style={{ flex: 1, backgroundColor: '#222', color: '#fff', border: '1px solid #444', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', minWidth: '120px' }}
                     >
                       ⏰ Remind Me
-                    </button> <button onClick={() => downloadIcs([ev], `${ev.id}.ics`)} title="Add to Calendar (.ics)" style={{ backgroundColor: '#222', color: '#ccc', border: '1px solid #444', padding: '8px 10px', borderRadius: '4px', cursor: 'pointer' }}>+ Cal</button>
+                    </button> <button onClick={() => downloadIcs([ev], `${ev.id}.ics`)} title="Add to Calendar (.ics)" style={{ backgroundColor: '#222', color: '#ccc', border: '1px solid #444', padding: '8px 10px', borderRadius: '4px', cursor: 'pointer' }}>+ Cal</button> {(() => { const tc = getTipCount(ev); return (<button onClick={() => setSelectedCommentEvent(ev)} title="Venue & Event Intel" style={{ backgroundColor: tc > 0 ? '#162536' : '#222', color: tc > 0 ? '#38bdf8' : '#ccc', border: tc > 0 ? '1px solid #0284c7' : '1px solid #444', padding: '8px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: tc > 0 ? 'bold' : 'normal', whiteSpace: 'nowrap' }}>💬 Tips{tc > 0 ? ` (${tc})` : ''}</button>); })()}
 
                     {!isStreamOnly && extLink && (
                       <a href={extLink} target="_blank" rel="noreferrer" style={{ flex: 1, textAlign: 'center', color: '#fff', textDecoration: 'none', backgroundColor: '#333', padding: '8px 12px', borderRadius: '4px', fontWeight: 'bold', minWidth: '120px' }}>
-                        {ev.type === 'Super Fight' ? (/flograppling|ufc|onefc|youtube/i.test(extLink) ? '📺 Card & St' : '🥋 Event Info') : '🎟️ Register'}
+                        {ev.type === 'Super Fight' ? (/flograppling|ufc|onefc|youtube/i.test(extLink) ? '📺 Card & Stream' : '🥋 Event Info') : '🎟️ Register'}
                       </a>
                     )}
                     {streamUrl ? (
