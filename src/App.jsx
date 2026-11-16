@@ -1,6 +1,7 @@
 import { formatEventLoc, resolveEventUrl } from './locationFmt';
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, addDoc, query, where, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { MatAlertModal } from './MatAlertModal';
 import { VenueIntelModal, useVenueTipCounts } from './VenueIntelModal';
 import { db, auth } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -27,6 +28,7 @@ function CompetitorTable({ calcResult, event, onClose }) {
   const [editingCompId, setEditingCompId] = useState(null);
   const [tempUrl, setTempUrl] = useState("");
   const [storyPayload, setStoryPayload] = useState(null);
+  const [watchTarget, setWatchTarget] = useState(null);
 
   useEffect(() => {
     const fetchCompetitors = async () => {
@@ -214,6 +216,7 @@ function CompetitorTable({ calcResult, event, onClose }) {
         </div>
 
         {storyPayload && <StoryShareModal payload={storyPayload} onClose={() => setStoryPayload(null)} />}
+        {watchTarget && <MatAlertModal event={event} comp={watchTarget.comp} division={watchTarget.division} onClose={() => setWatchTarget(null)} />}
           <EventSquadChips competitors={liveCompetitors} onSelectGym={setSearchTerm} />
           <div style={{ overflowY: 'auto', backgroundColor: '#1a1a1a', borderRadius: '8px', border: '1px solid #333', padding: '10px' }}>
           {loading ? (
@@ -228,7 +231,7 @@ function CompetitorTable({ calcResult, event, onClose }) {
                   <tbody>
                     {groupedCompetitors[division].map(comp => (
                       <tr key={comp.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
-                        <td style={{ padding: "12px", fontWeight: "bold", color: "#fff", width: "30%" }}><a href={getProfileLink(comp)} target="_blank" rel="noreferrer" style={{ color: "#fff", textDecoration: "none" }}>{comp.Name}</a></td>
+                        <td style={{ padding: "12px", fontWeight: "bold", color: "#fff", width: "30%" }}><a href={getProfileLink(comp)} target="_blank" rel="noreferrer" style={{ color: "#fff", textDecoration: "none" }}>{comp.Name}</a> <button onClick={() => setWatchTarget({ comp, division })} title="Get live Mat # & Match Time alerts" style={{ marginLeft: "6px", background: "#162536", color: "#38bdf8", border: "1px solid #0284c7", borderRadius: "4px", padding: "2px 7px", fontSize: "0.72rem", cursor: "pointer", fontWeight: "bold", whiteSpace: "nowrap" }}>🔔 Mat Alert</button></td>
                         <td style={{ padding: '12px', color: '#ccc', width: '35%' }}>{comp.Academy}</td>
                         <td style={{ padding: '12px', textAlign: 'right', width: '35%' }}>
                           {(isKid(comp) && !comp.JitsProfile) || (!isKid(comp) && (!comp.Profile || comp.Profile === "#")) ? (
