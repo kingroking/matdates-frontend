@@ -1,7 +1,7 @@
 import { formatEventLoc, resolveEventUrl } from './locationFmt';
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, addDoc, query, where, doc, setDoc, deleteDoc } from 'firebase/firestore';
-import { MatAlertModal } from './MatAlertModal';
+import { MatAlertModal, WatchedAthletesModal, useWatchedAthletes } from './MatAlertModal';
 import { VenueIntelModal, useVenueTipCounts } from './VenueIntelModal';
 import { db, auth } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -29,6 +29,7 @@ function CompetitorTable({ calcResult, event, onClose }) {
   const [tempUrl, setTempUrl] = useState("");
   const [storyPayload, setStoryPayload] = useState(null);
   const [watchTarget, setWatchTarget] = useState(null);
+  const { getWatch, removeWatch } = useWatchedAthletes();
 
   useEffect(() => {
     const fetchCompetitors = async () => {
@@ -216,7 +217,7 @@ function CompetitorTable({ calcResult, event, onClose }) {
         </div>
 
         {storyPayload && <StoryShareModal payload={storyPayload} onClose={() => setStoryPayload(null)} />}
-        {watchTarget && <MatAlertModal event={event} comp={watchTarget.comp} division={watchTarget.division} onClose={() => setWatchTarget(null)} />}
+        {watchTarget && <MatAlertModal event={event} comp={watchTarget.comp} division={watchTarget.division} existingWatch={getWatch(watchTarget.comp.Name, event.id)} onRemove={removeWatch} onClose={() => setWatchTarget(null)} />}
           <EventSquadChips competitors={liveCompetitors} onSelectGym={setSearchTerm} />
           <div style={{ overflowY: 'auto', backgroundColor: '#1a1a1a', borderRadius: '8px', border: '1px solid #333', padding: '10px' }}>
           {loading ? (
@@ -231,7 +232,7 @@ function CompetitorTable({ calcResult, event, onClose }) {
                   <tbody>
                     {groupedCompetitors[division].map(comp => (
                       <tr key={comp.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
-                        <td style={{ padding: "12px", fontWeight: "bold", color: "#fff", width: "30%" }}><a href={getProfileLink(comp)} target="_blank" rel="noreferrer" style={{ color: "#fff", textDecoration: "none" }}>{comp.Name}</a> <button onClick={() => setWatchTarget({ comp, division })} title="Get live Mat # & Match Time alerts" style={{ marginLeft: "6px", background: "#162536", color: "#38bdf8", border: "1px solid #0284c7", borderRadius: "4px", padding: "2px 7px", fontSize: "0.72rem", cursor: "pointer", fontWeight: "bold", whiteSpace: "nowrap" }}>🔔 Mat Alert</button></td>
+                        <td style={{ padding: "12px", fontWeight: "bold", color: "#fff", width: "30%" }}><a href={getProfileLink(comp)} target="_blank" rel="noreferrer" style={{ color: "#fff", textDecoration: "none" }}>{comp.Name}</a> <button onClick={() => setWatchTarget({ comp, division })} title="Live Mat # & Match Time alerts" style={{ marginLeft: "6px", background: getWatch(comp.Name, event.id) ? "#132a1c" : "#162536", color: getWatch(comp.Name, event.id) ? "#2ecc71" : "#38bdf8", border: getWatch(comp.Name, event.id) ? "1px solid #2ecc71" : "1px solid #0284c7", borderRadius: "4px", padding: "2px 7px", fontSize: "0.72rem", cursor: "pointer", fontWeight: "bold", whiteSpace: "nowrap" }}>{getWatch(comp.Name, event.id) ? (getWatch(comp.Name, event.id).fcmToken ? "\u2713 Watching \u{1F4F2}" : "\u2713 Watching \u2709\uFE0F") : "\u{1F514} Mat Alert"}</button></td>
                         <td style={{ padding: '12px', color: '#ccc', width: '35%' }}>{comp.Academy}</td>
                         <td style={{ padding: '12px', textAlign: 'right', width: '35%' }}>
                           {(isKid(comp) && !comp.JitsProfile) || (!isKid(comp) && (!comp.Profile || comp.Profile === "#")) ? (
@@ -283,6 +284,8 @@ export default function App() {
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showAthleteSearch, setShowAthleteSearch] = useState(false);
+  const [showWatchedModal, setShowWatchedModal] = useState(false);
+  const { watches: myWatches, removeWatch: removeMyWatch } = useWatchedAthletes();
   
   const [searchTerm, setSearchTerm] = useState('');
   const [federationFilter, setFederationFilter] = useState('All');
@@ -599,6 +602,7 @@ export default function App() {
     <div style={{ backgroundColor: '#000', minHeight: '100vh', color: '#fff', padding: '20px', fontFamily: 'sans-serif', position: 'relative' }}>
       
       {showAuthModal && <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />}
+      {showWatchedModal && <WatchedAthletesModal watches={myWatches} onRemove={removeMyWatch} onClose={() => setShowWatchedModal(false)} onOpenAthlete={(w) => { const ev = events.find(x => x.id === w.eventId); setShowWatchedModal(false); if (ev) { setCalcResult(w.athleteName); setSelectedCompetitorEvent(ev); } else if (w.eventLink) { window.open(w.eventLink, '_blank'); } }} />}
       {showLeaderboard && <LeaderboardModal onClose={() => setShowLeaderboard(false)} />}
       {showAthleteSearch && <AthleteSearchModal events={events} onClose={() => setShowAthleteSearch(false)} onOpenBracket={(ev, nm) => { setShowAthleteSearch(false); setCalcResult(nm); setSelectedCompetitorEvent(ev); }} />}
       {showSubmitModal && (
@@ -747,7 +751,7 @@ export default function App() {
       <p style={{ color: '#9aa4b2', margin: '4px 0 0 0', fontSize: '0.82rem', letterSpacing: '3px', fontWeight: '600', textTransform: 'uppercase' }}>The BJJ Event Hub</p>
     </div>
   </div>
-  <div style={{ display:'flex', gap:'10px', flexWrap:'wrap' }}><button onClick={() => setShowAthleteSearch(true)} style={{ backgroundColor:'#141820', color:'#38bdf8', padding:'10px 15px', border:'1px solid #0284c7', borderRadius:'5px', fontWeight:'bold', cursor:'pointer' }}>🔍 Athlete Lookup</button><button onClick={() => setShowLeaderboard(true)} style={{ backgroundColor:'#141820', color:'#e2e8f0', padding:'10px 16px', border:'1px solid #475569', borderRadius:'5px', fontWeight:'bold', cursor:'pointer' }}>🏆 Medal Standings</button><button onClick={() => user ? signOut(auth) : setShowAuthModal(true)} style={{ backgroundColor:'transparent', color:'#94a3b8', padding:'10px 12px', border:'1px solid #334155', borderRadius:'5px', cursor:'pointer', fontSize:'0.88rem' }}>{user ? 'Sign Out' : 'Sign In'}</button><button onClick={() => setShowSubmitModal(true)} style={{ backgroundColor: '#ff9f43', color: '#000', padding: '10px 20px', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer' }}>+ Submit Event</button></div>
+  <div style={{ display:'flex', gap:'10px', flexWrap:'wrap' }}><button onClick={() => setShowAthleteSearch(true)} style={{ backgroundColor:'#141820', color:'#38bdf8', padding:'10px 15px', border:'1px solid #0284c7', borderRadius:'5px', fontWeight:'bold', cursor:'pointer' }}>🔍 Athlete Lookup</button><button onClick={() => setShowWatchedModal(true)} style={{ backgroundColor: myWatches.length > 0 ? '#132a1c' : '#141820', color: myWatches.length > 0 ? '#2ecc71' : '#94a3b8', padding:'10px 14px', border: myWatches.length > 0 ? '1px solid #2ecc71' : '1px solid #334155', borderRadius:'5px', fontWeight:'bold', cursor:'pointer' }}>{'\u{1F514}'} Watching ({myWatches.length})</button><button onClick={() => setShowLeaderboard(true)} style={{ backgroundColor:'#141820', color:'#e2e8f0', padding:'10px 16px', border:'1px solid #475569', borderRadius:'5px', fontWeight:'bold', cursor:'pointer' }}>🏆 Medal Standings</button><button onClick={() => user ? signOut(auth) : setShowAuthModal(true)} style={{ backgroundColor:'transparent', color:'#94a3b8', padding:'10px 12px', border:'1px solid #334155', borderRadius:'5px', cursor:'pointer', fontSize:'0.88rem' }}>{user ? 'Sign Out' : 'Sign In'}</button><button onClick={() => setShowSubmitModal(true)} style={{ backgroundColor: '#ff9f43', color: '#000', padding: '10px 20px', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer' }}>+ Submit Event</button></div>
 </header>
 {isAdmin && (
   <div style={{ backgroundColor: '#161616', border: '1px solid #ff9f43', borderRadius: '8px', padding: '16px', marginBottom: '20px' }}>
