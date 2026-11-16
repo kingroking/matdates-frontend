@@ -59,7 +59,7 @@ export default function AuthModal({ isOpen, onClose }) {
             <label style={{ display:'block', color:'#cbd5e1', fontSize:'0.78rem', fontWeight:'bold', marginBottom:'4px' }}>Password {isSignUp ? '(6+ characters)' : ''}</label>
             <input type="password" placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} minLength={6} style={inp} required />
           </div>
-          <button type="submit" style={{ padding:'11px', borderRadius:'6px', backgroundColor:'#e31837', color:'#fff', border:ht:'bold', fontSize:'0.95rem', cursor:'pointer', marginTop:'2px' }}>
+          <button type="submit" style={{ padding:'11px', borderRadius:'6px', backgroundColor:'#e31837', color:'#fff', border:'none', fontWeight:'bold', fontSize:'0.95rem', cursor:'pointer', marginTop:'2px' }}>
             {isSignUp ? 'Create Account' : 'Sign In'}
           </button>
         </form>
