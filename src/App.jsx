@@ -1,4 +1,4 @@
-import { formatEventLoc } from './locationFmt';
+import { formatEventLoc, resolveEventUrl } from './locationFmt';
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, addDoc, query, where, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db, auth } from './firebase';
@@ -9,7 +9,7 @@ import { format, parse, startOfWeek, getDay } from 'date-fns';
 import { enUS } from 'date-fns/locale';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
 import { calculateWeightClass } from './rulesets';
-import { StoryShareModal, EventSquadChips, LeaderboardModal } from './phase4Tools';
+import { StoryShareModal, EventSquadChips, LeaderboardModal, AthleteSearchModal } from './phase4Tools';
 
 const cleanProfileUrl = (url) => {
   if (!url || url === "#") return "#";
@@ -268,6 +268,7 @@ export default function App() {
   const [clickCount, setClickCount] = useState(0);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showAthleteSearch, setShowAthleteSearch] = useState(false);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [federationFilter, setFederationFilter] = useState('All');
@@ -582,6 +583,7 @@ export default function App() {
       
       {showAuthModal && <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />}
       {showLeaderboard && <LeaderboardModal onClose={() => setShowLeaderboard(false)} />}
+      {showAthleteSearch && <AthleteSearchModal events={events} onClose={() => setShowAthleteSearch(false)} onOpenBracket={(ev, nm) => { setShowAthleteSearch(false); setCalcResult(nm); setSelectedCompetitorEvent(ev); }} />}
       {showSubmitModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
           <div style={{ backgroundColor: '#111', padding: '30px', borderRadius: '12px', border: '1px solid #444', width: '90%', maxWidth: '500px' }}>
@@ -717,7 +719,7 @@ export default function App() {
       <p style={{ color: '#9aa4b2', margin: '4px 0 0 0', fontSize: '0.82rem', letterSpacing: '3px', fontWeight: '600', textTransform: 'uppercase' }}>The BJJ Event Hub</p>
     </div>
   </div>
-  <div style={{ display:'flex', gap:'10px', flexWrap:'wrap' }}><button onClick={() => setShowLeaderboard(true)} style={{ backgroundColor:'#141820', color:'#e2e8f0', padding:'10px 16px', border:'1px solid #475569', borderRadius:'5px', fontWeight:'bold', cursor:'pointer' }}>🏆 Medal Standings</button><button onClick={() => user ? signOut(auth) : setShowAuthModal(true)} style={{ backgroundColor:'transparent', color:'#94a3b8', padding:'10px 12px', border:'1px solid #334155', borderRadius:'5px', cursor:'pointer', fontSize:'0.88rem' }}>{user ? 'Sign Out' : 'Sign In'}</button><button onClick={() => setShowSubmitModal(true)} style={{ backgroundColor: '#ff9f43', color: '#000', padding: '10px 20px', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer' }}>+ Submit Event</button></div>
+  <div style={{ display:'flex', gap:'10px', flexWrap:'wrap' }}><button onClick={() => setShowAthleteSearch(true)} style={{ backgroundColor:'#141820', color:'#38bdf8', padding:'10px 15px', border:'1px solid #0284c7', borderRadius:'5px', fontWeight:'bold', cursor:'pointer' }}>🔍 Athlete Lookup</button><button onClick={() => setShowLeaderboard(true)} style={{ backgroundColor:'#141820', color:'#e2e8f0', padding:'10px 16px', border:'1px solid #475569', borderRadius:'5px', fontWeight:'bold', cursor:'pointer' }}>🏆 Medal Standings</button><button onClick={() => user ? signOut(auth) : setShowAuthModal(true)} style={{ backgroundColor:'transparent', color:'#94a3b8', padding:'10px 12px', border:'1px solid #334155', borderRadius:'5px', cursor:'pointer', fontSize:'0.88rem' }}>{user ? 'Sign Out' : 'Sign In'}</button><button onClick={() => setShowSubmitModal(true)} style={{ backgroundColor: '#ff9f43', color: '#000', padding: '10px 20px', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer' }}>+ Submit Event</button></div>
 </header>
 {isAdmin && (
   <div style={{ backgroundColor: '#161616', border: '1px solid #ff9f43', borderRadius: '8px', padding: '16px', marginBottom: '20px' }}>
@@ -800,6 +802,8 @@ export default function App() {
               const isADCC = (ev.id && ev.id.toLowerCase().includes('adcc')) || (ev.name && ev.name.toLowerCase().includes('adcc'));
               
               const isStreamOnly = Boolean(ev.id && (ev.id.toLowerCase().startsWith('flograp') || ev.id.toLowerCase().startsWith('ufc') || ev.id.toLowerCase().startsWith('one-') || ev.id.toLowerCase().includes('fightpass'))) || /subscription|fight pass|flograppling|prime video|onefc|ppv/i.test(ev.cost || '');
+              const extLink = resolveEventUrl(ev);
+              const streamUrl = resolveEventUrl({ ...ev, link: ev.stream_link || (isStreamOnly ? ev.link : '') });
               const evBorderColor = isADCC ? '#F1C40F' : (ev.type === 'Super Fight' || isStreamOnly) ? '#e31837' : (isJJWL ? '#ffffff' : (ev.color || '#ff9f43'));
               
               return (
@@ -867,14 +871,13 @@ export default function App() {
                       ⏰ Remind Me
                     </button> <button onClick={() => downloadIcs([ev], `${ev.id}.ics`)} title="Add to Calendar (.ics)" style={{ backgroundColor: '#222', color: '#ccc', border: '1px solid #444', padding: '8px 10px', borderRadius: '4px', cursor: 'pointer' }}>+ Cal</button>
 
-                    {!isStreamOnly && ev.link && (
-                      <a href={ev.link} target="_blank" rel="noreferrer" style={{ flex: 1, textAlign: 'center', color: '#fff', textDecoration: 'none', backgroundColor: '#333', padding: '8px 12px', borderRadius: '4px', fontWeight: 'bold', minWidth: '120px' }}>
-                        🎟️ Register
+                    {!isStreamOnly && extLink && (
+                      <a href={extLink} target="_blank" rel="noreferrer" style={{ flex: 1, textAlign: 'center', color: '#fff', textDecoration: 'none', backgroundColor: '#333', padding: '8px 12px', borderRadius: '4px', fontWeight: 'bold', minWidth: '120px' }}>
+                        {ev.type === 'Super Fight' ? (/flograppling|ufc|onefc|youtube/i.test(extLink) ? '📺 Card & St' : '🥋 Event Info') : '🎟️ Register'}
                       </a>
                     )}
-
-                    {(isStreamOnly && ev.link) || ev.stream_link ? (
-                      <a href={ev.stream_link || ev.link} target="_blank" rel="noreferrer" style={{ flex: 1, textAlign: 'center', color: evBorderColor, textDecoration: 'none', backgroundColor: '#1a1a1a', border: `1px solid ${evBorderColor}`, padding: '8px 12px', borderRadius: '4px', fontWeight: 'bold', minWidth: '120px' }}>
+                    {streamUrl ? (
+                      <a href={streamUrl} target="_blank" rel="noreferrer" style={{ flex: 1, textAlign: 'center', color: evBorderColor, textDecoration: 'none', backgroundColor: '#1a1a1a', border: `1px solid ${evBorderColor}`, padding: '8px 12px', borderRadius: '4px', fontWeight: 'bold', minWidth: '120px' }}>
                         📺 Watch
                       </a>
                     ) : null}
