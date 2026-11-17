@@ -63,6 +63,154 @@ export function EventSquadChips({ competitors, onSelectGym }) {
     </div>
   );
 }
+function TrophyCardModal({ cardData, onClose }) {
+  const [imgUrl, setImgUrl] = React.useState('');
+
+  React.useEffect(() => {
+    if (!cardData) return;
+    const c = document.createElement('canvas');
+    c.width = 1080;
+    c.height = 1920;
+    const ctx = c.getContext('2d');
+
+    // Deep arena gradient background
+    const grad = ctx.createLinearGradient(0, 0, 0, 1920);
+    grad.addColorStop(0, '#090d16');
+    grad.addColorStop(0.5, '#111827');
+    grad.addColorStop(1, '#090d16');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 1080, 1920);
+
+    // Gold border frame
+    ctx.strokeStyle = '#f59e0b';
+    ctx.lineWidth = 8;
+    ctx.strokeRect(44, 44, 992, 1832);
+
+    // Top brand header
+    ctx.fillStyle = '#ff9f43';
+    ctx.font = 'bold 42px system-ui, -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('MATDATES.COM • 2026 VERIFIED PODIUMS', 540, 140);
+
+    // Subtitle badge
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = 'bold 34px system-ui, -apple-system, sans-serif';
+    ctx.fillText(cardData.badge || '2026 SEASON TROPHY CARD', 540, 220);
+
+    // Main Title (Athlete or Academy Name) - word-wrapped cleanly
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 72px system-ui, -apple-system, sans-serif';
+    const words = (cardData.title || '').split(/\s+/);
+    let line = '', y = 330;
+    for (let i = 0; i < words.length; i++) {
+      const test = line + words[i] + ' ';
+      if (ctx.measureText(test).width > 900 && line) {
+        ctx.fillText(line.trim(), 540, y);
+        line = words[i] + ' ';
+        y += 84;
+      } else {
+        line = test;
+      }
+    }
+    if (line.trim()) { ctx.fillText(line.trim(), 540, y); y += 70; }
+
+    if (cardData.subtitle) {
+      ctx.fillStyle = '#cbd5e1';
+      ctx.font = 'bold 38px system-ui, -apple-system, sans-serif';
+      ctx.fillText(cardData.subtitle.slice(0, 48), 540, y + 10);
+      y += 75;
+    }
+
+    // Gold / Silver / Bronze Medal Boxes
+    const boxY = Math.max(y + 30, 520);
+    const medals = [
+      ['GOLD', cardData.gold, '#facc15', '#422006'],
+      ['SILVER', cardData.silver, '#e2e8f0', '#1e293b'],
+      ['BRONZE', cardData.bronze, '#fb923c', '#431407']
+    ];
+    medals.forEach(([lbl, val, col, bg], idx) => {
+      const bx = 90 + idx * 310;
+      ctx.fillStyle = bg;
+      ctx.fillRect(bx, boxY, 280, 220);
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 4;
+      ctx.strokeRect(bx, boxY, 280, 220);
+      ctx.fillStyle = col;
+      ctx.font = 'bold 84px system-ui, -apple-system, sans-serif';
+      ctx.fillText(String(val || 0), bx + 140, boxY + 115);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 30px system-ui, -apple-system, sans-serif';
+      ctx.fillText(lbl, bx + 140, boxY + 178);
+    });
+
+    // Highlights List
+    let hy = boxY + 305;
+    ctx.fillStyle = '#ff9f43';
+    ctx.font = 'bold 34px system-ui, -apple-system, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('2026 TOURNAMENT HIGHLIGHTS', 95, hy);
+    hy += 55;
+
+    (cardData.lines || []).slice(0, 9).forEach((ln) => {
+      ctx.fillStyle = '#161f30';
+      ctx.fillRect(90, hy - 38, 900, 78);
+      ctx.strokeStyle = '#2b3954';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(90, hy - 38, 900, 78);
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 28px system-ui, -apple-system, sans-serif';
+      const cleanLn = ln.length > 58 ? ln.slice(0, 56) + '…' : ln;
+      ctx.fillText(cleanLn, 115, hy + 10);
+      hy += 94;
+    });
+
+    // Footer CTA
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '32px system-ui, -apple-system, sans-serif';
+    ctx.fillText('Track Live BJJ Brackets, Mat Alerts & Standings at', 540, 1765);
+    ctx.fillStyle = '#38bdf8';
+    ctx.font = 'bold 46px system-ui, -apple-system, sans-serif';
+    ctx.fillText('matdates.com', 540, 1825);
+
+    setImgUrl(c.toDataURL('image/png'));
+  }, [cardData]);
+
+  const handleShare = async () => {
+    if (!imgUrl) return;
+    try {
+      const res = await fetch(imgUrl);
+      const blob = await res.blob();
+      const file = new File([blob], 'matdates-trophy-card.png', { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file], title: cardData.title, text: `${cardData.title} — 2026 BJJ Trophy Card via matdates.com` });
+        return;
+      }
+    } catch {}
+    const a = document.createElement('a');
+    a.href = imgUrl;
+    a.download = 'matdates-trophy-card.png';
+    a.click();
+  };
+
+  return (
+    <div onClick={onClose} style={{ position:'fixed', top:0, left:0, right:0, bottom:0, width:'100%', maxWidth:'100vw', backgroundColor:'rgba(0,0,0,0.9)', zIndex:10090, display:'flex', justifyContent:'center', alignItems:'center', padding:'12px', boxSizing:'border-box' }}>
+      <div onClick={e => e.stopPropagation()} style={{ backgroundColor:'#11141b', border:'1px solid #334155', borderRadius:'12px', padding:'14px', width:'100%', maxWidth:'380px', maxHeight:'88svh', overflowY:'auto', boxSizing:'border-box', textAlign:'center' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px' }}>
+          <strong style={{ color:'#fff', fontSize:'0.95rem' }}>📲 Share 2026 Trophy Card</strong>
+          <button onClick={onClose} style={{ background:'#1e293b', color:'#fff', border:'1px solid #475569', borderRadius:'6px', padding:'4px 10px', cursor:'pointer', fontWeight:'bold' }}>✕</button>
+        </div>
+        {imgUrl && <img src={imgUrl} alt="Trophy Card" style={{ width:'100%', maxHeight:'54svh', objectFit:'contain', borderRadius:'8px', border:'1px solid #2d3748', marginBottom:'10px' }} />}
+        <div style={{ display:'flex', gap:'8px' }}>
+          <button onClick={handleShare} style={{ flex:1, padding:'10px', borderRadius:'7px', background:'#ff9f43', color:'#000', border:'none', fontWeight:'bold', fontSize:'0.9rem', cursor:'pointer' }}>
+            📲 Share to IG Story / Save
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const normGymKey = (raw) => {
   const k = (raw || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   return ({
@@ -115,6 +263,7 @@ export function LeaderboardModal({ onClose }) {
   const [rosterCache, setRosterCache] = useState(null);
   const [loadingBucket, setLoadingBucket] = useState('');
   const [loadingAthShard, setLoadingAthShard] = useState('');
+  const [trophyCard, setTrophyCard] = useState(null);
 
   useEffect(() => {
     getDocs(query(collection(db, 'event_competitors'), where('event_id', '==', '__global_leaderboard__')))
@@ -185,7 +334,7 @@ export function LeaderboardModal({ onClose }) {
     const scClubs26 = [];
     rows.forEach(r => {
       const b = (r.Board || '').toLowerCase();
-      if (b === 'smoothcomp_clubs') return; // skip legacy lifetime-inflated rows
+      if (b === 'smoothcomp_clubs') { if (!rows.some(x => x.Board === 'smoothcomp_clubs_2026')) scClubs26.push(r); return; }
       if (b === 'smoothcomp_clubs_2026') { scClubs26.push(r); return; }
       const rFed = b.startsWith('ibjjf') ? 'IBJJF'
         : b.startsWith('adcc') ? 'ADCC'
@@ -292,8 +441,8 @@ export function LeaderboardModal({ onClose }) {
   }, [athQuery, athShardMap, fed, age]);
 
   const activeGym = selectedGymKey ? aggregated.byKey[selectedGymKey] : null;
-  const box = { position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.86)', zIndex:9999, display:'flex', justifyContent:'center', alignItems:'center', padding:'10px', boxSizing:'border-box' };
-  const card = { backgroundColor:'#11141b', padding:'14px', boxSizing:'border-box', overflowX:'hidden', borderRadius:'12px', border:'1px solid #2d3748', width:'100%', maxWidth:'900px', maxHeight:'88svh', display:'flex', flexDirection:'column', textAlign:'left' };
+  const box = { position:'fixed', top:0, left:0, right:0, bottom:0, width:'100%', maxWidth:'100vw', overflowX:'hidden', backgroundColor:'rgba(0,0,0,0.88)', zIndex:9999, display:'flex', justifyContent:'center', alignItems:'center', padding:'8px', boxSizing:'border-box' };
+  const card = { backgroundColor:'#11141b', padding:'12px', boxSizing:'border-box', overflowX:'hidden', borderRadius:'12px', border:'1px solid #2d3748', width:'calc(100vw - 16px)', maxWidth:'880px', maxHeight:'88svh', display:'flex', flexDirection:'column', textAlign:'left' };
 
   // Dedicated Full-View Academy Trophy Room when a gym is clicked!
   if (activeGym) {
@@ -322,16 +471,37 @@ export function LeaderboardModal({ onClose }) {
     return (
       <div onClick={onClose} style={box}>
         <div onClick={e => e.stopPropagation()} style={card}>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:'8px', marginBottom:'12px', flexShrink:0 }}>
+          {trophyCard && <TrophyCardModal cardData={trophyCard} onClose={() => setTrophyCard(null)} />}
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:'6px', flexWrap:'wrap', marginBottom:'10px', flexShrink:0 }}>
             <button
               onClick={() => setSelectedGymKey(null)}
-              style={{ background:'#1e293b', color:'#38bdf8', border:'1px solid #38bdf8', borderRadius:'6px', padding:'7px 12px', cursor:'pointer', fontWeight:'bold', fontSize:'0.84rem' }}
+              style={{ background:'#1e293b', color:'#38bdf8', border:'1px solid #38bdf8', borderRadius:'6px', padding:'6px 10px', cursor:'pointer', fontWeight:'bold', fontSize:'0.8rem' }}
             >
-              ← Back to Standings
+              ← Standings
             </button>
-            <button onClick={onClose} style={{ background:'#1e293b', color:'#fff', border:'1px solid #475569', borderRadius:'6px', padding:'7px 12px', cursor:'pointer', fontWeight:'bold', fontSize:'0.84rem' }}>
-              ✕ Close
-            </button>
+            <div style={{ display:'flex', gap:'6px', alignItems:'center' }}>
+              <button
+                type="button"
+                onClick={() => setTrophyCard({
+                  badge: `GLOBAL RANK #${activeGym.trueRank} • ACADEMY TROPHY CARD`,
+                  title: activeGym.Academy,
+                  subtitle: `${activeGym.Points.toLocaleString()} Season Pts • ${Array.from(activeGym.Feds).join(' / ')}`,
+                  gold: activeGym.Gold,
+                  silver: activeGym.Silver,
+                  bronze: activeGym.Bronze,
+                  lines: [
+                    ...indivList.slice(0, 6).map(m => `${Number(m.p) === 1 ? '🥇' : Number(m.p) === 2 ? '🥈' : '🥉'} ${m.n} — ${m.ev}`),
+                    ...eventSummaries.slice(0, 4).map(ev => `${ev.n} (${ev.d.split('(')[0].trim()})`)
+                  ]
+                })}
+                style={{ background:'#ff9f43', color:'#000', border:'none', borderRadius:'6px', padding:'6px 10px', cursor:'pointer', fontWeight:'bold', fontSize:'0.78rem' }}
+              >
+                📲 Share Card
+              </button>
+              <button onClick={onClose} style={{ background:'#1e293b', color:'#fff', border:'1px solid #475569', borderRadius:'6px', padding:'6px 10px', cursor:'pointer', fontWeight:'bold', fontSize:'0.8rem' }}>
+                ✕
+              </button>
+            </div>
           </div>
 
           <div style={{ background:'#161d29', border:'1px solid #2b384e', borderRadius:'10px', padding:'12px 14px', marginBottom:'12px', flexShrink:0 }}>
@@ -469,6 +639,7 @@ export function LeaderboardModal({ onClose }) {
 
   return (
     <div onClick={onClose} style={box}>
+      {trophyCard && <TrophyCardModal cardData={trophyCard} onClose={() => setTrophyCard(null)} />}
       <div onClick={e => e.stopPropagation()} style={card}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'10px', gap:'10px', flexShrink:0 }}>
           <div style={{ minWidth:0 }}>
@@ -545,10 +716,27 @@ export function LeaderboardModal({ onClose }) {
                         <div style={{ color:'#fff', fontWeight:'bold', fontSize:'0.96rem' }}>{a.name}</div>
                         <div style={{ color:'#ff9f43', fontSize:'0.78rem', fontWeight:'600' }}>{a.academy}</div>
                       </div>
-                      <div style={{ display:'flex', gap:'6px', fontSize:'0.82rem', background:'#111620', padding:'4px 9px', borderRadius:'6px', border:'1px solid #263145' }}>
-                        <span>🥇 <strong>{a.g}</strong></span>
-                        <span>🥈 <strong>{a.s}</strong></span>
-                        <span>🥉 <strong>{a.b}</strong></span>
+                      <div style={{ display:'flex', gap:'6px', alignItems:'center', flexWrap:'wrap' }}>
+                        <div style={{ display:'flex', gap:'6px', fontSize:'0.8rem', background:'#111620', padding:'4px 8px', borderRadius:'6px', border:'1px solid #263145' }}>
+                          <span>🥇 <strong>{a.g}</strong></span>
+                          <span>🥈 <strong>{a.s}</strong></span>
+                          <span>🥉 <strong>{a.b}</strong></span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setTrophyCard({
+                            badge: '2026 VERIFIED ATHLETE TROPHY CARD',
+                            title: a.name,
+                            subtitle: a.academy,
+                            gold: a.g,
+                            silver: a.s,
+                            bronze: a.b,
+                            lines: a.events.map(m => `${Number(m.p) === 1 ? '🥇' : Number(m.p) === 2 ? '🥈' : '🥉'} ${m.ev} (${m.d.split('/').slice(-2).join('/').trim()})`)
+                          })}
+                          style={{ background:'#ff9f43', color:'#000', border:'none', borderRadius:'6px', padding:'5px 9px', fontSize:'0.75rem', fontWeight:'bold', cursor:'pointer' }}
+                        >
+                          📲 Share Card
+                        </button>
                       </div>
                     </div>
                     <div style={{ display:'flex', flexDirection:'column', gap:'4px' }}>
@@ -574,14 +762,14 @@ export function LeaderboardModal({ onClose }) {
                   onClick={() => openTrophyRoom(r.key, 'ALL')}
                   style={{ display:'flex', flexDirection:'column', gap:'6px', padding:'11px 12px', borderBottom:'1px solid #1f2532', cursor:'pointer' }}
                 >
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:'8px' }}>
-                    <div style={{ display:'flex', alignItems:'baseline', gap:'7px', minWidth:0, flex:1 }}>
-                      <strong style={{ color: i < 3 ? '#facc15' : '#64748b', fontSize:'0.9rem', flexShrink:0 }}>#{r.trueRank}</strong>
-                      <strong style={{ color:'#fff', fontSize:'0.96rem', lineHeight:1.3, wordBreak:'break-word' }}>{r.Academy}</strong>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:'6px', width:'100%', minWidth:0 }}>
+                    <div style={{ display:'flex', alignItems:'baseline', gap:'6px', minWidth:0, flex:1 }}>
+                      <strong style={{ color: i < 3 ? '#facc15' : '#64748b', fontSize:'0.86rem', flexShrink:0 }}>#{r.trueRank}</strong>
+                      <strong style={{ color:'#fff', fontSize:'0.92rem', lineHeight:1.28, overflowWrap:'anywhere' }}>{r.Academy}</strong>
                     </div>
-                    <div style={{ display:'flex', alignItems:'center', gap:'6px', flexShrink:0 }}>
-                      <span style={{ color:'#34d399', fontWeight:'bold', fontSize:'0.85rem', whiteSpace:'nowrap' }}>{r.Points.toLocaleString()} pts</span>
-                      <span style={{ color:'#38bdf8', fontSize:'0.76rem', fontWeight:'bold' }}>View →</span>
+                    <div style={{ display:'flex', alignItems:'center', gap:'5px', flexShrink:0 }}>
+                      <span style={{ color:'#34d399', fontWeight:'bold', fontSize:'0.8rem', whiteSpace:'nowrap' }}>{r.Points.toLocaleString()} pts</span>
+                      <span style={{ background:'#162536', border:'1px solid #0284c7', borderRadius:'5px', padding:'2px 6px', color:'#38bdf8', fontSize:'0.72rem', fontWeight:'bold', whiteSpace:'nowrap' }}>View →</span>
                     </div>
                   </div>
 
