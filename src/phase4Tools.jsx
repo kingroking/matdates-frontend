@@ -251,14 +251,22 @@ const normGymKey = (raw) => {
   })[k] || k;
 };
 
-const bucketOfKey = (k) => (k && k[0] >= 'a' && k[0] <= 'z' ? k[0] : '0');
+const bucketOfKey = (k) => {
+  if (!k) return '00';
+  let h = 2166136261;
+  for (let i = 0; i < k.length; i++) {
+    h ^= k.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return (h & 0xff).toString(16).padStart(2, '0');
+};
 
 const athLastBucket = (qRaw) => {
   const cleaned = (qRaw || '').toLowerCase().replace(/\b(jr\.?|sr\.?|ii|iii|iv)\b/g, '').trim();
   const parts = cleaned.split(/\s+/).map(p => p.replace(/[^a-z0-9]/g, '')).filter(Boolean);
   if (!parts.length) return '';
-  const ch = parts[parts.length - 1][0];
-  return ch >= 'a' && ch <= 'z' ? ch : '0';
+  const ln = parts[parts.length - 1];
+  return (ln.length >= 2 ? ln.slice(0, 2) : `${ln}_`).toLowerCase();
 };
 
 const athleteMatchesQuery = (recName, qRaw) => {
@@ -307,27 +315,27 @@ export function LeaderboardModal({ onClose }) {
 
   const loadGymBucket = async (gymKey) => {
     const bkt = bucketOfKey(gymKey);
-    const needBucket = !bucketMap[bkt];
-    const needRoster = rosterCache === null;
-    if (!needBucket && !needRoster) return;
+    // Fire upcoming roster fetch in background WITHOUT blocking Trophy Room render!
+    if (rosterCache === null) {
+      setRosterCache([]);
+      getDocs(query(collection(db, 'event_competitors'), where('event_id', '==', '__athlete_index__')))
+        .then(rSnap => {
+          const rItems = [];
+          rSnap.docs.forEach(d => (d.data().items || []).forEach(it => rItems.push(it)));
+          setRosterCache(rItems);
+        })
+        .catch(() => {});
+    }
+    if (bucketMap[bkt]) return;
     setLoadingBucket(bkt);
     try {
-      const [mSnap, rSnap] = await Promise.all([
-        needBucket ? getDocs(query(collection(db, 'event_competitors'), where('event_id', '==', `__medalists_${bkt}__`))) : Promise.resolve(null),
-        needRoster ? getDocs(query(collection(db, 'event_competitors'), where('event_id', '==', '__athlete_index__'))) : Promise.resolve(null)
-      ]);
-      if (mSnap) {
-        const mItems = [];
-        mSnap.docs.forEach(d => (d.data().items || []).forEach(it => mItems.push(it)));
-        setBucketMap(prev => ({ ...prev, [bkt]: mItems }));
-      }
-      if (rSnap) {
-        const rItems = [];
-        rSnap.docs.forEach(d => (d.data().items || []).forEach(it => rItems.push(it)));
-        setRosterCache(rItems);
-      }
+      let mSnap = await getDocs(query(collection(db, 'event_competitors'), where('event_id', '==', `__m2_${bkt}__`)));
+      const mItems = [];
+      mSnap.docs.forEach(d => (d.data().items || []).forEach(it => mItems.push(it)));
+      setBucketMap(prev => ({ ...prev, [bkt]: mItems }));
     } catch (e) {
-      console.warn('Bucket fetch warn:', e);
+      console.warn('Micro-shard fetch warn:', e);
+      setBucketMap(prev => ({ ...prev, [bkt]: [] }));
     } finally {
       setLoadingBucket('');
     }
@@ -340,7 +348,7 @@ export function LeaderboardModal({ onClose }) {
     const bkt = athLastBucket(trimmed);
     if (!bkt || athShardMap[bkt]) return;
     setLoadingAthShard(bkt);
-    getDocs(query(collection(db, 'event_competitors'), where('event_id', '==', `__ath_medals_${bkt}__`)))
+    getDocs(query(collection(db, 'event_competitors'), where('event_id', '==', `__a2_${bkt}__`)))
       .then(snap => {
         const arr = [];
         snap.docs.forEach(d => (d.data().items || []).forEach(it => arr.push(it)));
