@@ -180,27 +180,32 @@ function CompetitorTable({ calcResult, event, onClose }) {
     <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '10px', boxSizing: 'border-box' }}>
       <div style={{ backgroundColor: '#111', padding: '16px', boxSizing: 'border-box', borderRadius: '12px', border: '1px solid #444', width: '100%', maxWidth: '1000px', maxHeight: '88svh', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>
         
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
-          <div>
-            <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0, color: '#fff' }}>
-              📋 {event.name} Competitors
-            </h2>
-            <p style={{ color: '#aaa', margin: '5px 0 0 0', fontSize: '0.9rem' }}>
-              {loading ? <span style={{ color: '#ff9f43' }}>Fetching live brackets...</span> : `${liveCompetitors.length} athletes registered`}
-            </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '12px', flexShrink: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
+            <div style={{ minWidth: 0, textAlign: 'left' }}>
+              <h2 style={{ fontSize: '1.15rem', lineHeight: 1.25, fontWeight: 'bold', margin: 0, color: '#fff', wordBreak: 'break-word' }}>
+                📋 {event.name}
+              </h2>
+              <p style={{ color: '#aaa', margin: '4px 0 0 0', fontSize: '0.82rem' }}>
+                {loading ? <span style={{ color: '#ff9f43' }}>Fetching live brackets...</span> : `${liveCompetitors.length} athletes registered`}
+              </p>
+            </div>
+            <button onClick={onClose} aria-label="Close" style={{ padding: '7px 12px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #475569', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.88rem', flexShrink: 0 }}>
+              ✕ Close
+            </button>
           </div>
-          
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-            <div style={{ position: 'relative' }}>
+
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', width: '100%' }}>
+            <div style={{ position: 'relative', flex: '1 1 180px', minWidth: 0 }}>
               <input
                 type="text"
                 placeholder="Search name, academy, or division..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                style={{ padding: '10px 35px 10px 15px', borderRadius: '5px', border: '1px solid #444', backgroundColor: '#222', color: '#fff', width: '250px' }}
+                style={{ padding: '9px 32px 9px 11px', borderRadius: '6px', border: '1px solid #444', backgroundColor: '#222', color: '#fff', width: '100%', boxSizing: 'border-box', fontSize: '0.9rem' }}
               />
               {searchTerm && (
-                <button onClick={() => setSearchTerm('')} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#aaa', fontSize: '1.2rem', cursor: 'pointer' }}>&times;</button>
+                <button onClick={() => setSearchTerm('')} style={{ position: 'absolute', right: '8px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#aaa', fontSize: '1.15rem', cursor: 'pointer' }}>&times;</button>
               )}
             </div>
             {(() => {
@@ -208,14 +213,11 @@ function CompetitorTable({ calcResult, event, onClose }) {
               if (!rawU || !rawU.startsWith('http')) return null;
               const bracketU = rawU.includes('smoothcomp.com') ? rawU.replace(/\/$/, '') + '/schedule' : rawU;
               return (
-                <a href={bracketU} target="_blank" rel="noopener noreferrer" style={{ padding: '10px 13px', backgroundColor: '#162536', color: '#38bdf8', border: '1px solid #0284c7', borderRadius: '5px', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
+                <a href={bracketU} target="_blank" rel="noopener noreferrer" style={{ padding: '9px 12px', backgroundColor: '#162536', color: '#38bdf8', border: '1px solid #0284c7', borderRadius: '6px', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.82rem', whiteSpace: 'nowrap', flexShrink: 0 }}>
                   Official Brackets ↗
                 </a>
               );
             })()}
-            <button onClick={onClose} style={{ padding: '10px 15px', backgroundColor: '#333', color: '#fff', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
-              Close
-            </button>
           </div>
         </div>
 
@@ -229,7 +231,7 @@ function CompetitorTable({ calcResult, event, onClose }) {
             sortedDivisions.map(division => (
               <div key={division} style={{ marginBottom: '20px', backgroundColor: '#222', borderRadius: '8px', overflow: 'hidden' }}>
                 <div style={{ backgroundColor: '#333', padding: '10px 15px', fontWeight: 'bold', color: '#ff9f43', borderBottom: '2px solid #444' }}>
-                  <span style={{ display:'flex', justifyContent:'space-between', alignItems:'center', width:'100%' }}><span>{division} ({groupedCompetitors[division].length} Competitors)</span><button onClick={() => setStoryPayload({ event, division, comps: groupedCompetitors[division] })} style={{ backgroundColor:'#111', color:'#fff', border:'1px solid #666', borderRadius:'4px', padding:'4px 10px', fontSize:'0.78rem', cursor:'pointer' }}>Share IG Story</button></span>
+                  <span style={{ display:'flex', justifyContent:'space-between', alignItems:'center', width:'100%', gap:'8px', flexWrap:'wrap' }}><span>{division} ({groupedCompetitors[division].length} Competitors)</span><button onClick={() => setStoryPayload({ event, division, comps: groupedCompetitors[division] })} style={{ backgroundColor:'#111', color:'#fff', border:'1px solid #666', borderRadius:'4px', padding:'4px 10px', fontSize:'0.78rem', cursor:'pointer' }}>Share IG Story</button></span>
                 </div>
                 <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
                   <tbody>
