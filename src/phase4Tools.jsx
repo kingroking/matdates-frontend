@@ -176,21 +176,39 @@ function TrophyCardModal({ cardData, onClose }) {
     setImgUrl(c.toDataURL('image/png'));
   }, [cardData]);
 
+  const [copiedMsg, setCopiedMsg] = React.useState('');
+
   const handleShare = async () => {
     if (!imgUrl) return;
     try {
       const res = await fetch(imgUrl);
       const blob = await res.blob();
       const file = new File([blob], 'matdates-trophy-card.png', { type: 'image/png' });
+      // Passing ONLY { files } (without text/url) makes iOS recognize a pure photo share so Instagram Stories appears directly!
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: cardData.title, text: `${cardData.title} — 2026 BJJ Trophy Card via matdates.com` });
+        await navigator.share({ files: [file] });
         return;
       }
-    } catch {}
+    } catch (err) {
+      if (err && err.name === 'AbortError') return;
+    }
     const a = document.createElement('a');
     a.href = imgUrl;
     a.download = 'matdates-trophy-card.png';
     a.click();
+  };
+
+  const handleCopyOpenIG = async () => {
+    if (!imgUrl) return;
+    try {
+      const res = await fetch(imgUrl);
+      const blob = await res.blob();
+      if (navigator.clipboard && window.ClipboardItem) {
+        await navigator.clipboard.write([new window.ClipboardItem({ 'image/png': blob })]);
+        setCopiedMsg('Copied! Paste sticker in IG Story');
+      }
+    } catch {}
+    setTimeout(() => { window.location.href = 'instagram://story-camera'; }, 250);
   };
 
   return (
@@ -201,9 +219,13 @@ function TrophyCardModal({ cardData, onClose }) {
           <button onClick={onClose} style={{ background:'#1e293b', color:'#fff', border:'1px solid #475569', borderRadius:'6px', padding:'4px 10px', cursor:'pointer', fontWeight:'bold' }}>✕</button>
         </div>
         {imgUrl && <img src={imgUrl} alt="Trophy Card" style={{ width:'100%', maxHeight:'54svh', objectFit:'contain', borderRadius:'8px', border:'1px solid #2d3748', marginBottom:'10px' }} />}
-        <div style={{ display:'flex', gap:'8px' }}>
-          <button onClick={handleShare} style={{ flex:1, padding:'10px', borderRadius:'7px', background:'#ff9f43', color:'#000', border:'none', fontWeight:'bold', fontSize:'0.9rem', cursor:'pointer' }}>
-            📲 Share to IG Story / Save
+        {copiedMsg && <div style={{ color:'#34d399', fontSize:'0.76rem', fontWeight:'bold', marginBottom:'6px' }}>{copiedMsg}</div>}
+        <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
+          <button onClick={handleShare} style={{ flex:'1 1 140px', padding:'10px 8px', borderRadius:'7px', background:'#ff9f43', color:'#000', border:'none', fontWeight:'bold', fontSize:'0.84rem', cursor:'pointer' }}>
+            📲 Share Image (Pick IG)
+          </button>
+          <button onClick={handleCopyOpenIG} style={{ flex:'1 1 140px', padding:'10px 8px', borderRadius:'7px', background:'#1e293b', color:'#38bdf8', border:'1px solid #38bdf8', fontWeight:'bold', fontSize:'0.82rem', cursor:'pointer' }}>
+            📸 Copy & Open IG Camera
           </button>
         </div>
       </div>
@@ -220,7 +242,12 @@ const normGymKey = (raw) => {
     gb: 'graciebarra',
     braziliantopteam: 'btt',
     checkmatbjj: 'checkmat',
-    alliancebjj: 'alliance'
+    alliancebjj: 'alliance',
+    tmcombatacademy: 'carlsongraciesanantonio',
+    tmcombat: 'carlsongraciesanantonio',
+    thiagomendescombatacademy: 'carlsongraciesanantonio',
+    carlsongraciejiujitsusanantonio: 'carlsongraciesanantonio',
+    carlsongraciesanantoniotx: 'carlsongraciesanantonio'
   })[k] || k;
 };
 
@@ -368,7 +395,9 @@ export function LeaderboardModal({ onClose }) {
         ? { g: Number(r.AllTimeGold || 0), s: Number(r.AllTimeSilver || 0), b: Number(r.AllTimeBronze || 0) }
         : null;
       if ((fed === 'ALL' || fed === 'SMOOTHCOMP') && age === 'ALL') {
-        const cg = Number(r.Gold || 0), cs = Number(r.Silver || 0), cb = Number(r.Bronze || 0);
+        const cg = Number(fed === 'SMOOTHCOMP' && r.RawClub2026G !== undefined ? r.RawClub2026G : (r.Gold || 0));
+        const cs = Number(fed === 'SMOOTHCOMP' && r.RawClub2026S !== undefined ? r.RawClub2026S : (r.Silver || 0));
+        const cb = Number(fed === 'SMOOTHCOMP' && r.RawClub2026B !== undefined ? r.RawClub2026B : (r.Bronze || 0));
         if (!map[k] && (cg + cs + cb > 0 || allT)) {
           map[k] = {
             key: k, Academy: r.Academy, Gold: cg, Silver: cs, Bronze: cb, Subs: 0,
@@ -425,14 +454,31 @@ export function LeaderboardModal({ onClose }) {
       (fed === 'ALL' || m.f === fed) &&
       (age === 'ALL' || !m.ag || m.ag === age)
     );
-    // Group by Athlete + Academy for a clean trophy summary
-    const grouped = {};
+    // Prefer specific local chapter (e.g. Carlson Gracie San Antonio) over generic HQ banner ("Carlson Gracie Team") for the same athlete/event
+    const parentHQs = new Set(['carlsongracie', 'graciebarra', 'alliance', 'checkmat', 'atos', 'ares', 'btt']);
+    const specificKeys = new Set();
     hits.forEach(m => {
+      const ak = normGymKey(m.a);
+      if (!parentHQs.has(ak)) specificKeys.add(`${m.n.toLowerCase()}|${m.ev}|${m.d}|${m.p}`);
+    });
+    const cleanHits = hits.filter(m => {
+      const ak = normGymKey(m.a);
+      if (parentHQs.has(ak) && specificKeys.has(`${m.n.toLowerCase()}|${m.ev}|${m.d}|${m.p}`)) return false;
+      return true;
+    });
+    const grouped = {};
+    cleanHits.forEach(m => {
       const gk = `${m.n.toLowerCase()}|${normGymKey(m.a)}`;
       if (!grouped[gk]) grouped[gk] = { name: m.n, academy: m.a, g: 0, s: 0, b: 0, events: [] };
-      if (Number(m.p) === 1) grouped[gk].g += 1;
-      else if (Number(m.p) === 2) grouped[gk].s += 1;
-      else grouped[gk].b += 1;
+      if (m.mg !== undefined || m.ms !== undefined || m.mb !== undefined) {
+        grouped[gk].g += Number(m.mg || 0);
+        grouped[gk].s += Number(m.ms || 0);
+        grouped[gk].b += Number(m.mb || 0);
+      } else {
+        if (Number(m.p) === 1) grouped[gk].g += 1;
+        else if (Number(m.p) === 2) grouped[gk].s += 1;
+        else grouped[gk].b += 1;
+      }
       grouped[gk].events.push(m);
     });
     return Object.values(grouped)
