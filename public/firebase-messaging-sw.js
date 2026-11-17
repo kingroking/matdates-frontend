@@ -13,13 +13,15 @@ firebase.initializeApp({
 const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
-  const data = payload.data || {};
-  const title = (payload.notification && payload.notification.title) || data.title || 'MatDates Live Mat Alert';
-  const body = (payload.notification && payload.notification.body) || data.body || 'Mat & match time updated!';
+  if (payload && payload.notification) return;
+  const data = (payload && payload.data) || {};
+  const title = data.title || 'MatDates Live Mat Alert';
+  const body = data.body || 'Mat & match time updated!';
   self.registration.showNotification(title, {
     body,
-    icon: '/mat-icon.png',
+    icon: '/apple-touch-icon.png',
     badge: '/mat-icon.png',
+    tag: data.tag || 'matdates-live-alert',
     data: { url: data.url || 'https://matdates.com' }
   });
 });
