@@ -98,7 +98,15 @@ export function LeaderboardModal({ onClose }) {
 
   useEffect(() => {
     getDocs(query(collection(db, 'event_competitors'), where('event_id', '==', '__global_leaderboard__')))
-      .then(snap => setRows(snap.docs.map(d => d.data())));
+      .then(snap => {
+        const flat = [];
+        snap.docs.forEach(d => {
+          const data = d.data() || {};
+          if (Array.isArray(data.items)) data.items.forEach(it => flat.push(it));
+          else if (data.Academy) flat.push(data);
+        });
+        setRows(flat);
+      });
   }, []);
 
   const ensureDetailsLoaded = async () => {
@@ -156,10 +164,14 @@ export function LeaderboardModal({ onClose }) {
       map[k].Feds.add(rFed);
     });
     const score = x => (x.Gold * 9 + x.Silver * 3 + x.Bronze) + x.Points * 0.05;
-    return Object.values(map)
-      .filter(x => !qStr || x.Academy.toLowerCase().includes(qStr.toLowerCase()))
+    const rankedAll = Object.values(map)
       .sort((a, b) => score(b) - score(a) || b.Points - a.Points)
-      .slice(0, 60);
+      .map((item, idx) => ({ ...item, trueRank: idx + 1 }));
+    const q = qStr.trim().toLowerCase();
+    const filtered = q
+      ? rankedAll.filter(x => x.Academy.toLowerCase().includes(q) || x.key.includes(q.replace(/[^a-z0-9]/g, '')))
+      : rankedAll;
+    return { totalGyms: rankedAll.length, list: filtered.slice(0, q ? 120 : 80) };
   }, [rows, fed, age, qStr]);
 
   const box = { position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.86)', zIndex:9999, display:'flex', justifyContent:'center', alignItems:'center', padding:'10px', boxSizing:'border-box' };
@@ -172,7 +184,7 @@ export function LeaderboardModal({ onClose }) {
           <div style={{ minWidth:0 }}>
             <h2 style={{ margin:0, color:'#fff', fontSize:'1.18rem', lineHeight:1.25 }}>🏆 2026 Academy Medal Standings</h2>
             <p style={{ margin:'4px 0 0', color:'#94a3b8', fontSize:'0.78rem', lineHeight:1.35 }}>
-              Tap any academy or 🥇/🥈/🥉 badge to view individual medalists & active squad competitors.
+              Search all {aggregated.totalGyms.toLocaleString()} medaling academies worldwide — tap any gym or 🥇/🥈/🥉 badge for athlete results.
             </p>
           </div>
           <button onClick={onClose} style={{ background:'#1e293b', color:'#fff', border:'1px solid #475569', borderRadius:'6px', padding:'6px 11px', cursor:'pointer', fontWeight:'bold', fontSize:'0.84rem', flexShrink:0 }}>✕ Close</button>
@@ -185,11 +197,12 @@ export function LeaderboardModal({ onClose }) {
           {[['ALL','All Ages'],['YOUTH','🐯 Youth'],['ADULT','🥋 Adult']].map(([ak, albl]) => (
             <button key={ak} disabled={fed === 'IBJJF' && ak === 'YOUTH'} onClick={() => setAge(ak)} style={{ padding:'6px 9px', borderRadius:'6px', border:'1px solid #2d3748', background: age === ak ? '#2d3748' : '#181c24', color: age === ak ? '#fff' : '#94a3b8', fontSize:'0.76rem', fontWeight:'bold', opacity: fed === 'IBJJF' && ak === 'YOUTH' ? 0.4 : 1, cursor:'pointer' }}>{albl}</button>
           ))}
-          <input value={qStr} onChange={e => setQStr(e.target.value)} placeholder="Find academy..." style={{ flex:'1 1 130px', minWidth:'120px', padding:'7px 10px', borderRadius:'6px', background:'#181c24', color:'#fff', border:'1px solid #2d3748', fontSize:'0.85rem', boxSizing:'border-box' }} />
+          <input value={qStr} onChange={e => setQStr(e.target.value)} placeholder="Search any academy..." style={{ flex:'1 1 130px', minWidth:'120px', padding:'7px 10px', borderRadius:'6px', background:'#181c24', color:'#fff', border:'1px solid #2d3748', fontSize:'0.85rem', boxSizing:'border-box' }} />
         </div>
 
         <div style={{ overflowY:'auto', border:'1px solid #242b38', borderRadius:'8px', background:'#151922', flex:1 }}>
-          {aggregated.map((r, i) => {
+          {aggregated.list.map((r) => {
+            const i = r.trueRank - 1;
             const isOpen = expandedKey === r.key;
             const gymMedalists = isOpen && medalistsCache
               ? medalistsCache.filter(m =>
@@ -300,7 +313,7 @@ export function LeaderboardModal({ onClose }) {
                       <>
                         {gymMedalists.length > 0 ? (
                           <div style={{ display:'flex', flexDirection:'column', gap:'6px', marginBottom: gymUpcoming.length > 0 ? '12px' : 0 }}>
-                            {gymMedalists.slice(0, 50).map((m, idx) => (
+                            {gymMedalists.slice(0, 100).map((m, idx) => (
                               <div key={idx} style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:'8px', background:'#151b24', border:'1px solid #222b3a', borderRadius:'6px', padding:'7px 10px', fontSize:'0.8rem' }}>
                                 <div style={{ minWidth:0 }}>
                                   <div style={{ color:'#fff', fontWeight:'bold', wordBreak:'break-word' }}>

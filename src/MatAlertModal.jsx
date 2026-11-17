@@ -263,7 +263,7 @@ export function MatAlertModal({ event, comp, division, existingWatch, onRemove, 
           <div style={{ background:'#132a1c', border:'1px solid #2ecc71', borderRadius:'8px', padding:'14px', textAlign:'center' }}>
             <div style={{ color:'#2ecc71', fontWeight:'bold', marginBottom:'6px' }}>{'\u2713'} Athlete Alerts Activated!</div>
             <div style={{ color:'#cbd5e1', fontSize:'0.82rem', marginBottom:'12px', lineHeight:1.45 }}>
-              Delivering via <strong>{[fcmToken && 'Phone/Browser Push', email.trim() && 'Email'].filter(Boolean).join(' + ')}</strong> when Mat # or Match Time posts{followFuture ? ' — plus automatic alerts whenever they register for future tournaments!' : '.'}
+              Delivering via <strong>{[fcmToken && 'Phone/Browser Push', email.trim() && 'Email'].filter(Boolean).join(' + ')}</strong> when Mat #, Match Time, or Final Podium Results post{followFuture ? ' — plus automatic alerts whenever they register for future tournaments!' : '.'}
             </div>
             <button onClick={onClose} style={{ padding:'8px 18px', background:'#2ecc71', color:'#000', border:'none', borderRadius:'6px', fontWeight:'bold', cursor:'pointer' }}>Done</button>
           </div>
@@ -371,7 +371,7 @@ export function WatchedAthletesModal({ watches, onRemove, onOpenAthlete, onClose
           <button onClick={onClose} aria-label="Close" style={{ background:'#1e293b', border:'1px solid #334155', borderRadius:'6px', color:'#e2e8f0', fontSize:'1rem', padding:'4px 9px', cursor:'pointer', flexShrink:0 }}>{'\u2715'}</button>
         </div>
         <p style={{ margin:'0 0 14px', color:'#94a3b8', fontSize:'0.8rem', lineHeight:1.4 }}>
-          Live Mat # & Match Time polling on tournament weekends — plus new-event alerts for followed athletes.
+          Live Mat #, Match Time & Final Bracket Podium Result alerts on tournament weekends — plus new-event alerts for followed athletes.
         </p>
         {watches.length === 0 ? (
           <div style={{ padding:'22px 14px', textAlign:'center', background:'#181c24', borderRadius:'8px', color:'#94a3b8', fontSize:'0.86rem' }}>
@@ -410,9 +410,11 @@ export function WatchedAthletesModal({ watches, onRemove, onOpenAthlete, onClose
                   {w.eventName || 'Following Upcoming Tournaments'}
                 </div>
                 <div style={{ color:'#cbd5e1', fontSize:'0.76rem', marginTop:'3px', marginBottom:'9px' }}>
-                  {(w.lastMat || w.lastTime)
-                    ? `Live Schedule: ${[w.lastMat, w.lastTime && `Est. ${w.lastTime}`].filter(Boolean).join(' • ')}`
-                    : 'Waiting for tournament mat & match time assignment...'}
+                  {w.finalResult
+                    ? `🏆 Final Result: ${w.finalResult}${w.finalPodium ? ` (${w.finalPodium})` : ''}`
+                    : (w.lastMat || w.lastTime)
+                      ? `Live Schedule: ${[w.lastMat, w.lastTime && `Est. ${w.lastTime}`].filter(Boolean).join(' • ')}`
+                      : 'Waiting for tournament mat, match time & final bracket result...'}
                 </div>
                 <div style={{ display:'flex', gap:'8px', justifyContent:'flex-end' }}>
                   {w.eventId && (
