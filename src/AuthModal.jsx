@@ -37,8 +37,8 @@ export default function AuthModal({ isOpen, onClose }) {
   };
 
   return (
-    <div onClick={onClose} style={{ position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.82)', zIndex:10000, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
-      <div onClick={e => e.stopPropagation()} style={{ backgroundColor:'#12151c', border:'1px solid #2d3748', borderRadius:'10px', maxWidth:'380px', width:'100%', padding:'22px' }}>
+    <div onClick={onClose} style={{ position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.82)', zIndex:10000, display:'flex', alignItems:'center', justifyContent:'center', padding:'10px', boxSizing:'border-box' }}>
+      <div onClick={e => e.stopPropagation()} style={{ backgroundColor:'#12151c', border:'1px solid #2d3748', borderRadius:'10px', maxWidth:'380px', width:'100%', padding:'16px', boxSizing:'border-box', overflowX:'hidden' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'6px' }}>
           <h3 style={{ margin:0, color:'#fff', fontSize:'1.15rem' }}>{isSignUp ? 'Create MatDates Account' : 'Sign In to MatDates'}</h3>
           <button onClick={onClose} style={{ background:'none', border:'none', color:'#94a3b8', fontSize:'1.2rem', cursor:'pointer' }}>✕</button>

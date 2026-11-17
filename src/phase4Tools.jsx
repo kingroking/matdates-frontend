@@ -37,8 +37,8 @@ export function StoryShareModal({ payload, onClose }) {
     const a = document.createElement('a'); a.download = 'matdates-bracket.png'; a.href = dataUrl; a.click();
   }, 'image/png');
   return (
-    <div style={{ position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.88)', zIndex:10001, display:'flex', justifyContent:'center', alignItems:'center', padding:'20px' }}>
-      <div style={{ backgroundColor:'#111', border:'1px solid #444', borderRadius:'12px', padding:'20px', maxWidth:'380px', width:'100%', textAlign:'center' }}>
+    <div style={{ position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.88)', zIndex:10001, display:'flex', justifyContent:'center', alignItems:'center', padding:'12px', boxSizing:'border-box' }}>
+      <div style={{ backgroundColor:'#111', border:'1px solid #444', borderRadius:'12px', padding:'12px', boxSizing:'border-box', maxWidth:'380px', width:'100%', textAlign:'center' }}>
         <h3 style={{ margin:'0 0 6px 0', color:'#fff' }}>Share Bracket to IG Story</h3>
         <p style={{ margin:'0 0 12px 0', color:'#9aa4b2', fontSize:'0.8rem' }}>On iPhone/Android, tap Share below and pick Instagram Stories. On desktop, save PNG to upload.</p>
         <img src={dataUrl} alt="Story card preview" style={{ width:'100%', maxHeight:'52vh', objectFit:'contain', borderRadius:'8px', border:'1px solid #333', marginBottom:'12px' }} />
@@ -102,8 +102,8 @@ export function LeaderboardModal({ onClose }) {
       .slice(0, 60);
   }, [rows, fed, age, qStr]);
 
-  const box = { position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.86)', zIndex:9999, display:'flex', justifyContent:'center', alignItems:'center', padding:'16px' };
-  const card = { backgroundColor:'#11141b', padding:'22px', borderRadius:'12px', border:'1px solid #2d3748', width:'100%', maxWidth:'900px', maxHeight:'88vh', display:'flex', flexDirection:'column' };
+  const box = { position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.86)', zIndex:9999, display:'flex', justifyContent:'center', alignItems:'center', padding:'10px', boxSizing:'border-box' };
+  const card = { backgroundColor:'#11141b', padding:'16px', boxSizing:'border-box', overflowX:'hidden', borderRadius:'12px', border:'1px solid #2d3748', width:'100%', maxWidth:'900px', maxHeight:'88svh', display:'flex', flexDirection:'column' };
   return (
     <div onClick={onClose} style={box}><div onClick={e => e.stopPropagation()} style={card}>
       <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'10px', gap:'12px' }}>
@@ -181,8 +181,8 @@ export function AthleteSearchModal({ events, onClose, onOpenBracket }) {
       .sort((a, b) => (evMap[a.e]?.sort_date || '2099').localeCompare(evMap[b.e]?.sort_date || '2099'))
       .slice(0, 80);
   }, [items, qStr, evMap]);
-  const box = { position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.86)', zIndex:9999, display:'flex', justifyContent:'center', alignItems:'center', padding:'16px' };
-  const card = { backgroundColor:'#11141b', padding:'22px', borderRadius:'12px', border:'1px solid #2d3748', width:'100%', maxWidth:'900px', maxHeight:'88vh', display:'flex', flexDirection:'column' };
+  const box = { position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.86)', zIndex:9999, display:'flex', justifyContent:'center', alignItems:'center', padding:'10px', boxSizing:'border-box' };
+  const card = { backgroundColor:'#11141b', padding:'16px', boxSizing:'border-box', overflowX:'hidden', borderRadius:'12px', border:'1px solid #2d3748', width:'100%', maxWidth:'900px', maxHeight:'88svh', display:'flex', flexDirection:'column' };
 
   return (
     <div onClick={onClose} style={box}><div onClick={e => e.stopPropagation()} style={card}>

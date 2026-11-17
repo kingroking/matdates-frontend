@@ -177,8 +177,8 @@ function CompetitorTable({ calcResult, event, onClose }) {
   };
 
   return (
-    <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '20px', boxSizing: 'border-box' }}>
-      <div style={{ backgroundColor: '#111', padding: '24px', borderRadius: '12px', border: '1px solid #444', width: '100%', maxWidth: '1000px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '10px', boxSizing: 'border-box' }}>
+      <div style={{ backgroundColor: '#111', padding: '16px', boxSizing: 'border-box', borderRadius: '12px', border: '1px solid #444', width: '100%', maxWidth: '1000px', maxHeight: '88svh', overflowX: 'hidden', display: 'flex', flexDirection: 'column' }}>
         
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
           <div>
@@ -612,7 +612,7 @@ export default function App() {
       
       {showAuthModal && <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />}
       {livePushToast && (
-        <div style={{ position:'fixed', top:'18px', right:'18px', zIndex:10099, background:'#132a1c', border:'2px solid #2ecc71', borderRadius:'10px', padding:'14px 18px', maxWidth:'360px', boxShadow:'0 10px 30px rgba(0,0,0,0.6)', color:'#fff' }}>
+        <div style={{ position:'fixed', top:'18px', right:'18px', zIndex:10099, background:'#132a1c', border:'2px solid #2ecc71', borderRadius:'10px', padding:'14px 18px', maxWidth:'calc(100vw - 36px)', boxShadow:'0 10px 30px rgba(0,0,0,0.6)', color:'#fff' }}>
           <div style={{ display:'flex', justifyContent:'space-between', gap:'10px', alignItems:'flex-start' }}>
             <strong style={{ color:'#2ecc71', fontSize:'0.95rem' }}>{livePushToast.title}</strong>
             <button onClick={() => setLivePushToast(null)} style={{ background:'none', border:'none', color:'#94a3b8', cursor:'pointer' }}>✕</button>
@@ -625,7 +625,7 @@ export default function App() {
       {showAthleteSearch && <AthleteSearchModal events={events} onClose={() => setShowAthleteSearch(false)} onOpenBracket={(ev, nm) => { setShowAthleteSearch(false); setCalcResult(nm); setSelectedCompetitorEvent(ev); }} />}
       {showSubmitModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-          <div style={{ backgroundColor: '#111', padding: '30px', borderRadius: '12px', border: '1px solid #444', width: '90%', maxWidth: '500px' }}>
+          <div style={{ backgroundColor: '#111', padding: '20px', boxSizing: 'border-box', borderRadius: '12px', border: '1px solid #444', width: 'calc(100vw - 24px)', maxHeight: '88svh', overflowY: 'auto', maxWidth: '500px' }}>
             <h2 style={{ margin: '0 0 20px 0', fontSize: '1.5rem', color: '#fff' }}>Submit an Event</h2>
             <form onSubmit={handlePublicSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
               <input type="text" placeholder="Event Name" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} style={{ padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }} required />
@@ -642,7 +642,7 @@ export default function App() {
 
       {showReminderModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-          <div style={{ backgroundColor: '#111', padding: '30px', borderRadius: '12px', border: '1px solid #444', width: '90%', maxWidth: '400px' }}>
+          <div style={{ backgroundColor: '#111', padding: '20px', boxSizing: 'border-box', borderRadius: '12px', border: '1px solid #444', width: 'calc(100vw - 24px)', maxHeight: '88svh', overflowY: 'auto', maxWidth: '400px' }}>
             <h2 style={{ margin: '0 0 5px 0', fontSize: '1.5rem', color: '#fff' }}>⏰ Set a Reminder</h2>
             <p style={{ margin: '0 0 20px 0', color: '#aaa', fontSize: '0.9rem' }}>We will email you 48 hours before the registration deadline for: <br/><strong style={{color: '#fff'}}>{selectedReminderEvent?.name}</strong></p>
             
@@ -673,7 +673,7 @@ export default function App() {
 
       {showCalcModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-          <div style={{ backgroundColor: '#111', padding: '30px', borderRadius: '12px', border: '1px solid #444', width: '90%', maxWidth: '400px' }}>
+          <div style={{ backgroundColor: '#111', padding: '20px', boxSizing: 'border-box', borderRadius: '12px', border: '1px solid #444', width: 'calc(100vw - 24px)', maxHeight: '88svh', overflowY: 'auto', maxWidth: '400px' }}>
             <h2 style={{ margin: '0 0 5px 0', fontSize: '1.5rem', color: '#fff' }}>⚖️ Weight Class Check</h2>
             <p style={{ margin: '0 0 20px 0', color: '#aaa', fontSize: '0.9rem' }}>Event: {selectedCalcEvent?.name}</p>
             <form onSubmit={handleCalculate} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
@@ -794,8 +794,9 @@ export default function App() {
   </div>
 )}
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px', marginBottom: '20px' }}>
-          <div style={{ display: 'flex', gap: '15px', fontSize: '0.95rem', flexWrap: 'wrap', alignItems: 'center', userSelect: 'none' }}>
+        <div className="md-sticky-filters">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '10px' }}>
+          <div className="md-filter-pills" style={{ display: 'flex', gap: '12px', fontSize: '0.92rem', flexWrap: 'wrap', alignItems: 'center', userSelect: 'none' }}>
             <span onClick={() => setFederationFilter(prev => prev === 'Smoothcomp' ? 'All' : 'Smoothcomp')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'Smoothcomp' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#ff9f43' }}>■</span> Smoothcomp</span>
             <span onClick={() => setFederationFilter(prev => prev === 'IBJJF' ? 'All' : 'IBJJF')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'IBJJF' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#0055a4' }}>■</span> IBJJF</span>
             <span onClick={() => setFederationFilter(prev => prev === 'JJWL' ? 'All' : 'JJWL')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'JJWL' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#ffffff', textShadow: '0 0 2px #000' }}>■</span> JJWL</span>
@@ -812,7 +813,7 @@ export default function App() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '30px', flexWrap: 'wrap' }}>
+        <div className="md-filter-inputs" style={{ display: 'flex', gap: '10px', marginBottom: '4px', flexWrap: 'wrap' }}>
           <div style={{ position: 'relative', flex: '1', minWidth: '200px' }}>
             <input type="text" placeholder="Search events or locations..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '12px 35px 12px 12px', borderRadius: '5px', border: '1px solid #333', backgroundColor: '#111', color: '#fff', fontSize: '1rem' }} />
             {searchTerm && (
@@ -840,6 +841,7 @@ export default function App() {
             <option value="Kids">Kids Events 🐯</option>
             <option value="Adults">Adult Events</option>
           </select>
+        </div>
         </div>
 
         {showSavedOnly && user && (<div style={{ backgroundColor:'#141820', border:'1px solid #3155', borderRadius:'8px', padding:'12px 16px', marginBottom:'18px', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'10px' }}><span style={{ color:'#e2e8f0', fontSize:'0.92rem' }}>Showing <strong>{savedIds.length}</strong> saved tournaments in your personal schedule ({user.email}).</span>{savedIds.length > 0 && <button onClick={() => downloadIcs(events.filter(x => savedIds.includes(x.id)), 'my-matdates-schedule.ics')} style={{ backgroundColor:'#1e293b', color:'#38bdf8', border:'1px solid #38bdf8', borderRadius:'6px', padding:'7px 12px', fontWeight:'bold', cursor:'pointer', fontSize:'0.85rem' }}>📅 Add My {savedIds.length} Saved Events to Phone Calendar</button>}</div>)}

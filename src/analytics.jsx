@@ -191,8 +191,8 @@ function SponsorStatsModal({ onClose }) {
   };
 
   return (
-    <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.86)', zIndex:10080, display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
-      <div onClick={e => e.stopPropagation()} style={{ background:'#11141b', border:'1px solid #2d3748', borderRadius:'12px', maxWidth:'680px', width:'100%', padding:'22px', maxHeight:'88vh', overflowY:'auto', color:'#fff' }}>
+    <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.86)', zIndex:10080, display:'flex', alignItems:'center', justifyContent:'center', padding:'10px', boxSizing:'border-box' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:'#11141b', border:'1px solid #2d3748', borderRadius:'12px', maxWidth:'680px', width:'100%', padding:'16px', boxSizing:'border-box', overflowX:'hidden', maxHeight:'88svh', overflowY:'auto', color:'#fff' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'6px' }}>
           <h3 style={{ margin:0, fontSize:'1.2rem' }}>{'\u{1F4CA}'} MatDates Traction & Sponsor Metrics</h3>
           <button onClick={onClose} style={{ background:'none', border:'none', color:'#94a3b8', fontSize:'1.1rem', cursor:'pointer' }}>{'\u2715'}</button>

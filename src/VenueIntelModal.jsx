@@ -128,8 +128,8 @@ export function VenueIntelModal({
   };
 
   const visible = tips.filter(t => filterCat === 'ALL' || t.category === filterCat);
-  const box = { position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.86)', zIndex:9999, display:'flex', justifyContent:'center', alignItems:'center', padding:'16px' };
-  const card = { backgroundColor:'#11141b', padding:'22px', borderRadius:'12px', border:'1px solid #2d3748', width:'100%', maxWidth:'720px', maxHeight:'88vh', display:'flex', flexDirection:'column' };
+  const box = { position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.86)', zIndex:9999, display:'flex', justifyContent:'center', alignItems:'center', padding:'10px', boxSizing:'border-box' };
+  const card = { backgroundColor:'#11141b', padding:'16px', boxSizing:'border-box', overflowX:'hidden', borderRadius:'12px', border:'1px solid #2d3748', width:'100%', maxWidth:'720px', maxHeight:'88svh', display:'flex', flexDirection:'column' };
 
   return (
     <div onClick={onClose} style={box}><div onClick={e => e.stopPropagation()} style={card}>
