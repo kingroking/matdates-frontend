@@ -149,26 +149,62 @@ export function LeaderboardModal({ onClose }) {
 
   const aggregated = React.useMemo(() => {
     const map = {};
+    const scClubs = [];
     rows.forEach(r => {
-      const b = r.Board || '';
-      const rFed = b.startsWith('ibjjf') ? 'IBJJF' : (b.startsWith('smoothcomp') ? 'SMOOTHCOMP' : 'JJWL');
+      const b = (r.Board || '').toLowerCase();
+      if (b === 'smoothcomp_clubs') { scClubs.push(r); return; }
+      const rFed = b.startsWith('ibjjf') ? 'IBJJF'
+        : b.startsWith('adcc') ? 'ADCC'
+        : b.startsWith('agf') ? 'AGF'
+        : b.startsWith('ajp') ? 'AJP'
+        : b.startsWith('smoothcomp') ? 'SMOOTHCOMP'
+        : 'JJWL';
       const rAge = b.includes('youth') ? 'YOUTH' : 'ADULT';
       if ((fed !== 'ALL' && rFed !== fed) || (age !== 'ALL' && rAge !== age)) return;
       const k = normGymKey(r.Academy);
       if (!k) return;
       if (!map[k]) map[k] = {
         key: k, Academy: r.Academy, Gold: 0, Silver: 0, Bronze: 0, Subs: 0,
-        Points: 0, YouthMedals: 0, AdultMedals: 0, Feds: new Set(), hasMedals: false
+        Points: 0, YouthMedals: 0, AdultMedals: 0, Feds: new Set(), hasMedals: false,
+        scG: 0, scS: 0, scB: 0
       };
       const g = Number(r.Gold || 0), sv = Number(r.Silver || 0), br = Number(r.Bronze || 0);
       if (r.Gold !== undefined) map[k].hasMedals = true;
       map[k].Gold += g; map[k].Silver += sv; map[k].Bronze += br;
+      if (rFed === 'SMOOTHCOMP') { map[k].scG += g; map[k].scS += sv; map[k].scB += br; }
       map[k].Subs += Number(r.Subs || 0);
       map[k].Points = Math.round((map[k].Points + Number(r.Points || 0)) * 10) / 10;
       if (rAge === 'YOUTH') map[k].YouthMedals += (g + sv + br);
       else map[k].AdultMedals += (g + sv + br);
       map[k].Feds.add(rFed);
     });
+
+    // Merge verified Smoothcomp US Club Directory totals without double-counting Smoothcomp event toplists
+    if ((fed === 'ALL' || fed === 'SMOOTHCOMP') && age === 'ALL') {
+      scClubs.forEach(r => {
+        const k = normGymKey(r.Academy);
+        if (!k) return;
+        const cg = Number(r.Gold || 0), cs = Number(r.Silver || 0), cb = Number(r.Bronze || 0);
+        if (cg + cs + cb === 0) return;
+        if (!map[k]) {
+          map[k] = {
+            key: k, Academy: r.Academy, Gold: cg, Silver: cs, Bronze: cb, Subs: 0,
+            Points: cg * 9 + cs * 3 + cb, YouthMedals: 0, AdultMedals: 0,
+            ClubMedals: cg + cs + cb, Feds: new Set(['SMOOTHCOMP']), hasMedals: true,
+            scG: cg, scS: cs, scB: cb
+          };
+        } else {
+          const dg = Math.max(0, cg - map[k].scG);
+          const ds = Math.max(0, cs - map[k].scS);
+          const db2 = Math.max(0, cb - map[k].scB);
+          map[k].Gold += dg; map[k].Silver += ds; map[k].Bronze += db2;
+          map[k].Points = Math.round((map[k].Points + dg * 9 + ds * 3 + db2) * 10) / 10;
+          map[k].ClubMedals = (map[k].ClubMedals || 0) + dg + ds + db2;
+          map[k].Feds.add('SMOOTHCOMP');
+          map[k].hasMedals = true;
+        }
+      });
+    }
     const score = x => (x.Gold * 9 + x.Silver * 3 + x.Bronze) + x.Points * 0.05;
     const rankedAll = Object.values(map)
       .sort((a, b) => score(b) - score(a) || b.Points - a.Points)
@@ -211,7 +247,7 @@ export function LeaderboardModal({ onClose }) {
         </div>
 
         <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', marginBottom:'10px', alignItems:'center', flexShrink:0 }}>
-          {[['ALL','🌐 All'],['JJWL','JJWL'],['IBJJF','IBJJF'],['SMOOTHCOMP','Smoothcomp']].map(([k, lbl]) => (
+          {[['ALL','🌐 All Circuits'],['IBJJF','IBJJF'],['ADCC','ADCC'],['JJWL','JJWL'],['AGF','AGF'],['AJP','AJP'],['SMOOTHCOMP','Smoothcomp']].map(([k, lbl]) => (
             <button key={k} onClick={() => setFed(k)} style={{ padding:'6px 10px', borderRadius:'6px', border: fed === k ? '1px solid #38bdf8' : '1px solid #2d3748', background: fed === k ? '#162536' : '#181c24', color: fed === k ? '#38bdf8' : '#cbd5e1', fontWeight:'bold', fontSize:'0.78rem', cursor:'pointer' }}>{lbl}</button>
           ))}
           {[['ALL','All Ages'],['YOUTH','🐯 Youth'],['ADULT','🥋 Adult']].map(([ak, albl]) => (
@@ -294,7 +330,7 @@ export function LeaderboardModal({ onClose }) {
                         );
                       })}
                       <span style={{ color:'#cbd5e1', fontSize:'0.73rem', background:'#1a202c', border:'1px solid #2d3748', padding:'2px 7px', borderRadius:'4px', whiteSpace:'nowrap' }}>
-                        {age === 'YOUTH' ? `🐯 ${r.YouthMedals}` : age === 'ADULT' ? `🥋 ${r.AdultMedals}` : `🐯 ${r.YouthMedals} · 🥋 ${r.AdultMedals}`}
+                        {age === 'YOUTH' ? `🐯 ${r.YouthMedals}` : age === 'ADULT' ? `🥋 ${r.AdultMedals}` : (r.YouthMedals + r.AdultMedals > 0 ? `🐯 ${r.YouthMedals} · 🥋 ${r.AdultMedals}` : `🏅 ${r.Gold + r.Silver + r.Bronze} Verified Club Medals`)}
                       </span>
                     </div>
                     <div style={{ display:'flex', gap:'4px', flexWrap:'wrap' }}>
