@@ -771,6 +771,8 @@ export default function App() {
   </div>
   <div style={{ display:'flex', gap:'10px', flexWrap:'wrap' }}><button onClick={() => setShowAthleteSearch(true)} style={{ backgroundColor:'#141820', color:'#38bdf8', padding:'10px 15px', border:'1px solid #0284c7', borderRadius:'5px', fontWeight:'bold', cursor:'pointer' }}>🔍 Athlete Lookup</button><button onClick={() => setShowWatchedModal(true)} style={{ backgroundColor: myWatches.length > 0 ? '#132a1c' : '#141820', color: myWatches.length > 0 ? '#2ecc71' : '#94a3b8', padding:'10px 14px', border: myWatches.length > 0 ? '1px solid #2ecc71' : '1px solid #334155', borderRadius:'5px', fontWeight:'bold', cursor:'pointer' }}>{'\u{1F514}'} Watching ({myWatches.length})</button><button onClick={() => setShowLeaderboard(true)} style={{ backgroundColor:'#141820', color:'#e2e8f0', padding:'10px 16px', border:'1px solid #475569', borderRadius:'5px', fontWeight:'bold', cursor:'pointer' }}>🏆 Medal Standings</button><button onClick={() => user ? signOut(auth) : setShowAuthModal(true)} style={{ backgroundColor:'transparent', color:'#94a3b8', padding:'10px 12px', border:'1px solid #334155', borderRadius:'5px', cursor:'pointer', fontSize:'0.88rem' }}>{user ? 'Sign Out' : 'Sign In'}</button><button onClick={() => setShowSubmitModal(true)} style={{ backgroundColor: '#ff9f43', color: '#000', padding: '10px 20px', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer' }}>+ Submit Event</button></div>
 </header>
+        <SponsorBanner />
+        <AnalyticsAndPwaManager />
 {isAdmin && (
   <div style={{ backgroundColor: '#161616', border: '1px solid #ff9f43', borderRadius: '8px', padding: '16px', marginBottom: '20px' }}>
     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
@@ -779,8 +781,6 @@ export default function App() {
         <button onClick={loadPendingEvents} style={{ backgroundColor: '#222', color: '#fff', border: '1px solid #444', borderRadius: '4px', padding: '4px 10px', cursor: 'pointer' }}>Refresh</button>
         <button onClick={() => setIsAdmin(false)} style={{ backgroundColor: '#333', color: '#fff', border: 'none', borderRadius: '4px', padding: '4px 10px', cursor: 'pointer' }}>Close</button>
       </div>
-      <SponsorBanner />
-      <AnalyticsAndPwaManager />
     </div>
     {pendingEvents.length === 0 ? <p style={{ margin: 0, color: '#aaa' }}>No pending submissions.</p> : pendingEvents.map(pev => (
       <div key={pev.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#222', padding: '10px', borderRadius: '6px', marginTop: '8px', flexWrap: 'wrap', gap: '8px' }}>
