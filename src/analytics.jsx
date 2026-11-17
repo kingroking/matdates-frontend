@@ -172,7 +172,7 @@ function SponsorStatsModal({ onClose }) {
     { label: 'Athlete Lookups', val: t.athleteSearches || 0, color: '#ff9f43' },
     { label: 'Bracket / Roster Opens', val: t.bracketOpens || 0, color: '#a78bfa' },
     { label: 'Mat Alerts Created', val: t.matAlertsCreated || 0, color: '#2ecc71' },
-    { label: 'Active Live Watches', val: `${watchStats.active} (${watchStats.push} Push)`, color: '#34d399' }
+    { label: 'Active Live Watches', val: `${watchStats.active || t.activeWatches || 0} (${watchStats.push || t.activePushWatches || 0} Push)`, color: '#34d399' }
   ];
 
   const copySummary = () => {

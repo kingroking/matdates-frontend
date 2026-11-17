@@ -190,6 +190,7 @@ export function MatAlertModal({ event, comp, division, existingWatch, onRemove, 
       const ref = await addDoc(collection(db, 'mat_watches'), payload);
       writeLocal([...readLocal(), { id: ref.id, ...payload }]);
       trackEvent('matAlertsCreated');
+      setDoc(doc(db, 'site_stats', '__totals__'), { activeWatches: increment(1), ...(fcmToken ? { activePushWatches: increment(1) } : {}) }, { merge: true }).catch(() => {});
       if (fcmToken) trackEvent('pushAlertsEnabled');
       setDone(true);
     } catch (err) {
