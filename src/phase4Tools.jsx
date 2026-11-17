@@ -76,14 +76,7 @@ const normGymKey = (raw) => {
   })[k] || k;
 };
 
-const gymMatches = (targetKey, targetName, candidateRaw) => {
-  const ck = normGymKey(candidateRaw);
-  if (!ck || !targetKey) return false;
-  if (ck === targetKey) return true;
-  if (targetKey.length >= 5 && ck.includes(targetKey)) return true;
-  if (ck.length >= 5 && targetKey.includes(ck)) return true;
-  return false;
-};
+const bucketOfKey = (k) => (k && k[0] >= 'a' && k[0] <= 'z' ? k[0] : '0');
 
 export function LeaderboardModal({ onClose }) {
   const [rows, setRows] = useState([]);
@@ -92,9 +85,9 @@ export function LeaderboardModal({ onClose }) {
   const [qStr, setQStr] = useState('');
   const [expandedKey, setExpandedKey] = useState(null);
   const [medalFilter, setMedalFilter] = useState('ALL');
-  const [medalistsCache, setMedalistsCache] = useState(null);
+  const [bucketMap, setBucketMap] = useState({});
   const [rosterCache, setRosterCache] = useState(null);
-  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [loadingBucket, setLoadingBucket] = useState('');
 
   useEffect(() => {
     getDocs(query(collection(db, 'event_competitors'), where('event_id', '==', '__global_leaderboard__')))
@@ -109,31 +102,43 @@ export function LeaderboardModal({ onClose }) {
       });
   }, []);
 
-  const ensureDetailsLoaded = async () => {
-    if (medalistsCache !== null && rosterCache !== null) return;
-    setLoadingDetail(true);
+  const loadGymBucket = async (gymKey) => {
+    const bkt = bucketOfKey(gymKey);
+    const needBucket = !bucketMap[bkt];
+    const needRoster = rosterCache === null;
+    if (!needBucket && !needRoster) return;
+    setLoadingBucket(bkt);
     try {
-      const [mSnap, rSnap] = await Promise.all([
-        getDocs(query(collection(db, 'event_competitors'), where('event_id', '==', '__academy_medalists__'))),
-        getDocs(query(collection(db, 'event_competitors'), where('event_id', '==', '__athlete_index__')))
-      ]);
-      const mAll = [];
-      mSnap.docs.forEach(d => (d.data().items || []).forEach(it => mAll.push(it)));
-      const rAll = [];
-      rSnap.docs.forEach(d => (d.data().items || []).forEach(it => rAll.push(it)));
-      setMedalistsCache(mAll);
-      setRosterCache(rAll);
+      const tasks = [
+        needBucket
+          ? getDocs(query(collection(db, 'event_competitors'), where('event_id', '==', `__medalists_${bkt}__`)))
+          : Promise.resolve(null),
+        needRoster
+          ? getDocs(query(collection(db, 'event_competitors'), where('event_id', '==', '__athlete_index__')))
+          : Promise.resolve(null)
+      ];
+      const [mSnap, rSnap] = await Promise.all(tasks);
+      if (mSnap) {
+        const mItems = [];
+        mSnap.docs.forEach(d => (d.data().items || []).forEach(it => mItems.push(it)));
+        setBucketMap(prev => ({ ...prev, [bkt]: mItems }));
+      }
+      if (rSnap) {
+        const rItems = [];
+        rSnap.docs.forEach(d => (d.data().items || []).forEach(it => rItems.push(it)));
+        setRosterCache(rItems);
+      }
     } catch (e) {
-      console.warn('Detail fetch warn:', e);
-      setMedalistsCache([]);
-      setRosterCache([]);
+      console.warn('Bucket fetch warn:', e);
+      if (needBucket) setBucketMap(prev => ({ ...prev, [bkt]: [] }));
+      if (needRoster) setRosterCache([]);
     } finally {
-      setLoadingDetail(false);
+      setLoadingBucket('');
     }
   };
 
   const toggleGym = (gymKey, clickedMedal = 'ALL') => {
-    ensureDetailsLoaded();
+    loadGymBucket(gymKey);
     if (expandedKey === gymKey && medalFilter === clickedMedal) {
       setExpandedKey(null);
     } else {
@@ -152,12 +157,13 @@ export function LeaderboardModal({ onClose }) {
       const k = normGymKey(r.Academy);
       if (!k) return;
       if (!map[k]) map[k] = {
-        key: k, Academy: r.Academy, Gold: 0, Silver: 0, Bronze: 0,
+        key: k, Academy: r.Academy, Gold: 0, Silver: 0, Bronze: 0, Subs: 0,
         Points: 0, YouthMedals: 0, AdultMedals: 0, Feds: new Set(), hasMedals: false
       };
       const g = Number(r.Gold || 0), sv = Number(r.Silver || 0), br = Number(r.Bronze || 0);
       if (r.Gold !== undefined) map[k].hasMedals = true;
       map[k].Gold += g; map[k].Silver += sv; map[k].Bronze += br;
+      map[k].Subs += Number(r.Subs || 0);
       map[k].Points = Math.round((map[k].Points + Number(r.Points || 0)) * 10) / 10;
       if (rAge === 'YOUTH') map[k].YouthMedals += (g + sv + br);
       else map[k].AdultMedals += (g + sv + br);
@@ -167,11 +173,25 @@ export function LeaderboardModal({ onClose }) {
     const rankedAll = Object.values(map)
       .sort((a, b) => score(b) - score(a) || b.Points - a.Points)
       .map((item, idx) => ({ ...item, trueRank: idx + 1 }));
+
     const q = qStr.trim().toLowerCase();
-    const filtered = q
-      ? rankedAll.filter(x => x.Academy.toLowerCase().includes(q) || x.key.includes(q.replace(/[^a-z0-9]/g, '')))
-      : rankedAll;
-    return { totalGyms: rankedAll.length, list: filtered.slice(0, q ? 120 : 80) };
+    if (!q) return { totalGyms: rankedAll.length, list: rankedAll.slice(0, 80), parentHint: false };
+
+    const tokens = q.split(/\s+/).filter(Boolean);
+    const direct = rankedAll.filter(x => {
+      const low = x.Academy.toLowerCase();
+      return low.includes(q) || tokens.every(t => low.includes(t));
+    });
+
+    // If someone searches e.g. "Carlson Gracie San Antonio" and IBJJF groups affiliates under "Carlson Gracie Team",
+    // also surface matching parent association teams right underneath!
+    if (direct.length < 5 && tokens.length >= 2) {
+      const prefix2 = tokens.slice(0, 2).join(' ');
+      const seenK = new Set(direct.map(d => d.key));
+      const parents = rankedAll.filter(x => !seenK.has(x.key) && x.Academy.toLowerCase().startsWith(prefix2)).slice(0, 12);
+      return { totalGyms: rankedAll.length, list: [...direct, ...parents].slice(0, 100), parentHint: direct.length === 0 && parents.length > 0 };
+    }
+    return { totalGyms: rankedAll.length, list: direct.slice(0, 120), parentHint: false };
   }, [rows, fed, age, qStr]);
 
   const box = { position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.86)', zIndex:9999, display:'flex', justifyContent:'center', alignItems:'center', padding:'10px', boxSizing:'border-box' };
@@ -192,32 +212,43 @@ export function LeaderboardModal({ onClose }) {
 
         <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', marginBottom:'10px', alignItems:'center', flexShrink:0 }}>
           {[['ALL','🌐 All'],['JJWL','JJWL'],['IBJJF','IBJJF'],['SMOOTHCOMP','Smoothcomp']].map(([k, lbl]) => (
-            <button key={k} onClick={() => { setFed(k); if (k === 'IBJJF') setAge('ALL'); }} style={{ padding:'6px 10px', borderRadius:'6px', border: fed === k ? '1px solid #38bdf8' : '1px solid #2d3748', background: fed === k ? '#162536' : '#181c24', color: fed === k ? '#38bdf8' : '#cbd5e1', fontWeight:'bold', fontSize:'0.78rem', cursor:'pointer' }}>{lbl}</button>
+            <button key={k} onClick={() => setFed(k)} style={{ padding:'6px 10px', borderRadius:'6px', border: fed === k ? '1px solid #38bdf8' : '1px solid #2d3748', background: fed === k ? '#162536' : '#181c24', color: fed === k ? '#38bdf8' : '#cbd5e1', fontWeight:'bold', fontSize:'0.78rem', cursor:'pointer' }}>{lbl}</button>
           ))}
           {[['ALL','All Ages'],['YOUTH','🐯 Youth'],['ADULT','🥋 Adult']].map(([ak, albl]) => (
-            <button key={ak} disabled={fed === 'IBJJF' && ak === 'YOUTH'} onClick={() => setAge(ak)} style={{ padding:'6px 9px', borderRadius:'6px', border:'1px solid #2d3748', background: age === ak ? '#2d3748' : '#181c24', color: age === ak ? '#fff' : '#94a3b8', fontSize:'0.76rem', fontWeight:'bold', opacity: fed === 'IBJJF' && ak === 'YOUTH' ? 0.4 : 1, cursor:'pointer' }}>{albl}</button>
+            <button key={ak} onClick={() => setAge(ak)} style={{ padding:'6px 9px', borderRadius:'6px', border:'1px solid #2d3748', background: age === ak ? '#2d3748' : '#181c24', color: age === ak ? '#fff' : '#94a3b8', fontSize:'0.76rem', fontWeight:'bold', cursor:'pointer' }}>{albl}</button>
           ))}
           <input value={qStr} onChange={e => setQStr(e.target.value)} placeholder="Search any academy..." style={{ flex:'1 1 130px', minWidth:'120px', padding:'7px 10px', borderRadius:'6px', background:'#181c24', color:'#fff', border:'1px solid #2d3748', fontSize:'0.85rem', boxSizing:'border-box' }} />
         </div>
+
+        {aggregated.parentHint && (
+          <div style={{ background:'#162032', border:'1px solid #2b4c7e', borderRadius:'6px', padding:'7px 10px', marginBottom:'8px', fontSize:'0.76rem', color:'#cbd5e1', flexShrink:0 }}>
+            💡 Note: IBJJF groups local chapters under their parent association banner (shown below) — tap the parent team to search individual medalists!
+          </div>
+        )}
 
         <div style={{ overflowY:'auto', border:'1px solid #242b38', borderRadius:'8px', background:'#151922', flex:1 }}>
           {aggregated.list.map((r) => {
             const i = r.trueRank - 1;
             const isOpen = expandedKey === r.key;
-            const gymMedalists = isOpen && medalistsCache
-              ? medalistsCache.filter(m =>
-                  gymMatches(r.key, r.Academy, m.a) &&
+            const bkt = bucketOfKey(r.key);
+            const bktItems = bucketMap[bkt] || [];
+            const isLoadingThis = isOpen && (loadingBucket === bkt || !bucketMap[bkt]);
+
+            const gymMedalists = isOpen && bucketMap[bkt]
+              ? bktItems.filter(m =>
+                  normGymKey(m.a) === r.key &&
                   (fed === 'ALL' || m.f === fed) &&
                   (age === 'ALL' || !m.ag || m.ag === age) &&
                   (medalFilter === 'ALL' || Number(m.p) === Number(medalFilter))
                 )
               : [];
+
             const gymUpcoming = isOpen && rosterCache
-              ? rosterCache.filter(c => gymMatches(r.key, r.Academy, c.a)).slice(0, 25)
+              ? rosterCache.filter(c => normGymKey(c.a) === r.key).slice(0, 30)
               : [];
 
             return (
-              <div key={`${r.key}_${i}`} style={{ borderBottom:'1px solid #1f2532' }}>
+              <div key={`${r.key}_${r.trueRank}`} style={{ borderBottom:'1px solid #1f2532' }}>
                 <div
                   onClick={() => toggleGym(r.key, 'ALL')}
                   style={{
@@ -226,10 +257,9 @@ export function LeaderboardModal({ onClose }) {
                     backgroundColor: isOpen ? '#1a2230' : 'transparent'
                   }}
                 >
-                  {/* Top Row: Rank + Full Academy Name + Points */}
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:'8px' }}>
                     <div style={{ display:'flex', alignItems:'baseline', gap:'7px', minWidth:0, flex:1 }}>
-                      <strong style={{ color: i < 3 ? '#facc15' : '#64748b', fontSize:'0.9rem', flexShrink:0 }}>#{i + 1}</strong>
+                      <strong style={{ color: i < 3 ? '#facc15' : '#64748b', fontSize:'0.9rem', flexShrink:0 }}>#{r.trueRank}</strong>
                       <strong style={{ color:'#fff', fontSize:'0.96rem', lineHeight:1.3, wordBreak:'break-word' }}>{r.Academy}</strong>
                     </div>
                     <div style={{ display:'flex', alignItems:'center', gap:'6px', flexShrink:0 }}>
@@ -238,41 +268,34 @@ export function LeaderboardModal({ onClose }) {
                     </div>
                   </div>
 
-                  {/* Second Row: Interactive Medal Buttons + Youth/Adult Breakdown + Circuit Chips */}
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'6px' }}>
                     <div style={{ display:'flex', gap:'6px', alignItems:'center', flexWrap:'wrap' }}>
-                      {r.hasMedals ? (
-                        <>
-                          {[
-                            [1, '🥇', r.Gold, '#eab308'],
-                            [2, '🥈', r.Silver, '#94a3b8'],
-                            [3, '🥉', r.Bronze, '#d97706']
-                          ].map(([placeNum, icon, cnt, borderCol]) => {
-                            const activePill = isOpen && Number(medalFilter) === placeNum;
-                            return (
-                              <button
-                                key={placeNum}
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); toggleGym(r.key, placeNum); }}
-                                title="Tap to filter medalists"
-                                style={{
-                                  background: activePill ? '#263346' : '#11151d',
-                                  border: activePill ? `1px solid ${borderCol}` : '1px solid #283142',
-                                  borderRadius:'6px', padding:'3px 8px', color:'#fff',
-                                  fontSize:'0.8rem', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:'4px'
-                                }}
-                              >
-                                <span>{icon}</span><strong>{cnt}</strong>
-                              </button>
-                            );
-                          })}
-                          <span style={{ color:'#cbd5e1', fontSize:'0.73rem', background:'#1a202c', border:'1px solid #2d3748', padding:'2px 7px', borderRadius:'4px', whiteSpace:'nowrap' }}>
-                            {age === 'YOUTH' ? `🐯 ${r.YouthMedals}` : age === 'ADULT' ? `🥋 ${r.AdultMedals}` : `🐯 ${r.YouthMedals} · 🥋 ${r.AdultMedals}`}
-                          </span>
-                        </>
-                      ) : (
-                        <span style={{ color:'#94a3b8', fontSize:'0.75rem' }}>Official IBJJF Season Points Ranking</span>
-                      )}
+                      {[
+                        [1, '🥇', r.Gold, '#eab308'],
+                        [2, '🥈', r.Silver, '#94a3b8'],
+                        [3, '🥉', r.Bronze, '#d97706']
+                      ].map(([placeNum, icon, cnt, borderCol]) => {
+                        const activePill = isOpen && Number(medalFilter) === placeNum;
+                        return (
+                          <button
+                            key={placeNum}
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); toggleGym(r.key, placeNum); }}
+                            title="Tap to filter medalists"
+                            style={{
+                              background: activePill ? '#263346' : '#11151d',
+                              border: activePill ? `1px solid ${borderCol}` : '1px solid #283142',
+                              borderRadius:'6px', padding:'3px 8px', color:'#fff',
+                              fontSize:'0.8rem', cursor:'pointer', display:'inline-flex', alignItems:'center', gap:'4px'
+                            }}
+                          >
+                            <span>{icon}</span><strong>{cnt}</strong>
+                          </button>
+                        );
+                      })}
+                      <span style={{ color:'#cbd5e1', fontSize:'0.73rem', background:'#1a202c', border:'1px solid #2d3748', padding:'2px 7px', borderRadius:'4px', whiteSpace:'nowrap' }}>
+                        {age === 'YOUTH' ? `🐯 ${r.YouthMedals}` : age === 'ADULT' ? `🥋 ${r.AdultMedals}` : `🐯 ${r.YouthMedals} · 🥋 ${r.AdultMedals}`}
+                      </span>
                     </div>
                     <div style={{ display:'flex', gap:'4px', flexWrap:'wrap' }}>
                       {Array.from(r.Feds).map(f => (
@@ -282,13 +305,12 @@ export function LeaderboardModal({ onClose }) {
                   </div>
                 </div>
 
-                {/* Expandable Medalist & Active Squad Drawer */}
                 {isOpen && (
                   <div style={{ background:'#0e1218', borderTop:'1px solid #242b38', padding:'12px' }}>
-                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'6px', marginBottom:'10px' }}>
-                      <strong style={{ color:'#38bdf8', fontSize:'0.82rem' }}>
-                        {r.Academy} — {medalFilter === 'ALL' ? 'Individual Medalists & Squad' : `${medalFilter === 1 ? '🥇 Gold' : medalFilter === 2 ? '🥈 Silver' : '🥉 Bronze'} Medalists`}
-                      </strong>
+                    <div style={{ display:'flex', flexWrap:'wrap', gap:'8px', alignItems:'center', justifyContent:'space-between', background:'#141a24', border:'1px solid #222c3c', borderRadius:'6px', padding:'8px 10px', marginBottom:'10px', fontSize:'0.78rem', color:'#cbd5e1' }}>
+                      <span>
+                        <strong>2026 Verified Tally:</strong> 🥇 {r.Gold} · 🥈 {r.Silver} · 🥉 {r.Bronze} ({r.YouthMedals} Youth / {r.AdultMedals} Adult){r.Subs > 0 ? ` · 🔥 ${r.Subs} Submissions` : ''}
+                      </span>
                       <div style={{ display:'flex', gap:'4px' }}>
                         {[['ALL','All'],[1,'🥇'],[2,'🥈'],[3,'🥉']].map(([mf, mlbl]) => (
                           <button
@@ -296,7 +318,7 @@ export function LeaderboardModal({ onClose }) {
                             type="button"
                             onClick={() => setMedalFilter(mf)}
                             style={{
-                              padding:'3px 8px', borderRadius:'5px', fontSize:'0.74rem', cursor:'pointer', fontWeight:'bold',
+                              padding:'3px 8px', borderRadius:'5px', fontSize:'0.73rem', cursor:'pointer', fontWeight:'bold',
                               background: medalFilter === mf ? '#0284c7' : '#181c24',
                               color: '#fff', border: medalFilter === mf ? '1px solid #38bdf8' : '1px solid #2d3748'
                             }}
@@ -307,13 +329,13 @@ export function LeaderboardModal({ onClose }) {
                       </div>
                     </div>
 
-                    {loadingDetail ? (
-                      <div style={{ color:'#94a3b8', fontSize:'0.8rem', padding:'8px 0' }}>Loading athlete podium records...</div>
+                    {isLoadingThis ? (
+                      <div style={{ color:'#38bdf8', fontSize:'0.8rem', padding:'6px 0' }}>Loading verified podium records...</div>
                     ) : (
                       <>
                         {gymMedalists.length > 0 ? (
                           <div style={{ display:'flex', flexDirection:'column', gap:'6px', marginBottom: gymUpcoming.length > 0 ? '12px' : 0 }}>
-                            {gymMedalists.slice(0, 100).map((m, idx) => (
+                            {gymMedalists.slice(0, 120).map((m, idx) => (
                               <div key={idx} style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:'8px', background:'#151b24', border:'1px solid #222b3a', borderRadius:'6px', padding:'7px 10px', fontSize:'0.8rem' }}>
                                 <div style={{ minWidth:0 }}>
                                   <div style={{ color:'#fff', fontWeight:'bold', wordBreak:'break-word' }}>
@@ -329,17 +351,15 @@ export function LeaderboardModal({ onClose }) {
                             ))}
                           </div>
                         ) : (
-                          <div style={{ color:'#94a3b8', fontSize:'0.78rem', background:'#141922', border:'1px solid #1f2735', borderRadius:'6px', padding:'9px 10px', marginBottom: gymUpcoming.length > 0 ? '10px' : 0, lineHeight:1.45 }}>
-                            {r.Feds.has('JJWL') && !r.Feds.has('SMOOTHCOMP') && !r.Feds.has('IBJJF')
-                              ? 'JJWL publishes official academy medal totals directly via their season API without public per-athlete podium lists.'
-                              : 'No individual podium finishers matched this filter yet — new Smoothcomp & IBJJF tournament podiums sync automatically after each weekend!'}
+                          <div style={{ color:'#94a3b8', fontSize:'0.77rem', background:'#141922', border:'1px solid #1f2735', borderRadius:'6px', padding:'8px 10px', marginBottom: gymUpcoming.length > 0 ? '10px' : 0, lineHeight:1.45 }}>
+                            Official team medal totals verified via {Array.from(r.Feds).join(' & ')} — individual athlete division podiums appear automatically for IBJJF & public Smoothcomp athlete rankings.
                           </div>
                         )}
 
                         {medalFilter === 'ALL' && gymUpcoming.length > 0 && (
                           <div>
                             <div style={{ color:'#ff9f43', fontSize:'0.76rem', fontWeight:'bold', marginBottom:'6px' }}>
-                              🥋 Active Competitors Registered in Upcoming Brackets ({gymUpcoming.length}{gymUpcoming.length === 25 ? '+' : ''})
+                              🥋 Active Competitors Registered in Upcoming Brackets ({gymUpcoming.length}{gymUpcoming.length === 30 ? '+' : ''})
                             </div>
                             <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
                               {gymUpcoming.map((c, ci) => (
