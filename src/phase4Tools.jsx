@@ -164,14 +164,15 @@ function TrophyCardModal({ cardData, onClose }) {
       hy += 94;
     });
 
-    // Footer CTA
+    // Footer CTA with Direct Deep-Link
     ctx.textAlign = 'center';
     ctx.fillStyle = '#94a3b8';
-    ctx.font = '32px system-ui, -apple-system, sans-serif';
-    ctx.fillText('Track Live BJJ Brackets, Mat Alerts & Standings at', 540, 1765);
+    ctx.font = '30px system-ui, -apple-system, sans-serif';
+    ctx.fillText('View Full 2026 Podiums, Live Brackets & Mat Alerts:', 540, 1758);
     ctx.fillStyle = '#38bdf8';
-    ctx.font = 'bold 46px system-ui, -apple-system, sans-serif';
-    ctx.fillText('matdates.com', 540, 1825);
+    const dispLink = (cardData.deepLink || 'https://matdates.com').replace(/^https?:\/\//, '');
+    ctx.font = dispLink.length > 34 ? 'bold 34px system-ui, -apple-system, sans-serif' : 'bold 42px system-ui, -apple-system, sans-serif';
+    ctx.fillText(dispLink.length > 46 ? dispLink.slice(0, 44) + '…' : dispLink, 540, 1818);
 
     setImgUrl(c.toDataURL('image/png'));
   }, [cardData]);
@@ -211,6 +212,16 @@ function TrophyCardModal({ cardData, onClose }) {
     setTimeout(() => { window.location.href = 'instagram://story-camera'; }, 250);
   };
 
+  const handleCopyDeepLink = async () => {
+    const link = cardData.deepLink || 'https://matdates.com';
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopiedMsg('🔗 Direct link copied for IG Link Sticker / Bio!');
+    } catch {
+      window.prompt('Copy direct profile link:', link);
+    }
+  };
+
   return (
     <div onClick={onClose} style={{ position:'fixed', top:0, left:0, right:0, bottom:0, width:'100%', maxWidth:'100vw', backgroundColor:'rgba(0,0,0,0.9)', zIndex:10090, display:'flex', justifyContent:'center', alignItems:'center', padding:'12px', boxSizing:'border-box' }}>
       <div onClick={e => e.stopPropagation()} style={{ backgroundColor:'#11141b', border:'1px solid #334155', borderRadius:'12px', padding:'14px', width:'100%', maxWidth:'380px', maxHeight:'88svh', overflowY:'auto', boxSizing:'border-box', textAlign:'center' }}>
@@ -226,6 +237,9 @@ function TrophyCardModal({ cardData, onClose }) {
           </button>
           <button onClick={handleCopyOpenIG} style={{ flex:'1 1 140px', padding:'10px 8px', borderRadius:'7px', background:'#1e293b', color:'#38bdf8', border:'1px solid #38bdf8', fontWeight:'bold', fontSize:'0.82rem', cursor:'pointer' }}>
             📸 Copy & Open IG Camera
+          </button>
+          <button onClick={handleCopyDeepLink} style={{ flex:'1 1 100%', padding:'9px 8px', borderRadius:'7px', background:'#162032', color:'#cbd5e1', border:'1px solid #475569', fontWeight:'bold', fontSize:'0.8rem', cursor:'pointer' }}>
+            🔗 Copy Direct Link (for IG Link Sticker)
           </button>
         </div>
       </div>
@@ -284,14 +298,33 @@ const athleteMatchesQuery = (recName, qRaw) => {
   return false;
 };
 
+const buildShareOrigin = () => {
+  if (typeof window === 'undefined') return 'https://matdates.com';
+  const h = window.location.hostname;
+  return (h === 'localhost' || h === '127.0.0.1') ? window.location.origin : 'https://matdates.com';
+};
+
 export function LeaderboardModal({ onClose }) {
+  const initParams = React.useMemo(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const g = sp.get('gym');
+      const a = sp.get('athlete');
+      return {
+        gymKey: g ? normGymKey(g) : null,
+        athlete: a ? a.replace(/\+/g, ' ').trim() : ''
+      };
+    } catch { return { gymKey: null, athlete: '' }; }
+  }, []);
+
   const [rows, setRows] = useState([]);
-  const [mode, setMode] = useState('GYMS'); // 'GYMS' | 'ATHLETES'
+  const [rowsLoaded, setRowsLoaded] = useState(false);
+  const [mode, setMode] = useState(initParams.athlete ? 'ATHLETES' : 'GYMS');
   const [fed, setFed] = useState('ALL');
   const [age, setAge] = useState('ALL');
   const [qStr, setQStr] = useState('');
-  const [athQuery, setAthQuery] = useState('');
-  const [selectedGymKey, setSelectedGymKey] = useState(null);
+  const [athQuery, setAthQuery] = useState(initParams.athlete || '');
+  const [selectedGymKey, setSelectedGymKey] = useState(initParams.gymKey || null);
   const [medalFilter, setMedalFilter] = useState('ALL');
   const [bucketMap, setBucketMap] = useState({});
   const [athShardMap, setAthShardMap] = useState({});
@@ -299,6 +332,18 @@ export function LeaderboardModal({ onClose }) {
   const [loadingBucket, setLoadingBucket] = useState('');
   const [loadingAthShard, setLoadingAthShard] = useState('');
   const [trophyCard, setTrophyCard] = useState(null);
+  const [copiedToast, setCopiedToast] = useState('');
+
+  const copyDirectLink = async (paramName, paramVal) => {
+    const u = `${buildShareOrigin()}/?${paramName}=${encodeURIComponent(paramVal).replace(/%20/g, '+')}`;
+    try {
+      await navigator.clipboard.writeText(u);
+      setCopiedToast(`🔗 Link copied: ${u.replace(/^https?:\/\//, '')}`);
+      setTimeout(() => setCopiedToast(''), 2800);
+    } catch {
+      window.prompt('Copy direct link:', u);
+    }
+  };
 
   useEffect(() => {
     getDocs(query(collection(db, 'event_competitors'), where('event_id', '==', '__global_leaderboard__')))
@@ -310,8 +355,27 @@ export function LeaderboardModal({ onClose }) {
           else if (data.Academy) flat.push(data);
         });
         setRows(flat);
-      });
+        setRowsLoaded(true);
+      })
+      .catch(() => setRowsLoaded(true));
+    if (initParams.gymKey) {
+      loadGymBucket(initParams.gymKey);
+    }
   }, []);
+
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('gym');
+      url.searchParams.delete('athlete');
+      if (selectedGymKey) {
+        url.searchParams.set('gym', selectedGymKey);
+      } else if (mode === 'ATHLETES' && athQuery.trim().length >= 2) {
+        url.searchParams.set('athlete', athQuery.trim());
+      }
+      window.history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash);
+    } catch {}
+  }, [selectedGymKey, mode, athQuery]);
 
   const loadGymBucket = async (gymKey) => {
     const bkt = bucketOfKey(gymKey);
@@ -498,6 +562,16 @@ export function LeaderboardModal({ onClose }) {
   const box = { position:'fixed', top:0, left:0, right:0, bottom:0, width:'100%', maxWidth:'100vw', overflowX:'hidden', backgroundColor:'rgba(0,0,0,0.88)', zIndex:9999, display:'flex', justifyContent:'center', alignItems:'center', padding:'8px', boxSizing:'border-box' };
   const card = { backgroundColor:'#11141b', padding:'12px', boxSizing:'border-box', overflowX:'hidden', borderRadius:'12px', border:'1px solid #2d3748', width:'calc(100vw - 16px)', maxWidth:'880px', maxHeight:'88svh', display:'flex', flexDirection:'column', textAlign:'left' };
 
+  if (selectedGymKey && !activeGym && !rowsLoaded) {
+    return (
+      <div onClick={onClose} style={box}>
+        <div onClick={e => e.stopPropagation()} style={{ ...card, padding:'32px 20px', alignItems:'center', justifyContent:'center', textAlign:'center' }}>
+          <div style={{ color:'#38bdf8', fontWeight:'bold', fontSize:'1rem' }}>🏆 Opening Academy Trophy Room...</div>
+        </div>
+      </div>
+    );
+  }
+
   // Dedicated Full-View Academy Trophy Room when a gym is clicked!
   if (activeGym) {
     const bkt = bucketOfKey(activeGym.key);
@@ -526,6 +600,7 @@ export function LeaderboardModal({ onClose }) {
       <div onClick={onClose} style={box}>
         <div onClick={e => e.stopPropagation()} style={card}>
           {trophyCard && <TrophyCardModal cardData={trophyCard} onClose={() => setTrophyCard(null)} />}
+          {copiedToast && <div style={{ background:'#064e3b', color:'#6ee7b7', border:'1px solid #10b981', borderRadius:'6px', padding:'6px 10px', fontSize:'0.76rem', fontWeight:'bold', marginBottom:'8px', textAlign:'center' }}>{copiedToast}</div>}
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:'6px', flexWrap:'wrap', marginBottom:'10px', flexShrink:0 }}>
             <button
               onClick={() => setSelectedGymKey(null)}
@@ -533,7 +608,14 @@ export function LeaderboardModal({ onClose }) {
             >
               ← Standings
             </button>
-            <div style={{ display:'flex', gap:'6px', alignItems:'center' }}>
+            <div style={{ display:'flex', gap:'6px', alignItems:'center', flexWrap:'wrap' }}>
+              <button
+                type="button"
+                onClick={() => copyDirectLink('gym', activeGym.key)}
+                style={{ background:'#162536', color:'#38bdf8', border:'1px solid #0284c7', borderRadius:'6px', padding:'6px 9px', cursor:'pointer', fontWeight:'bold', fontSize:'0.76rem' }}
+              >
+                🔗 Copy Link
+              </button>
               <button
                 type="button"
                 onClick={() => setTrophyCard({
@@ -543,6 +625,7 @@ export function LeaderboardModal({ onClose }) {
                   gold: activeGym.Gold,
                   silver: activeGym.Silver,
                   bronze: activeGym.Bronze,
+                  deepLink: `${buildShareOrigin()}/?gym=${activeGym.key}`,
                   lines: [
                     ...indivList.slice(0, 6).map(m => `${Number(m.p) === 1 ? '🥇' : Number(m.p) === 2 ? '🥈' : '🥉'} ${m.n} — ${m.ev}`),
                     ...eventSummaries.slice(0, 4).map(ev => `${ev.n} (${ev.d.split('(')[0].trim()})`)
@@ -619,9 +702,13 @@ export function LeaderboardModal({ onClose }) {
                       {indivList.slice(0, 150).map((m, idx) => (
                         <div key={idx} style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:'8px', background:'#151b24', border:'1px solid #222b3a', borderRadius:'6px', padding:'8px 10px', fontSize:'0.82rem' }}>
                           <div style={{ minWidth:0 }}>
-                            <div style={{ color:'#fff', fontWeight:'bold', wordBreak:'break-word' }}>
+                            <div
+                              onClick={() => { setSelectedGymKey(null); setMode('ATHLETES'); setAthQuery(m.n); }}
+                              style={{ color:'#fff', fontWeight:'bold', wordBreak:'break-word', cursor:'pointer' }}
+                              title="View full athlete podium record"
+                            >
                               {Number(m.p) === 1 ? '🥇 ' : Number(m.p) === 2 ? '🥈 ' : '🥉 '}
-                              {m.n}
+                              <span style={{ textDecoration:'underline', textDecorationColor:'rgba(56,189,248,0.45)' }}>{m.n}</span>
                             </div>
                             <div style={{ color:'#94a3b8', fontSize:'0.75rem', marginTop:'2px', wordBreak:'break-word' }}>
                               {[m.d, m.ev].filter(Boolean).join(' • ')}
@@ -694,6 +781,7 @@ export function LeaderboardModal({ onClose }) {
   return (
     <div onClick={onClose} style={box}>
       {trophyCard && <TrophyCardModal cardData={trophyCard} onClose={() => setTrophyCard(null)} />}
+          {copiedToast && <div style={{ background:'#064e3b', color:'#6ee7b7', border:'1px solid #10b981', borderRadius:'6px', padding:'6px 10px', fontSize:'0.76rem', fontWeight:'bold', marginBottom:'8px', textAlign:'center' }}>{copiedToast}</div>}
       <div onClick={e => e.stopPropagation()} style={card}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'10px', gap:'10px', flexShrink:0 }}>
           <div style={{ minWidth:0 }}>
@@ -768,7 +856,12 @@ export function LeaderboardModal({ onClose }) {
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:'8px', flexWrap:'wrap', marginBottom:'6px' }}>
                       <div>
                         <div style={{ color:'#fff', fontWeight:'bold', fontSize:'0.96rem' }}>{a.name}</div>
-                        <div style={{ color:'#ff9f43', fontSize:'0.78rem', fontWeight:'600' }}>{a.academy}</div>
+                        <div
+                          onClick={() => { const gk = normGymKey(a.academy); if (aggregated.byKey[gk]) openTrophyRoom(gk, 'ALL'); }}
+                          style={{ color:'#ff9f43', fontSize:'0.78rem', fontWeight:'600', cursor:'pointer', textDecoration:'underline', textDecorationColor:'rgba(255,159,67,0.4)' }}
+                        >
+                          {a.academy} →
+                        </div>
                       </div>
                       <div style={{ display:'flex', gap:'6px', alignItems:'center', flexWrap:'wrap' }}>
                         <div style={{ display:'flex', gap:'6px', fontSize:'0.8rem', background:'#111620', padding:'4px 8px', borderRadius:'6px', border:'1px solid #263145' }}>
@@ -778,6 +871,13 @@ export function LeaderboardModal({ onClose }) {
                         </div>
                         <button
                           type="button"
+                          onClick={() => copyDirectLink('athlete', a.name)}
+                          style={{ background:'#162536', color:'#38bdf8', border:'1px solid #0284c7', borderRadius:'6px', padding:'5px 8px', fontSize:'0.74rem', fontWeight:'bold', cursor:'pointer' }}
+                        >
+                          🔗 Link
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => setTrophyCard({
                             badge: '2026 VERIFIED ATHLETE TROPHY CARD',
                             title: a.name,
@@ -785,6 +885,7 @@ export function LeaderboardModal({ onClose }) {
                             gold: a.g,
                             silver: a.s,
                             bronze: a.b,
+                            deepLink: `${buildShareOrigin()}/?athlete=${encodeURIComponent(a.name).replace(/%20/g, '+')}`,
                             lines: a.events.map(m => `${Number(m.p) === 1 ? '🥇' : Number(m.p) === 2 ? '🥈' : '🥉'} ${m.ev} (${m.d.split('/').slice(-2).join('/').trim()})`)
                           })}
                           style={{ background:'#ff9f43', color:'#000', border:'none', borderRadius:'6px', padding:'5px 9px', fontSize:'0.75rem', fontWeight:'bold', cursor:'pointer' }}
