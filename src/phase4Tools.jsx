@@ -249,6 +249,8 @@ function TrophyCardModal({ cardData, onClose }) {
 
 const normGymKey = (raw) => {
   const k = (raw || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (k.startsWith("aoj") || k.startsWith("artofjiujitsu")) return "artofjiujitsu";
+  if (k.startsWith("atoshq") || k === "atosjiujitsuhq") return "atos";
   return ({
     aoj: 'artofjiujitsu',
     atosjiujitsu: 'atos',
@@ -307,7 +309,61 @@ const buildShareOrigin = () => {
   return (h === 'localhost' || h === '127.0.0.1') ? window.location.origin : 'https://matdates.com';
 };
 
+
+function canonicalizeHits(hits) {
+  const stripG = (k) => (k || "").replace(/(jiujitsu|bjj|team|hq|academy)+$/g, "");
+  const hqRoots = ["carlsongracie", "graciebarra", "alliance", "checkmat", "atos", "ares", "gfteam", "zrteam", "unity", "btt"];
+  const gymsCompat = (a, b) => {
+    if (!a || !b || a === b) return true;
+    const sa = stripG(a), sb = stripG(b);
+    if (!sa || !sb || sa === sb || sa.startsWith(sb) || sb.startsWith(sa)) return true;
+    return hqRoots.some(r => (sa === r && sb.startsWith(r)) || (sb === r && sa.startsWith(r)));
+  };
+  const parseN = (raw) => {
+    const clean = foldAscii(raw).replace(/\b(jr\.?|sr\.?|ii|iii|iv)\b/g, " ").trim();
+    const toks = clean.split(/\s+/).map(t => t.replace(/[^a-z0-9]/g, "")).filter(Boolean);
+    const first = toks[0] || "";
+    return { first, fi: first[0] || "", isInit: first.length === 1, last: toks[toks.length - 1] || "" };
+  };
+  const pickGym = (curA, curK, newA, newK) => {
+    if (!curA) return [newA, newK];
+    if (stripG(newK).length > stripG(curK).length) return [newA, newK];
+    if (curA.length <= 4 && newA.length > curA.length) return [newA, newK];
+    return [curA, curK];
+  };
+  const parsed = hits.map(m => ({ m, np: parseN(m.n), ak: normGymKey(m.a) }));
+  const clusters = [];
+  parsed.filter(x => !x.np.isInit).forEach(({ m, np, ak }) => {
+    let c = clusters.find(x => !x.np.isInit && x.np.first === np.first && x.np.last === np.last && gymsCompat(x.ak, ak));
+    if (!c) { c = { bestN: m.n, bestA: m.a, ak, np, rows: [], seen: new Set() }; clusters.push(c); }
+    else {
+      if ((m.n || "").length > (c.bestN || "").length) c.bestN = m.n;
+      [c.bestA, c.ak] = pickGym(c.bestA, c.ak, m.a, ak);
+    }
+    c.rows.push(m);
+  });
+  parsed.filter(x => x.np.isInit).forEach(({ m, np, ak }) => {
+    const cands = clusters.filter(x => !x.np.isInit && x.np.fi === np.fi && x.np.last === np.last && gymsCompat(x.ak, ak));
+    let c = cands.length === 1 ? cands[0] : clusters.find(x => x.np.isInit && x.np.fi === np.fi && x.np.last === np.last && gymsCompat(x.ak, ak));
+    if (!c) { c = { bestN: m.n, bestA: m.a, ak, np, rows: [], seen: new Set() }; clusters.push(c); }
+    else { [c.bestA, c.ak] = pickGym(c.bestA, c.ak, m.a, ak); }
+    c.rows.push(m);
+  });
+  const out = [];
+  clusters.forEach(c => {
+    c.rows.forEach(m => {
+      const dk = foldAscii(m.ev) + "|" + foldAscii(m.d) + "|" + m.p;
+      if (c.seen.has(dk)) return;
+      c.seen.add(dk);
+      out.push({ ...m, n: c.bestN, a: c.bestA });
+    });
+  });
+  return out;
+}
+
 export function LeaderboardModal({ onClose }) {
+  const [podiumWatchPick, setPodiumWatchPick] = useState(null);
+  const { getWatch: getPodiumWatch, removeWatch: removePodiumWatch } = useWatchedAthletes();
   const initParams = React.useMemo(() => {
     try {
       const sp = new URLSearchParams(window.location.search);
@@ -523,7 +579,7 @@ export function LeaderboardModal({ onClose }) {
     const trimmed = athQuery.trim();
     if (trimmed.length < 2) return [];
     const bkt = athLastBucket(trimmed);
-    const pool = athShardMap[bkt] || [];
+    const pool = canonicalizeHits((athShardMap[bkt] || []).filter(m => athleteMatchesQuery(m.n, trimmed) && (fed === "ALL" || m.f === fed) && (age === "ALL" || !m.ag || m.ag === age)));
     const hits = pool.filter(m =>
       athleteMatchesQuery(m.n, trimmed) &&
       (fed === 'ALL' || m.f === fed) &&
@@ -872,6 +928,7 @@ export function LeaderboardModal({ onClose }) {
                           <span>🥈 <strong>{a.s}</strong></span>
                           <span>🥉 <strong>{a.b}</strong></span>
                         </div>
+                        <button type="button" onClick={() => { const nm = a.name || a.n || ""; const ac = a.academy || a.a || ""; setPodiumWatchPick({ event: { id: "", name: "All Upcoming Tournaments", link: "https://matdates.com/?athlete=" + encodeURIComponent(nm).replace(/%20/g, "+"), sort_date: "" }, comp: { Name: nm, Academy: ac, Division: "" }, division: "" }); }} style={{ background: getPodiumWatch(a.name || a.n) ? "#132a1c" : "#162536", color: getPodiumWatch(a.name || a.n) ? "#2ecc71" : "#38bdf8", border: getPodiumWatch(a.name || a.n) ? "1px solid #2ecc71" : "1px solid #0284c7", borderRadius:"6px", padding:"5px 9px", fontSize:"0.74rem", fontWeight:"bold", cursor:"pointer", whiteSpace:"nowrap" }}>{getPodiumWatch(a.name || a.n) ? "✓ Watching" : "🔔 Watch"}</button>
                         <button
                           type="button"
                           onClick={() => copyDirectLink('athlete', a.name)}

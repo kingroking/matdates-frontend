@@ -236,7 +236,9 @@ export function MatAlertModal({ event, comp, division, existingWatch, onRemove, 
           <button onClick={onClose} aria-label="Close" style={{ background:'#1e293b', border:'1px solid #334155', borderRadius:'6px', color:'#e2e8f0', fontSize:'1rem', padding:'4px 9px', cursor:'pointer', flexShrink:0 }}>{'\u2715'}</button>
         </div>
         <p style={{ margin:'0 0 12px', color:'#cbd5e1', fontSize:'0.84rem', lineHeight:1.4 }}>
-          Watch <strong style={{ color:'#ff9f43' }}>{comp.Name}</strong> ({division}) at <strong>{event.name}</strong>.
+          {event && event.id
+            ? <>Watch <strong style={{ color:'#ff9f43' }}>{comp.Name}</strong>{division ? ` (${division})` : ''} at <strong>{event.name}</strong>.</>
+            : <>Follow <strong style={{ color:'#ff9f43' }}>{comp.Name}</strong>{comp.Academy ? ` (${comp.Academy})` : ''} — get an instant alert the moment they join any upcoming tournament bracket, plus live Mat # &amp; Match Time updates!</>}
         </p>
         {existingWatch && !done ? (
           <div style={{ background:'#132a1c', border:'1px solid #2ecc71', borderRadius:'8px', padding:'14px' }}>
