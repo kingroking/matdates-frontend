@@ -1018,7 +1018,7 @@ export function LeaderboardModal({ onClose }) {
           </div>
         )}
       </div>
-    </div>
+    {podiumWatchPick && <div onClick={e=>e.stopPropagation()}><MatAlertModal event={podiumWatchPick.event} comp={podiumWatchPick.comp} division={podiumWatchPick.division} existingWatch={getPodiumWatch(podiumWatchPick.comp.Name)} onRemove={removePodiumWatch} onClose={()=>setPodiumWatchPick(null)}/></div>}</div>
   );
 }
 
