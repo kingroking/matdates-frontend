@@ -287,7 +287,12 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [clickCount, setClickCount] = useState(0);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
-  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      return Boolean(sp.get('gym') || sp.get('athlete'));
+    } catch { return false; }
+  });
   const [showAthleteSearch, setShowAthleteSearch] = useState(false);
   const [showWatchedModal, setShowWatchedModal] = useState(false);
   const [livePushToast, setLivePushToast] = useState(null);
@@ -623,7 +628,15 @@ export default function App() {
         </div>
       )}
       {showWatchedModal && <WatchedAthletesModal watches={myWatches} onRemove={removeMyWatch} onClose={() => setShowWatchedModal(false)} onOpenAthlete={(w) => { const ev = events.find(x => x.id === w.eventId); setShowWatchedModal(false); if (ev) { setCalcResult(w.athleteName); setSelectedCompetitorEvent(ev); } else if (w.eventLink) { window.open(w.eventLink, '_blank'); } }} />}
-      {showLeaderboard && <LeaderboardModal onClose={() => setShowLeaderboard(false)} />}
+      {showLeaderboard && <LeaderboardModal onClose={() => {
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('gym');
+          url.searchParams.delete('athlete');
+          window.history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash);
+        } catch {}
+        setShowLeaderboard(false);
+      }} />}
       {showAthleteSearch && <AthleteSearchModal events={events} onClose={() => setShowAthleteSearch(false)} onOpenBracket={(ev, nm) => { setShowAthleteSearch(false); setCalcResult(nm); setSelectedCompetitorEvent(ev); }} />}
       {showSubmitModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
