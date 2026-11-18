@@ -275,25 +275,28 @@ const bucketOfKey = (k) => {
   return (h & 0xff).toString(16).padStart(2, '0');
 };
 
+const foldAscii = (str) => (str || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
 const athLastBucket = (qRaw) => {
-  const cleaned = (qRaw || '').toLowerCase().replace(/\b(jr\.?|sr\.?|ii|iii|iv)\b/g, '').trim();
-  const parts = cleaned.split(/\s+/).map(p => p.replace(/[^a-z0-9]/g, '')).filter(Boolean);
+  const stop = new Set(['jr', 'sr', 'ii', 'iii', 'iv', 'da', 'de', 'do', 'dos', 'das', 'del', 'la', 'el']);
+  const parts = foldAscii(qRaw)
+    .split(/\s+/)
+    .map(p => p.replace(/[^a-z0-9]/g, ''))
+    .filter(p => p.length >= 2 && !stop.has(p));
   if (!parts.length) return '';
-  const ln = parts[parts.length - 1];
-  return (ln.length >= 2 ? ln.slice(0, 2) : `${ln}_`).toLowerCase();
+  return parts[parts.length - 1].slice(0, 2);
 };
 
 const athleteMatchesQuery = (recName, qRaw) => {
-  const nl = (recName || '').toLowerCase().trim();
-  const q = (qRaw || '').toLowerCase().trim();
+  const nl = foldAscii(recName).trim();
+  const q = foldAscii(qRaw).trim();
   if (!q || !nl) return false;
   if (nl.includes(q)) return true;
   const qParts = q.split(/\s+/).filter(Boolean);
   if (qParts.every(t => nl.includes(t))) return true;
-  // Match full youth name e.g. "Isabella King" -> IBJJF youth format "I. King"
   if (qParts.length >= 2) {
     const abbrev = `${qParts[0][0]}. ${qParts[qParts.length - 1]}`;
-    if (nl === abbrev || nl.startsWith(`${qParts[0][0]}. `) && nl.endsWith(` ${qParts[qParts.length - 1]}`)) return true;
+    if (nl === abbrev || (nl.startsWith(`${qParts[0][0]}. `) && nl.endsWith(` ${qParts[qParts.length - 1]}`))) return true;
   }
   return false;
 };
