@@ -11,7 +11,7 @@ import { VenueIntelModal, useVenueTipCounts } from './VenueIntelModal';
 import { db, auth } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import AuthModal from './AuthModal';
-import { SponsorBanner } from './sponsorConfig';
+import { SponsorBanner, SponsorMediaKitModal } from './sponsorConfig';
 import { AnalyticsAndPwaManager, trackEvent } from './analytics'; 
 import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
 import { format, parse, startOfWeek, getDay } from 'date-fns';
@@ -309,6 +309,9 @@ function App() {
     } catch { return false; }
   });
   const [showAthleteSearch, setShowAthleteSearch] = useState(false);
+  const [showSponsorKit, setShowSponsorKit] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get('sponsor') === '1'; } catch { return false; }
+  });
   const [showWatchedModal, setShowWatchedModal] = useState(false);
   const [showWarRoom, setShowWarRoom] = useState(false);
   const [photogEvent, setPhotogEvent] = useState(null);
@@ -835,6 +838,7 @@ function App() {
 
       {showSiteTour && <GuidedTourModal mode="SITE" onClose={closeSiteTour} />}
       {portalEvent && <EventPortalModal event={portalEvent} user={user} initialSupport={portalSupport} onRequireAuth={() => setShowAuthModal(true)} onOpenQa={() => setSelectedCommentEvent(portalEvent)} onClose={() => { setPortalEvent(null); setPortalSupport(''); }} />}
+      {showSponsorKit && <SponsorMediaKitModal eventsCount={mergedWithUfcCards.length} onClose={() => setShowSponsorKit(false)} />}
       {photogEvent && <EventPhotogModal event={photogEvent} onClose={() => setPhotogEvent(null)} onRefreshCounts={refreshPhotogCounts} />}
       {selectedCommentEvent && (
         <VenueIntelModal
@@ -862,14 +866,14 @@ function App() {
     </div>
   </div>
   <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', alignItems:'center' }}>
-    <button data-tour="nav-standings" onClick={() => setShowLeaderboard(true)} style={{ backgroundColor:'#141820', color:'#f8fafc', padding:'9px 14px', border:'1px solid #475569', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.88rem' }}>🏆 Standings</button>
+    <button data-tour="nav-standings" onClick={() => { trackEvent('standingsOpens'); setShowLeaderboard(true); }} style={{ backgroundColor:'#141820', color:'#f8fafc', padding:'9px 14px', border:'1px solid #475569', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.88rem' }}>🏆 Standings</button>
     <button data-tour="nav-lookup" onClick={() => setShowAthleteSearch(true)} style={{ backgroundColor:'#141820', color:'#38bdf8', padding:'9px 14px', border:'1px solid #0284c7', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.88rem' }}>🔍 Athlete Lookup</button>
     <button data-tour="nav-warroom" onClick={() => setShowWarRoom(true)} style={{ backgroundColor: myWatches.length > 0 ? '#132a1c' : '#141820', color: myWatches.length > 0 ? '#4ade80' : '#cbd5e1', padding:'9px 14px', border: myWatches.length > 0 ? '1px solid #2ecc71' : '1px solid #334155', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.88rem' }}>🔥 War Room{myWatches.length > 0 ? ` (${myWatches.length})` : ''}</button>
     <button onClick={() => setShowSubmitModal(true)} style={{ backgroundColor:'#ff9f43', color:'#000', padding:'9px 14px', border:'none', borderRadius:'7px', fontWeight:'800', cursor:'pointer', fontSize:'0.88rem' }}>+ Submit</button>
     <button onClick={() => user ? signOut(auth) : setShowAuthModal(true)} style={{ backgroundColor:'transparent', color:'#94a3b8', padding:'8px 10px', border:'1px solid #262f3d', borderRadius:'7px', cursor:'pointer', fontSize:'0.8rem' }}>{user ? 'Sign Out' : 'Sign In'}</button>
   </div>
 </header>
-        <SponsorBanner />
+        <SponsorBanner onOpenMediaKit={() => setShowSponsorKit(true)} />
         {user && userRole === 'academy' && <AcademyProSuite user={user} isAdmin={isAdmin} isHomepage={true} onRequireAuth={() => setShowAuthModal(true)} />}
         {user && userRole === 'promoter' && <PromoterHomeDashboard events={mergedWithUfcCards} user={user} />}
         <AnalyticsAndPwaManager />
@@ -998,7 +1002,7 @@ function App() {
                       </button>
                     )}
                     {(ev.type === 'Super Fight' || isStreamOnly || ev.autoApproved) && (
-                      <button onClick={() => setPortalEvent(ev)} title="Official Competitor Info, Virtual Weigh-In, Corner Passes & VIP Tables" style={{ flex: 1, backgroundColor: '#112226', color: '#5eead4', border: '1px solid #14b8a6', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', minWidth: '135px' }}>
+                      <button onClick={() => { trackEvent('eventHubOpens'); setPortalEvent(ev); }} title="Official Competitor Info, Virtual Weigh-In, Corner Passes & VIP Tables" style={{ flex: 1, backgroundColor: '#112226', color: '#5eead4', border: '1px solid #14b8a6', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', minWidth: '135px' }}>
                         🎟️ Event Hub & Tickets
                       </button>
                     )}
@@ -1053,7 +1057,7 @@ function App() {
           MatDates is an independent BJJ event aggregator built for the community. We are not affiliated with, officially endorsed by, or sponsored by IBJJF, ADCC, Smoothcomp, Jiu Jitsu World League, or any listed federations. All trademarks and event data belong to their respective owners.
         </p>
         <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', flexWrap: 'wrap' }}>
-          <a href="mailto:contact@matdates.com" style={{ color: '#ff9f43', textDecoration: 'none', fontWeight: 'bold' }}>Partner With Us</a>
+          <button type="button" onClick={() => { trackEvent('sponsorKitOpens'); setShowSponsorKit(true); }} style={{ background: 'none', border: 'none', padding: 0, color: '#fbbf24', fontWeight: '800', fontSize: '0.88rem', cursor: 'pointer', textDecoration: 'underline' }}>🤝 Partner / Sponsor MatDates (Live Media Kit)</button>
           <span>|</span>
           <span style={{ color: '#777' }}>Privacy Policy</span>
           <span>|</span>

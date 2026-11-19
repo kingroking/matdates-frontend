@@ -1,3 +1,4 @@
+import { trackEvent } from "./analytics";
 import React, { useState, useEffect, useMemo } from "react";
 import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "./firebase";
@@ -145,6 +146,7 @@ export function SubmitEventModal({ onClose }) {
 }
 
 export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) {
+  useEffect(() => { trackEvent('athleteSearches'); }, []);
   const [qStr, setQStr] = useState("");
   const [regItems, setRegItems] = useState([]);
   const [podShards, setPodShards] = useState({});

@@ -17,14 +17,23 @@ export function isIosSafariBrowser() {
   return isIOS && !isStandalonePwa();
 }
 
+const IMPRESSION_METRICS = new Set([
+  'pageViews', 'trophyViews', 'bracketOpens', 'shareStatsClicks',
+  'matAlertsCreated', 'standingsOpens', 'eventHubOpens', 'athleteSearches'
+]);
+
 export function trackEvent(metric, extra = {}) {
   if (typeof window === 'undefined') return;
   const host = window.location.hostname;
   if (host === 'localhost' || host === '127.0.0.1') return;
   try {
-    const day = new Date().toISOString().slice(0, 10);
-    const patch = { [metric]: increment(1), updatedAt: new Date().toISOString(), ...extra };
+    const nowIso = new Date().toISOString();
+    const day = nowIso.slice(0, 10);
+    const monthKey = 'month_' + nowIso.slice(0, 7);
+    const impPatch = IMPRESSION_METRICS.has(metric) ? { verifiedImpressions: increment(1) } : {};
+    const patch = { [metric]: increment(1), ...impPatch, updatedAt: nowIso, ...extra };
     setDoc(doc(db, 'site_stats', day), { day, ...patch }, { merge: true }).catch(() => {});
+    setDoc(doc(db, 'site_stats', monthKey), { month: nowIso.slice(0, 7), ...patch }, { merge: true }).catch(() => {});
     setDoc(doc(db, 'site_stats', '__totals__'), patch, { merge: true }).catch(() => {});
   } catch {}
 }

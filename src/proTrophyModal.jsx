@@ -1,3 +1,4 @@
+import { trackEvent } from "./analytics";
 import React, { useState, useEffect } from "react";
 import { collection, doc, getDoc, getDocs, setDoc, query, where } from "firebase/firestore";
 import { db, auth } from "./firebase";
@@ -167,6 +168,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
 
   useEffect(() => {
     if (!slug) return;
+    trackEvent('trophyViews');
     const passedEvs = activeAth?.events || [];
     setEvs(passedEvs);
     setCnt({ g: activeAth?.g || 0, s: activeAth?.s || 0, b: activeAth?.b || 0, acad: activeAth?.academy || activeAth?.a || "" });
@@ -264,7 +266,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
 
   const handleInstagramClick = () => {
     if (bio?.handle) {
-      window.open("https://instagram.com/" + bio.handle.replace(/^@+/, ""), "_blank", "noopener,noreferrer");
+      trackEvent("igOutclicks"); window.open("https://instagram.com/" + bio.handle.replace(/^@+/, ""), "_blank", "noopener,noreferrer");
     } else if (isOwner) {
       handleRequestOrOpenEdit();
     } else {
@@ -427,7 +429,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
             </span>
           ) : null}
           {onShareCard && (
-            <button type="button" onClick={() => onShareCard({ badge: elite.isElite ? elite.tierLabel : "2026 OFFICIAL TROPHY ROOM", title: nm, subtitle: cnt.acad || elite.pro?.academy || "", gold: cnt.g, silver: cnt.s, bronze: cnt.b, deepLink: bioUrl, lines: [...(elite.pro?.titles || []), ...(elite.isElite ? elite.facts.map(x => "★ " + x) : []), ...evs.slice(0, 5).map(m => (Number(m.p)===1?"🥇":Number(m.p)===2?"🥈":"🥉") + " " + m.ev)] })} style={{ background:"#ff9f43", color:"#000", border:"none", borderRadius:"7px", padding:"6px 11px", fontWeight:"800", fontSize:"0.77rem", cursor:"pointer" }}>
+            <button type="button" onClick={() => (trackEvent('shareStatsClicks'), onShareCard({ badge: elite.isElite ? elite.tierLabel : "2026 OFFICIAL TROPHY ROOM", title: nm, subtitle: cnt.acad || elite.pro?.academy || "", gold: cnt.g, silver: cnt.s, bronze: cnt.b, deepLink: bioUrl, lines: [...(elite.pro?.titles || []), ...(elite.isElite ? elite.facts.map(x => "★ " + x) : []), ...evs.slice(0, 5).map(m => (Number(m.p)===1?"🥇":Number(m.p)===2?"🥈":"🥉") + " " + m.ev)] }))} style={{ background:"#ff9f43", color:"#000", border:"none", borderRadius:"7px", padding:"6px 11px", fontWeight:"800", fontSize:"0.77rem", cursor:"pointer" }}>
               📲 Share Stats
             </button>
           )}
