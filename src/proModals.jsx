@@ -219,10 +219,24 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
                 </div>
               </div>
             ))}
-            <div style={{ background:"#141c2b", border:"1px dashed #38bdf8", borderRadius:"8px", padding:"10px 12px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
-              <div style={{ fontSize:"0.8rem", color:"#cbd5e1" }}>Get a Push/Email alert the moment <b>&quot;{qStr.trim()}&quot;</b> joins any bracket:</div>
-              <button onClick={() => openFollow(qStr.trim(), "")} style={{ background:"#ff9f43", color:"#000", border:"none", borderRadius:"6px", padding:"6px 11px", fontSize:"0.76rem", fontWeight:"800", cursor:"pointer" }}>🔔 Watch &quot;{qStr.trim()}&quot;</button>
-            </div>
+            {(() => {
+              const trimmedQ = qStr.trim();
+              const alreadyWatched = Boolean(
+                getWatch(trimmedQ) ||
+                regHits.some(r => getWatch(r.n, r.e) || getWatch(r.n)) ||
+                podProfiles.some(p => getWatch(p.name))
+              );
+              return alreadyWatched ? (
+                <div style={{ background:"#132a1c", border:"1px solid #2ecc71", borderRadius:"8px", padding:"9px 12px", fontSize:"0.8rem", color:"#4ade80", fontWeight:"bold", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                  <span>✓ Watching — Live Mat #, Match Time &amp; New-Bracket Alerts Active</span>
+                </div>
+              ) : (
+                <div style={{ background:"#141c2b", border:"1px dashed #38bdf8", borderRadius:"8px", padding:"10px 12px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
+                  <div style={{ fontSize:"0.8rem", color:"#cbd5e1" }}>Get a Push/Email alert the moment <b>&quot;{trimmedQ}&quot;</b> joins any bracket:</div>
+                  <button onClick={() => openFollow(trimmedQ, "")} style={{ background:"#ff9f43", color:"#000", border:"none", borderRadius:"6px", padding:"6px 11px", fontSize:"0.76rem", fontWeight:"800", cursor:"pointer" }}>🔔 Watch &quot;{trimmedQ}&quot;</button>
+                </div>
+              );
+            })()}
           </div>
         )}
         {watchPick && <MatAlertModal event={watchPick.ev} comp={watchPick.comp} division={watchPick.div} existingWatch={getWatch(watchPick.comp.Name, watchPick.ev.id)} onRemove={removeWatch} onClose={() => setWatchPick(null)} />}

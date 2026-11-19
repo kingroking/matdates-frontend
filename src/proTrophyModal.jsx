@@ -6,7 +6,8 @@ import { PRO_SUPERFIGHTS, computeEliteSpotlight, foldStr, athBucket } from "./pr
 export function SuperFightsPanel({ fed, qStr, onOpenTrophy, onWatch, getWatch }) {
   const [extra, setExtra] = useState([]);
   useEffect(() => {
-    getDocs(collection(db, "superfights")).then(sn => setExtra(sn.docs.map(d => d.data()))).catch(() => {});
+    getDocs(query(collection(db, "mat_watches"), where("kind", "==", "superfight_profile")))
+      .then(sn => setExtra(sn.docs.map(d => d.data()))).catch(() => {});
   }, []);
   const q = foldStr(qStr).trim();
   const list = [...PRO_SUPERFIGHTS, ...extra].filter(p => {
@@ -52,16 +53,28 @@ export function SuperFightsPanel({ fed, qStr, onOpenTrophy, onWatch, getWatch })
 export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, onShareCard }) {
   const nm = athlete?.name || athlete?.n || "";
   const slug = foldStr(nm).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const docKey = "bio_" + slug;
+  const lsKey = "md_bio_" + slug;
+
   const [evs, setEvs] = useState(athlete?.events || []);
   const [cnt, setCnt] = useState({ g: athlete?.g || 0, s: athlete?.s || 0, b: athlete?.b || 0, acad: athlete?.academy || athlete?.a || "" });
-  const [bio, setBio] = useState(null);
+  const [bio, setBio] = useState(() => {
+    try { const raw = localStorage.getItem(lsKey); return raw ? JSON.parse(raw) : null; } catch { return null; }
+  });
   const [editBio, setEditBio] = useState(false);
-  const [form, setForm] = useState({ handle: "", belt: "", coach: "", openSf: false });
+  const [saving, setSaving] = useState(false);
+  const [savedBanner, setSavedBanner] = useState(false);
+  const [form, setForm] = useState({ handle: "", belt: "", coach: "", funFact: "", openSf: false });
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (!slug) return;
-    getDoc(doc(db, "athlete_bios", slug)).then(d => { if (d.exists()) { setBio(d.data()); setForm(d.data()); } }).catch(() => {});
+    getDoc(doc(db, "mat_watches", docKey)).then(d => {
+      if (d.exists() && d.data()?.kind === "athlete_bio") {
+        setBio(d.data()); setForm(d.data());
+        try { localStorage.setItem(lsKey, JSON.stringify(d.data())); } catch {}
+      }
+    }).catch(() => {});
     if (evs.length > 0) return;
     getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__a2_" + athBucket(nm) + "__"))).then(sn => {
       const tgt = foldStr(nm), seen = new Set(), out = [];
@@ -79,13 +92,35 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
     }).catch(() => {});
   }, [nm]);
 
-  const elite = computeEliteSpotlight({ name: nm, academy: cnt.acad, g: cnt.g, s: cnt.s, b: cnt.b, events: evs });
+  const elite = computeEliteSpotlight({ name: nm, academy: cnt.acad, g: cnt.g, s: cnt.s, b: cnt.b, events: evs }, bio?.funFact);
+
   const saveBio = async (e) => {
     e.preventDefault();
-    const clean = { handle: (form.handle || "").replace(/^@/, "").trim(), belt: (form.belt || "").trim(), coach: (form.coach || "").trim(), openSf: Boolean(form.openSf), name: nm };
-    await setDoc(doc(db, "athlete_bios", slug), clean, { merge: true });
-    setBio(clean); setEditBio(false);
+    setSaving(true);
+    const clean = {
+      kind: "athlete_bio",
+      status: "bio_only",
+      handle: (form.handle || "").replace(/^@/, "").trim(),
+      belt: (form.belt || "").trim(),
+      coach: (form.coach || "").trim(),
+      funFact: (form.funFact || "").trim(),
+      openSf: Boolean(form.openSf),
+      name: nm,
+      updatedAt: new Date().toISOString()
+    };
+    try { localStorage.setItem(lsKey, JSON.stringify(clean)); } catch {}
+    try {
+      await setDoc(doc(db, "mat_watches", docKey), clean, { merge: true });
+    } catch (err) {
+      try { await setDoc(doc(db, "pending_events", docKey), clean, { merge: true }); } catch {}
+    }
+    setBio(clean);
+    setSaving(false);
+    setEditBio(false);
+    setSavedBanner(true);
+    setTimeout(() => setSavedBanner(false), 3000);
   };
+
   const bioUrl = "https://matdates.com/?trophy=" + encodeURIComponent(nm).replace(/%20/g, "+");
 
   return (
@@ -108,30 +143,42 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
           <button onClick={onClose} style={{ background:"#1e293b", color:"#fff", border:"1px solid #334155", borderRadius:"6px", padding:"4px 10px", height:"32px", cursor:"pointer" }}>✕</button>
         </div>
 
-        {elite.isElite && (
+        {savedBanner && (
+          <div style={{ marginTop:"10px", background:"#132a1c", border:"1px solid #2ecc71", color:"#4ade80", padding:"8px 12px", borderRadius:"7px", fontSize:"0.82rem", fontWeight:"bold" }}>
+            ✅ Verified Athlete Bio Saved!
+          </div>
+        )}
+
+        {(elite.isElite || bio?.funFact) && (
           <div style={{ marginTop:"12px", background:"linear-gradient(135deg,#291d09,#171f30)", border:"1px solid #f59e0b", borderRadius:"10px", padding:"11px 13px" }}>
-            <div style={{ color:"#fbbf24", fontWeight:"800", fontSize:"0.77rem", marginBottom:"5px" }}>{elite.tierLabel} • 3 SPOTLIGHT FACTS</div>
-            {elite.facts.map((f, i) => <div key={i} style={{ fontSize:"0.8rem", color:"#fef3c7", marginBottom:"3px" }}>★ {f}</div>)}
+            <div style={{ color:"#fbbf24", fontWeight:"800", fontSize:"0.77rem", marginBottom:"5px" }}>{elite.tierLabel}</div>
+            {elite.facts.map((f, i) => <div key={i} style={{ fontSize:"0.8rem", color:"#fef3c7", marginBottom:"4px", lineHeight:1.35 }}>★ {f}</div>)}
           </div>
         )}
 
         <div style={{ display:"flex", gap:"7px", flexWrap:"wrap", margin:"12px 0" }}>
           <div style={{ background:"#18202f", border:"1px solid #2d3748", borderRadius:"8px", padding:"6px 11px", fontSize:"0.84rem" }}>🥇<b>{cnt.g}</b> 🥈<b>{cnt.s}</b> 🥉<b>{cnt.b}</b> • <b style={{ color:"#34d399" }}>{elite.pts} Pts</b></div>
-          <button type="button" onClick={() => onWatch(nm, cnt.acad || elite.pro?.academy || "")} style={{ background: isWatching ? "#132a1c" : "#162536", color: isWatching ? "#2ecc71" : "#38bdf8", border:"1px solid #0284c7", borderRadius:"7px", padding:"6px 10px", fontWeight:"bold", fontSize:"0.76rem", cursor:"pointer" }}>{isWatching ? "✓ Watching" : "🔔 Watch"}</button>
+          <button type="button" onClick={() => onWatch(nm, cnt.acad || elite.pro?.academy || "")} style={{ background: isWatching ? "#132a1c" : "#162536", color: isWatching ? "#2ecc71" : "#38bdf8", border: isWatching ? "1px solid #2ecc71" : "1px solid #0284c7", borderRadius:"7px", padding:"6px 10px", fontWeight:"bold", fontSize:"0.76rem", cursor:"pointer" }}>{isWatching ? "✓ Watching" : "🔔 Watch"}</button>
           <button type="button" onClick={() => { navigator.clipboard.writeText(bioUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); }} style={{ background:"#1e293b", color:"#e2e8f0", border:"1px solid #475569", borderRadius:"7px", padding:"6px 10px", fontWeight:"bold", fontSize:"0.76rem", cursor:"pointer" }}>{copied ? "✓ Link Copied!" : "🔗 Link-in-Bio"}</button>
-          <button type="button" onClick={() => setEditBio(!editBio)} style={{ background:"#1e1b4b", color:"#c7d2fe", border:"1px solid #6366f1", borderRadius:"7px", padding:"6px 10px", fontWeight:"bold", fontSize:"0.76rem", cursor:"pointer" }}>🪪 {bio ? "Edit Bio" : "Claim Bio"}</button>
+          <button type="button" onClick={() => { if (bio) setForm(bio); setEditBio(!editBio); }} style={{ background:"#1e1b4b", color:"#c7d2fe", border:"1px solid #6366f1", borderRadius:"7px", padding:"6px 10px", fontWeight:"bold", fontSize:"0.76rem", cursor:"pointer" }}>🪪 {bio ? "Edit Bio" : "Claim Bio"}</button>
           {onShareCard && <button type="button" onClick={() => onShareCard({ badge: elite.isElite ? elite.tierLabel : "2026 OFFICIAL TROPHY ROOM", title: nm, subtitle: cnt.acad || elite.pro?.academy || "", gold: cnt.g, silver: cnt.s, bronze: cnt.b, deepLink: bioUrl, lines: [...(elite.pro?.titles || []), ...(elite.isElite ? elite.facts.map(x => "★ " + x) : []), ...evs.slice(0, 5).map(m => (Number(m.p)===1?"🥇":Number(m.p)===2?"🥈":"🥉") + " " + m.ev)] })} style={{ background:"#ff9f43", color:"#000", border:"none", borderRadius:"7px", padding:"6px 10px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer" }}>📲 9:16 Story Card</button>}
         </div>
 
         {editBio && (
           <form onSubmit={saveBio} style={{ background:"#161d2a", border:"1px solid #475569", borderRadius:"8px", padding:"10px", marginBottom:"12px", display:"grid", gap:"8px" }}>
             <div style={{ display:"flex", gap:"8px", flexWrap:"wrap" }}>
-              <input placeholder="Instagram @handle" value={form.handle || ""} onChange={e => setForm({...form, handle: e.target.value})} style={{ flex:1, padding:"7px", borderRadius:"6px", background:"#0f141e", color:"#fff", border:"1px solid #334155" }} />
-              <input placeholder="Belt (e.g. Grey / Black)" value={form.belt || ""} onChange={e => setForm({...form, belt: e.target.value})} style={{ flex:1, padding:"7px", borderRadius:"6px", background:"#0f141e", color:"#fff", border:"1px solid #334155" }} />
-              <input placeholder="Head Coach" value={form.coach || ""} onChange={e => setForm({...form, coach: e.target.value})} style={{ flex:1, padding:"7px", borderRadius:"6px", background:"#0f141e", color:"#fff", border:"1px solid #334155" }} />
+              <input placeholder="Instagram @handle" value={form.handle || ""} onChange={e => setForm({...form, handle: e.target.value})} style={{ flex:"1 1 150px", padding:"8px", borderRadius:"6px", background:"#0f141e", color:"#fff", border:"1px solid #334155" }} />
+              <input placeholder="Belt (e.g. Grey / Yellow / Black)" value={form.belt || ""} onChange={e => setForm({...form, belt: e.target.value})} style={{ flex:"1 1 150px", padding:"8px", borderRadius:"6px", background:"#0f141e", color:"#fff", border:"1px solid #334155" }} />
+              <input placeholder="Head Coach (e.g. Prof. Thiago Mendes)" value={form.coach || ""} onChange={e => setForm({...form, coach: e.target.value})} style={{ flex:"1 1 160px", padding:"8px", borderRadius:"6px", background:"#0f141e", color:"#fff", border:"1px solid #334155" }} />
             </div>
-            <label style={{ fontSize:"0.8rem", color:"#cbd5e1" }}><input type="checkbox" checked={Boolean(form.openSf)} onChange={e => setForm({...form, openSf: e.target.checked})} /> 🥊 Mark profile as <b>Open for SuperFight Matchmaking</b></label>
-            <button type="submit" style={{ background:"#2ecc71", color:"#000", border:"none", borderRadius:"6px", padding:"7px", fontWeight:"bold", cursor:"pointer" }}>Save Verified Bio</button>
+            <input placeholder="Custom Fun Fact / Favorite Submission (featured in Spotlight!)" value={form.funFact || ""} onChange={e => setForm({...form, funFact: e.target.value})} style={{ width:"100%", boxSizing:"border-box", padding:"8px", borderRadius:"6px", background:"#0f141e", color:"#fff", border:"1px solid #334155" }} />
+            <label style={{ fontSize:"0.8rem", color:"#cbd5e1", display:"flex", alignItems:"center", gap:"6px" }}>
+              <input type="checkbox" checked={Boolean(form.openSf)} onChange={e => setForm({...form, openSf: e.target.checked})} />
+              <span>🥊 Mark profile as <b>Open for SuperFight Matchmaking</b></span>
+            </label>
+            <button type="submit" disabled={saving} style={{ background:"#2ecc71", color:"#000", border:"none", borderRadius:"6px", padding:"9px", fontWeight:"800", cursor:"pointer" }}>
+              {saving ? "Saving Bio..." : "✅ Save Verified Bio"}
+            </button>
           </form>
         )}
 

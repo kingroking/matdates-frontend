@@ -1,3 +1,4 @@
+import { UPCOMING_UFC_SUPERFIGHTS } from "./proHubData";
 import { TaleOfTheTapeModal, WeekendWarRoomModal, SubmitEventModal } from "./proModals";
 import { formatEventLoc, resolveEventUrl } from './locationFmt';
 import React, { useState, useEffect } from 'react';
@@ -240,10 +241,13 @@ function CompetitorTable({ calcResult, event, onClose }) {
                   <tbody>
                     {groupedCompetitors[division].map(comp => (
                       <tr key={comp.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
-                        <td style={{ padding: "12px", fontWeight: "bold", color: "#fff", width: "34%" }}>
-                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
-                            <a href={getProfileLink(comp)} target="_blank" rel="noreferrer" style={{ color: "#fff", textDecoration: "none", minWidth: 0, overflowWrap: "anywhere", lineHeight: 1.3 }}>{comp.Name}</a>
-                            <button onClick={() => setWatchTarget({ comp, division })} title="Live Mat # & Match Time alerts" style={{ flexShrink: 0, background: getWatch(comp.Name, event.id) ? "#132a1c" : "#162536", color: getWatch(comp.Name, event.id) ? "#2ecc71" : "#38bdf8", border: getWatch(comp.Name, event.id) ? "1px solid #2ecc71" : "1px solid #0284c7", borderRadius: "5px", padding: "4px 8px", fontSize: "0.72rem", cursor: "pointer", fontWeight: "bold", whiteSpace: "nowrap" }}>{getWatch(comp.Name, event.id) ? (getWatch(comp.Name, event.id).fcmToken ? "\u2713 Watching \u{1F4F2}" : "\u2713 Watching \u2709\uFE0F") : "\u{1F514} Watch"}</button> <button onClick={() => setScoutPair(p => p.some(x => x.id === comp.id) ? p.filter(x => x.id !== comp.id) : [...p.slice(-1), comp])} title="Scout 2 athletes head-to-head" style={{ flexShrink:0, background: scoutPair.some(x => x.id === comp.id) ? "#431407" : "#1e293b", color: scoutPair.some(x => x.id === comp.id) ? "#fbbf24" : "#cbd5e1", border:"1px solid #475569", borderRadius:"5px", padding:"4px 7px", fontSize:"0.7rem", cursor:"pointer", fontWeight:"bold" }}>{scoutPair.some(x => x.id === comp.id) ? "⚔️ #1" : "⚔️ Scout"}</button>
+                        <td style={{ padding: "12px", fontWeight: "bold", color: "#fff", width: "38%" }}>
+                          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "6px" }}>
+                            <a href={getProfileLink(comp)} target="_blank" rel="noreferrer" style={{ color: "#fff", textDecoration: "none", wordBreak: "normal", overflowWrap: "break-word", lineHeight: 1.35, fontSize: "0.95rem" }}>{comp.Name}</a>
+                            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
+                              <button onClick={() => setWatchTarget({ comp, division })} title="Live Mat # & Match Time alerts" style={{ background: getWatch(comp.Name, event.id) ? "#132a1c" : "#162536", color: getWatch(comp.Name, event.id) ? "#2ecc71" : "#38bdf8", border: getWatch(comp.Name, event.id) ? "1px solid #2ecc71" : "1px solid #0284c7", borderRadius: "5px", padding: "3px 8px", fontSize: "0.71rem", cursor: "pointer", fontWeight: "bold", whiteSpace: "nowrap" }}>{getWatch(comp.Name, event.id) ? (getWatch(comp.Name, event.id).fcmToken ? "✓ Watching 📲" : "✓ Watching ✉️") : "🔔 Watch"}</button>
+                              <button onClick={() => setScoutPair(p => p.some(x => x.id === comp.id) ? p.filter(x => x.id !== comp.id) : [...p.slice(-1), comp])} title="Compare 2 athletes head-to-head" style={{ background: scoutPair.some(x => x.id === comp.id) ? "#431407" : "#1e293b", color: scoutPair.some(x => x.id === comp.id) ? "#fbbf24" : "#cbd5e1", border: "1px solid #475569", borderRadius: "5px", padding: "3px 7px", fontSize: "0.7rem", cursor: "pointer", fontWeight: "bold", whiteSpace: "nowrap" }}>{scoutPair.some(x => x.id === comp.id) ? "⚔️ #1 Selected" : "⚔️ Scout"}</button>
+                            </div>
                           </div>
                         </td>
                         <td style={{ padding: '12px', color: '#ccc', width: '35%' }}>{comp.Academy}</td>
@@ -591,7 +595,12 @@ export default function App() {
     return new Date(y, m - 1).toLocaleString('default', { month: 'short', year: 'numeric' });
   };
 
-  const filteredEvents = events.filter(ev => {
+  const mergedWithUfcCards = React.useMemo(() => {
+    const ids = new Set(events.map(e => e.id));
+    const extras = UPCOMING_UFC_SUPERFIGHTS.filter(u => !ids.has(u.id) && !events.some(e => (e.name || "").toLowerCase().includes("ufc bjj 14")));
+    return [...events, ...extras].sort((a, b) => (a.sort_date || "2099").localeCompare(b.sort_date || "2099"));
+  }, [events]);
+  const filteredEvents = mergedWithUfcCards.filter(ev => {
     const evNameLow = ev.name ? ev.name.toLowerCase() : '';
     const evId = ev.id ? ev.id.toLowerCase() : "";
     if (/\b(judo|wrestling|karate|antarctica|taekwondo|kickboxing|muay thai|ping pong|table tennis|sumo)\b/.test(evNameLow)) return false; 
@@ -601,12 +610,14 @@ export default function App() {
     const matchesSearch = searchKeywords.every(kw => searchTarget.includes(kw));
 
     const matchesAge = ageFilter === 'All' ? true : ageFilter === 'Kids' ? ev.isKidsEvent : ageFilter === 'Adults' ? ev.isAdultEvent : false;
+    const isUfcEv = /\bufc\b/i.test(evId + " " + evNameLow);
     const matchesFed = federationFilter === 'All' ? true :
       federationFilter === 'IBJJF' ? evId.startsWith('ibjjf') :
       federationFilter === 'JJWL' ? evId.startsWith('jjwl') :
       federationFilter === 'ADCC' ? (evId.includes('adcc') || evNameLow.includes('adcc')) :
-      federationFilter === 'Smoothcomp' ? evId.startsWith('smoothcomp') :
-      federationFilter === 'Super Fight' ? (ev.type === 'Super Fight' || evId.startsWith('flograp') || evId.startsWith('ufcfightpass') || evId.startsWith('one-')) :
+      federationFilter === 'UFC' ? isUfcEv :
+      federationFilter === 'Smoothcomp' ? (evId.startsWith('smoothcomp') && !isUfcEv) :
+      federationFilter === 'Super Fight' ? (ev.type === 'Super Fight' || evId.startsWith('flograp') || evId.startsWith('ufcfightpass') || evId.startsWith('ufcbjj-') || evId.startsWith('one-') || (isUfcEv && !/\bopen\b/i.test(evNameLow))) :
       federationFilter === 'Seminars' ? (ev.type === 'Seminar' || evId.startsWith('seminar')) : false;
     const matchesMonth = monthFilter === 'All' ? true : (ev.sort_date && ev.sort_date.startsWith(monthFilter));
       
@@ -812,6 +823,7 @@ export default function App() {
             <span onClick={() => setFederationFilter(prev => prev === 'IBJJF' ? 'All' : 'IBJJF')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'IBJJF' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#0055a4' }}>■</span> IBJJF</span>
             <span onClick={() => setFederationFilter(prev => prev === 'JJWL' ? 'All' : 'JJWL')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'JJWL' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#ffffff', textShadow: '0 0 2px #000' }}>■</span> JJWL</span>
             <span onClick={() => setFederationFilter(prev => prev === 'ADCC' ? 'All' : 'ADCC')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'ADCC' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#F1C40F' }}>■</span> ADCC</span>
+            <span onClick={() => setFederationFilter(prev => prev === 'UFC' ? 'All' : 'UFC')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'UFC' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#d20a0a' }}>■</span> UFC BJJ</span>
             <span onClick={() => setFederationFilter(prev => prev === 'Super Fight' ? 'All' : 'Super Fight')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'Super Fight' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#e31837' }}>■</span> Super Fights</span>
             <span onClick={() => setFederationFilter(prev => prev === 'Seminars' ? 'All' : 'Seminars')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'Seminars' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#9b59b6' }}>■</span> Seminars</span>
             <span onClick={() => setAgeFilter(prev => prev === 'Kids' ? 'All' : 'Kids')} style={{ cursor: 'pointer', marginLeft: '10px', padding: '4px 10px', backgroundColor: ageFilter === 'Kids' ? '#222' : 'transparent', borderRadius: '6px', border: ageFilter === 'Kids' ? '1px solid #555' : '1px solid transparent', opacity: ageFilter === 'Kids' ? 1 : 0.8, transition: 'all 0.2s' }}><span style={{ fontSize: '1.2rem' }}>🐯</span> Kids/Youth Events</span> <span onClick={() => { if (!user) { setShowAuthModal(true); return; } setShowSavedOnly(p => !p); }} style={{ cursor: 'pointer', padding: '4px 10px', backgroundColor: showSavedOnly ? '#ff9f43' : '#1a1a1a', color: showSavedOnly ? '#000' : '#ff9f43', fontWeight: 'bold', borderRadius: '6px', border: '1px solid #ff9f43' }}>★ My Schedule ({savedIds.length})</span>{showSavedOnly && savedIds.length > 0 && <button onClick={() => downloadIcs(events.filter(x => savedIds.includes(x.id)), 'my-bjj-season.ics')} style={{ marginLeft: '6px', cursor: 'pointer', padding: '4px 10px', backgroundColor: '#222', color: '#2ecc71', border: '1px solid #2ecc71', borderRadius: '6px', fontWeight: 'bold', fontSize: '0.82rem' }}>Export .ICS</button>}
@@ -839,6 +851,7 @@ export default function App() {
             <option value="IBJJF">IBJJF Only</option>
             <option value="JJWL">JJWL Only</option>
             <option value="ADCC">ADCC Only</option>
+            <option value="UFC">UFC BJJ (Opens &amp; SuperFights)</option>
             <option value="Smoothcomp">Smoothcomp</option>
             <option value="Super Fight">Super Fights</option>
             <option value="Seminars">Seminars</option>
@@ -865,11 +878,12 @@ export default function App() {
             {filteredEvents.map(ev => {
               const isJJWL = ev.id && ev.id.toLowerCase().startsWith('jjwl');
               const isADCC = (ev.id && ev.id.toLowerCase().includes('adcc')) || (ev.name && ev.name.toLowerCase().includes('adcc'));
+              const isUFC = /\bufc\b/i.test((ev.id || '') + ' ' + (ev.name || ''));
               
               const isStreamOnly = Boolean(ev.id && (ev.id.toLowerCase().startsWith('flograp') || ev.id.toLowerCase().startsWith('ufc') || ev.id.toLowerCase().startsWith('one-') || ev.id.toLowerCase().includes('fightpass'))) || /subscription|fight pass|flograppling|prime video|onefc|ppv/i.test(ev.cost || '');
               const extLink = resolveEventUrl(ev);
               const streamUrl = resolveEventUrl({ ...ev, link: ev.stream_link || (isStreamOnly ? ev.link : '') });
-              const evBorderColor = isADCC ? '#F1C40F' : (ev.type === 'Super Fight' || isStreamOnly) ? '#e31837' : (isJJWL ? '#ffffff' : (ev.color || '#ff9f43'));
+              const evBorderColor = isUFC ? '#d20a0a' : isADCC ? '#F1C40F' : (ev.type === 'Super Fight' || isStreamOnly) ? '#e31837' : (isJJWL ? '#ffffff' : (ev.color || '#ff9f43'));
               
               return (
                 <div key={ev.id} style={{ backgroundColor: '#111', borderLeft: `5px solid ${evBorderColor}`, padding: '20px', borderRadius: '4px', display: 'flex', flexDirection: 'column' }}>
