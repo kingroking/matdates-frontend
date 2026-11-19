@@ -4,11 +4,17 @@ import { db } from "./firebase";
 import { PRO_SUPERFIGHTS, computeEliteSpotlight, foldStr, athBucket } from "./proHubData";
 
 export function SuperFightsPanel({ fed, qStr, onOpenTrophy, onWatch, getWatch }) {
+  const [subTab, setSubTab] = useState("PROS");
   const [extra, setExtra] = useState([]);
+  const [openPool, setOpenPool] = useState([]);
+
   useEffect(() => {
     getDocs(query(collection(db, "mat_watches"), where("kind", "==", "superfight_profile")))
       .then(sn => setExtra(sn.docs.map(d => d.data()))).catch(() => {});
+    getDocs(query(collection(db, "mat_watches"), where("kind", "==", "athlete_bio")))
+      .then(sn => setOpenPool(sn.docs.map(d => d.data()).filter(x => x.openSf && x.name))).catch(() => {});
   }, []);
+
   const q = foldStr(qStr).trim();
   const list = [...PRO_SUPERFIGHTS, ...extra].filter(p => {
     if (fed !== "ALL" && !(p.feds || []).includes(fed)) return false;
@@ -16,36 +22,70 @@ export function SuperFightsPanel({ fed, qStr, onOpenTrophy, onWatch, getWatch })
     const blob = foldStr([p.name, p.academy, ...(p.titles || []), ...(p.bouts || []).map(b => b.ev + " " + b.res)].join(" "));
     return blob.includes(q);
   });
+  const poolFiltered = openPool.filter(a => !q || foldStr([a.name, a.belt, a.coach, a.handle].join(" ")).includes(q));
+
   return (
     <div style={{ display:"grid", gap:"10px", textAlign:"left" }}>
-      <div style={{ background:"linear-gradient(90deg,#1e1b4b,#172554)", border:"1px solid #6366f1", borderRadius:"8px", padding:"10px 12px", fontSize:"0.8rem", color:"#e0e7ff" }}>
-        <strong>🥊 Verified SuperFights &amp; Major Championships</strong> — Tracking Pro Belts &amp; Invitational Headliners across <strong>UFC BJJ</strong>, <strong>ADCC Worlds</strong>, <strong>WNO</strong>, <strong>CJI</strong>, <strong>Polaris</strong> &amp; <strong>IBJJF Majors</strong>.
+      <div style={{ display:"flex", gap:"6px", flexWrap:"wrap" }}>
+        <button type="button" onClick={() => setSubTab("PROS")} style={{ flex:"1 1 200px", padding:"8px 12px", borderRadius:"7px", fontWeight:"800", fontSize:"0.8rem", cursor:"pointer", background: subTab==="PROS" ? "#14b8a6" : "#182030", color: subTab==="PROS" ? "#000" : "#cbd5e1", border: subTab==="PROS" ? "none" : "1px solid #334155" }}>👑 Pro Champions &amp; Majors ({list.length})</button>
+        <button type="button" onClick={() => setSubTab("POOL")} style={{ flex:"1 1 200px", padding:"8px 12px", borderRadius:"7px", fontWeight:"800", fontSize:"0.8rem", cursor:"pointer", background: subTab==="POOL" ? "#2ecc71" : "#182030", color: subTab==="POOL" ? "#000" : "#cbd5e1", border: subTab==="POOL" ? "none" : "1px solid #334155" }}>⚡ Open SuperFight Matchmaking Pool ({poolFiltered.length})</button>
       </div>
-      {list.map((p, i) => (
-        <div key={i} style={{ background:"#181f2c", border:"1px solid #334155", borderRadius:"9px", padding:"12px" }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:"8px", flexWrap:"wrap" }}>
-            <div>
-              <div style={{ color:"#fff", fontWeight:"800", fontSize:"1.02rem" }}>{p.name} <span style={{ color:"#fbbf24", fontSize:"0.75rem", marginLeft:"6px" }}>{p.rec}</span></div>
-              <div style={{ color:"#ff9f43", fontSize:"0.8rem", fontWeight:"600" }}>{p.academy} • {p.belt}</div>
-            </div>
-            <div style={{ display:"flex", gap:"6px", flexWrap:"wrap" }}>
-              <button type="button" onClick={() => onOpenTrophy({ name: p.name, academy: p.academy, g: 0, s: 0, b: 0, events: [] })} style={{ background:"linear-gradient(90deg,#f59e0b,#fbbf24)", color:"#000", border:"none", borderRadius:"6px", padding:"5px 10px", fontSize:"0.75rem", fontWeight:"800", cursor:"pointer" }}>🏆 Trophy Room</button>
-              <button type="button" onClick={() => onWatch(p.name, p.academy)} style={{ background: getWatch(p.name) ? "#132a1c" : "#162536", color: getWatch(p.name) ? "#2ecc71" : "#38bdf8", border: getWatch(p.name) ? "1px solid #2ecc71" : "1px solid #0284c7", borderRadius:"6px", padding:"5px 9px", fontSize:"0.75rem", fontWeight:"bold", cursor:"pointer" }}>{getWatch(p.name) ? "✓ Watching" : "🔔 Watch"}</button>
-            </div>
+
+      {subTab === "POOL" ? (
+        <div style={{ display:"grid", gap:"9px" }}>
+          <div style={{ background:"#132a1c", border:"1px solid #22c55e", borderRadius:"8px", padding:"10px 12px", fontSize:"0.8rem", color:"#dcfce7" }}>
+            <strong>⚡ Active SuperFight Matchmaking Directory</strong> — Every competitor below has opted in via <b>🪪 Claim Bio</b> inside their Trophy Room as available for SuperFight / Invitational bookings.
           </div>
-          <div style={{ display:"flex", gap:"6px", flexWrap:"wrap", margin:"8px 0" }}>
-            {(p.titles || []).map((t, ti) => <span key={ti} style={{ background:"#292011", color:"#fde68a", border:"1px solid #d97706", borderRadius:"5px", padding:"3px 8px", fontSize:"0.73rem", fontWeight:"bold" }}>{t}</span>)}
-          </div>
-          <div style={{ display:"grid", gap:"4px" }}>
-            {(p.bouts || []).map((b, bi) => (
-              <div key={bi} style={{ background:"#111620", padding:"5px 8px", borderRadius:"5px", fontSize:"0.76rem", color:"#cbd5e1", display:"flex", justifyContent:"space-between", gap:"8px" }}>
-                <span><strong>{b.ev}</strong> — <b style={{ color:"#4ade80" }}>{b.res}</b> ({b.sub})</span>
-                <b style={{ color:"#fbbf24", fontSize:"0.7rem" }}>{b.org}</b>
+          {poolFiltered.length === 0 ? (
+            <div style={{ background:"#181f2c", border:"1px dashed #334155", borderRadius:"8px", padding:"16px", fontSize:"0.83rem", color:"#94a3b8" }}>
+              Want promoters to book you for upcoming SuperFights? Open your <b>🏆 Trophy Room</b>, tap <b>🪪 Claim Bio</b>, and check <b>🥊 Open for SuperFight Matchmaking</b>!
+            </div>
+          ) : poolFiltered.map((a, i) => (
+            <div key={i} style={{ background:"#181f2c", border:"1px solid #22c55e", borderRadius:"9px", padding:"12px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"10px", flexWrap:"wrap" }}>
+              <div>
+                <div style={{ color:"#fff", fontWeight:"800", fontSize:"1rem" }}>{a.name} <span style={{ background:"#132a1c", color:"#4ade80", border:"1px solid #22c55e", borderRadius:"4px", padding:"1px 6px", fontSize:"0.7rem", marginLeft:"6px" }}>OPEN FOR BOUTS</span></div>
+                <div style={{ color:"#ff9f43", fontSize:"0.8rem", fontWeight:"bold", marginTop:"2px" }}>{[a.belt, a.coach ? "Coach: " + a.coach : ""].filter(Boolean).join(" • ") || "Verified Competitor"}</div>
+                {a.funFact && <div style={{ color:"#cbd5e1", fontSize:"0.77rem", marginTop:"4px" }}>★ {a.funFact}</div>}
               </div>
-            ))}
-          </div>
+              <div style={{ display:"flex", gap:"6px", flexWrap:"wrap" }}>
+                <button type="button" onClick={() => onOpenTrophy({ name: a.name, academy: "" })} style={{ background:"#f59e0b", color:"#000", border:"none", borderRadius:"6px", padding:"6px 10px", fontSize:"0.75rem", fontWeight:"800", cursor:"pointer" }}>🏆 Trophy Room</button>
+                {a.handle && <a href={"https://instagram.com/" + a.handle} target="_blank" rel="noreferrer" style={{ background:"#38bdf8", color:"#000", borderRadius:"6px", padding:"6px 10px", fontSize:"0.75rem", fontWeight:"800", textDecoration:"none" }}>📩 DM @{a.handle}</a>}
+              </div>
+            </div>
+          ))}
         </div>
-      ))}
+      ) : (
+        <>
+          <div style={{ background:"linear-gradient(90deg,#0f292e,#172554)", border:"1px solid #14b8a6", borderRadius:"8px", padding:"10px 12px", fontSize:"0.8rem", color:"#ccfbf1" }}>
+            <strong>🥊 Verified SuperFights &amp; Major Championships</strong> — Tracking Pro Belts &amp; Invitational Headliners across <strong>UFC BJJ</strong>, <strong>ADCC Worlds</strong>, <strong>WNO</strong>, <strong>CJI</strong>, <strong>Polaris</strong> &amp; <strong>IBJJF Majors</strong>.
+          </div>
+          {list.map((p, i) => (
+            <div key={i} style={{ background:"#181f2c", border:"1px solid #334155", borderRadius:"9px", padding:"12px" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:"8px", flexWrap:"wrap" }}>
+                <div>
+                  <div style={{ color:"#fff", fontWeight:"800", fontSize:"1.02rem" }}>{p.name} <span style={{ color:"#fbbf24", fontSize:"0.75rem", marginLeft:"6px" }}>{p.rec}</span></div>
+                  <div style={{ color:"#ff9f43", fontSize:"0.8rem", fontWeight:"600" }}>{p.academy} • {p.belt}</div>
+                </div>
+                <div style={{ display:"flex", gap:"6px", flexWrap:"wrap" }}>
+                  <button type="button" onClick={() => onOpenTrophy({ name: p.name, academy: p.academy, g: 0, s: 0, b: 0, events: [] })} style={{ background:"linear-gradient(90deg,#f59e0b,#fbbf24)", color:"#000", border:"none", borderRadius:"6px", padding:"5px 10px", fontSize:"0.75rem", fontWeight:"800", cursor:"pointer" }}>🏆 Trophy Room</button>
+                  <button type="button" onClick={() => onWatch(p.name, p.academy)} style={{ background: getWatch(p.name) ? "#132a1c" : "#162536", color: getWatch(p.name) ? "#2ecc71" : "#38bdf8", border: getWatch(p.name) ? "1px solid #2ecc71" : "1px solid #0284c7", borderRadius:"6px", padding:"5px 9px", fontSize:"0.75rem", fontWeight:"bold", cursor:"pointer" }}>{getWatch(p.name) ? "✓ Watching" : "🔔 Watch"}</button>
+                </div>
+              </div>
+              <div style={{ display:"flex", gap:"6px", flexWrap:"wrap", margin:"8px 0" }}>
+                {(p.titles || []).map((t, ti) => <span key={ti} style={{ background:"#292011", color:"#fde68a", border:"1px solid #d97706", borderRadius:"5px", padding:"3px 8px", fontSize:"0.73rem", fontWeight:"bold" }}>{t}</span>)}
+              </div>
+              <div style={{ display:"grid", gap:"4px" }}>
+                {(p.bouts || []).map((b, bi) => (
+                  <div key={bi} style={{ background:"#111620", padding:"5px 8px", borderRadius:"5px", fontSize:"0.76rem", color:"#cbd5e1", display:"flex", justifyContent:"space-between", gap:"8px" }}>
+                    <span><strong>{b.ev}</strong> — <b style={{ color:"#4ade80" }}>{b.res}</b> ({b.sub})</span>
+                    <b style={{ color:"#fbbf24", fontSize:"0.7rem" }}>{b.org}</b>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 }
@@ -71,7 +111,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
     if (!slug) return;
     getDoc(doc(db, "mat_watches", docKey)).then(d => {
       if (d.exists() && d.data()?.kind === "athlete_bio") {
-        setBio(d.data()); setForm(d.data());
+        const bd = d.data(); setBio(bd); setForm({ ...bd, handle: bd.handle ? "@" + bd.handle.replace(/^@+/, "") : "" });
         try { localStorage.setItem(lsKey, JSON.stringify(d.data())); } catch {}
       }
     }).catch(() => {});
@@ -129,7 +169,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
         <div style={{ display:"flex", justifyContent:"space-between", gap:"8px" }}>
           <div>
             <div style={{ color:"#fbbf24", fontSize:"0.74rem", fontWeight:"800", letterSpacing:"1.5px" }}>🏆 MATDATES OFFICIAL TROPHY ROOM</div>
-            <h2 style={{ margin:"3px 0", fontSize:"1.45rem" }}>{nm}</h2>
+            <h2 style={{ margin:"3px 0", fontSize:"1.48rem", color:"#ffffff", fontWeight:"900" }}>{nm}</h2>
             <div style={{ color:"#ff9f43", fontSize:"0.85rem", fontWeight:"bold" }}>
               {cnt.acad || elite.pro?.academy || "Independent"}
               {bio?.belt || elite.pro?.belt ? " • " + (bio?.belt || elite.pro?.belt) : ""}
@@ -160,14 +200,14 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
           <div style={{ background:"#18202f", border:"1px solid #2d3748", borderRadius:"8px", padding:"6px 11px", fontSize:"0.84rem" }}>🥇<b>{cnt.g}</b> 🥈<b>{cnt.s}</b> 🥉<b>{cnt.b}</b> • <b style={{ color:"#34d399" }}>{elite.pts} Pts</b></div>
           <button type="button" onClick={() => onWatch(nm, cnt.acad || elite.pro?.academy || "")} style={{ background: isWatching ? "#132a1c" : "#162536", color: isWatching ? "#2ecc71" : "#38bdf8", border: isWatching ? "1px solid #2ecc71" : "1px solid #0284c7", borderRadius:"7px", padding:"6px 10px", fontWeight:"bold", fontSize:"0.76rem", cursor:"pointer" }}>{isWatching ? "✓ Watching" : "🔔 Watch"}</button>
           <button type="button" onClick={() => { navigator.clipboard.writeText(bioUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); }} style={{ background:"#1e293b", color:"#e2e8f0", border:"1px solid #475569", borderRadius:"7px", padding:"6px 10px", fontWeight:"bold", fontSize:"0.76rem", cursor:"pointer" }}>{copied ? "✓ Link Copied!" : "🔗 Link-in-Bio"}</button>
-          <button type="button" onClick={() => { if (bio) setForm(bio); setEditBio(!editBio); }} style={{ background:"#1e1b4b", color:"#c7d2fe", border:"1px solid #6366f1", borderRadius:"7px", padding:"6px 10px", fontWeight:"bold", fontSize:"0.76rem", cursor:"pointer" }}>🪪 {bio ? "Edit Bio" : "Claim Bio"}</button>
+          <button type="button" onClick={() => { if (bio) setForm({ ...bio, handle: bio.handle ? "@" + bio.handle.replace(/^@+/, "") : "" }); setEditBio(!editBio); }} style={{ background:"#1e1b4b", color:"#c7d2fe", border:"1px solid #6366f1", borderRadius:"7px", padding:"6px 10px", fontWeight:"bold", fontSize:"0.76rem", cursor:"pointer" }}>🪪 {bio ? "Edit Bio" : "Claim Bio"}</button>
           {onShareCard && <button type="button" onClick={() => onShareCard({ badge: elite.isElite ? elite.tierLabel : "2026 OFFICIAL TROPHY ROOM", title: nm, subtitle: cnt.acad || elite.pro?.academy || "", gold: cnt.g, silver: cnt.s, bronze: cnt.b, deepLink: bioUrl, lines: [...(elite.pro?.titles || []), ...(elite.isElite ? elite.facts.map(x => "★ " + x) : []), ...evs.slice(0, 5).map(m => (Number(m.p)===1?"🥇":Number(m.p)===2?"🥈":"🥉") + " " + m.ev)] })} style={{ background:"#ff9f43", color:"#000", border:"none", borderRadius:"7px", padding:"6px 10px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer" }}>📲 9:16 Story Card</button>}
         </div>
 
         {editBio && (
           <form onSubmit={saveBio} style={{ background:"#161d2a", border:"1px solid #475569", borderRadius:"8px", padding:"10px", marginBottom:"12px", display:"grid", gap:"8px" }}>
             <div style={{ display:"flex", gap:"8px", flexWrap:"wrap" }}>
-              <input placeholder="Instagram @handle" value={form.handle || ""} onChange={e => setForm({...form, handle: e.target.value})} style={{ flex:"1 1 150px", padding:"8px", borderRadius:"6px", background:"#0f141e", color:"#fff", border:"1px solid #334155" }} />
+              <input placeholder="Instagram @handle" value={form.handle || ""} onFocus={() => { if (!form.handle) setForm(f => ({...f, handle: "@"})); }} onChange={e => { const v = e.target.value; setForm({...form, handle: v ? ("@" + v.replace(/^@+/, "")) : ""}); }} style={{ flex:"1 1 150px", padding:"8px", borderRadius:"6px", background:"#0f141e", color:"#fff", border:"1px solid #334155" }} />
               <input placeholder="Belt (e.g. Grey / Yellow / Black)" value={form.belt || ""} onChange={e => setForm({...form, belt: e.target.value})} style={{ flex:"1 1 150px", padding:"8px", borderRadius:"6px", background:"#0f141e", color:"#fff", border:"1px solid #334155" }} />
               <input placeholder="Head Coach (e.g. Prof. Thiago Mendes)" value={form.coach || ""} onChange={e => setForm({...form, coach: e.target.value})} style={{ flex:"1 1 160px", padding:"8px", borderRadius:"6px", background:"#0f141e", color:"#fff", border:"1px solid #334155" }} />
             </div>

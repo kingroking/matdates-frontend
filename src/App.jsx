@@ -1,4 +1,5 @@
-import { UPCOMING_UFC_SUPERFIGHTS } from "./proHubData";
+import { UPCOMING_UFC_SUPERFIGHTS, getEventGiTags, getDeadlineBadge } from "./proHubData";
+import { EventPhotogModal, fetchPhotogCounts } from "./photogModal";
 import { TaleOfTheTapeModal, WeekendWarRoomModal, SubmitEventModal } from "./proModals";
 import { formatEventLoc, resolveEventUrl } from './locationFmt';
 import React, { useState, useEffect } from 'react';
@@ -246,7 +247,7 @@ function CompetitorTable({ calcResult, event, onClose }) {
                             <a href={getProfileLink(comp)} target="_blank" rel="noreferrer" style={{ color: "#fff", textDecoration: "none", wordBreak: "normal", overflowWrap: "break-word", lineHeight: 1.35, fontSize: "0.95rem" }}>{comp.Name}</a>
                             <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
                               <button onClick={() => setWatchTarget({ comp, division })} title="Live Mat # & Match Time alerts" style={{ background: getWatch(comp.Name, event.id) ? "#132a1c" : "#162536", color: getWatch(comp.Name, event.id) ? "#2ecc71" : "#38bdf8", border: getWatch(comp.Name, event.id) ? "1px solid #2ecc71" : "1px solid #0284c7", borderRadius: "5px", padding: "3px 8px", fontSize: "0.71rem", cursor: "pointer", fontWeight: "bold", whiteSpace: "nowrap" }}>{getWatch(comp.Name, event.id) ? (getWatch(comp.Name, event.id).fcmToken ? "✓ Watching 📲" : "✓ Watching ✉️") : "🔔 Watch"}</button>
-                              <button onClick={() => setScoutPair(p => p.some(x => x.id === comp.id) ? p.filter(x => x.id !== comp.id) : [...p.slice(-1), comp])} title="Compare 2 athletes head-to-head" style={{ background: scoutPair.some(x => x.id === comp.id) ? "#431407" : "#1e293b", color: scoutPair.some(x => x.id === comp.id) ? "#fbbf24" : "#cbd5e1", border: "1px solid #475569", borderRadius: "5px", padding: "3px 7px", fontSize: "0.7rem", cursor: "pointer", fontWeight: "bold", whiteSpace: "nowrap" }}>{scoutPair.some(x => x.id === comp.id) ? "⚔️ #1 Selected" : "⚔️ Scout"}</button>
+                              <button onClick={() => setScoutPair(p => p.some(x => x.id === comp.id) ? p.filter(x => x.id !== comp.id) : [...p.slice(-1), comp])} title="Compare 2 athletes side-by-side" style={{ background: scoutPair.some(x => x.id === comp.id) ? "#431407" : "#1e293b", color: scoutPair.some(x => x.id === comp.id) ? "#fbbf24" : "#cbd5e1", border: "1px solid #475569", borderRadius: "5px", padding: "3px 7px", fontSize: "0.7rem", cursor: "pointer", fontWeight: "bold", whiteSpace: "nowrap" }}>{scoutPair.some(x => x.id === comp.id) ? "🆚 Pick 2nd" : "🆚 Compare"}</button>
                             </div>
                           </div>
                         </td>
@@ -308,6 +309,10 @@ export default function App() {
   const [showAthleteSearch, setShowAthleteSearch] = useState(false);
   const [showWatchedModal, setShowWatchedModal] = useState(false);
   const [showWarRoom, setShowWarRoom] = useState(false);
+  const [photogEvent, setPhotogEvent] = useState(null);
+  const [photogCounts, setPhotogCounts] = useState({});
+  const refreshPhotogCounts = () => { fetchPhotogCounts().then(setPhotogCounts); };
+  useEffect(() => { refreshPhotogCounts(); }, []);
   useEffect(() => { if (new URLSearchParams(window.location.search).get("trophy")) setShowLeaderboard(true); }, []);
   const [livePushToast, setLivePushToast] = useState(null);
   useEffect(() => {
@@ -648,7 +653,7 @@ export default function App() {
           <div style={{ color:'#cbd5e1', fontSize:'0.83rem', marginTop:'4px' }}>{livePushToast.body}</div>
         </div>
       )}
-      {showWarRoom && <WeekendWarRoomModal events={events} watches={myWatches} onClose={() => setShowWarRoom(false)} onOpenEvent={(ev) => { setShowWarRoom(false); setSelectedCompetitorEvent(ev); }} />}
+      {showWarRoom && <WeekendWarRoomModal events={events} watches={myWatches} onRemoveWatch={removeMyWatch} onOpenAthlete={(w) => { const ev = events.find(x => x.id === w.eventId); setShowWarRoom(false); if (ev) { setCalcResult(w.athleteName); setSelectedCompetitorEvent(ev); } else if (w.eventLink) { window.open(w.eventLink, '_blank'); } }} onClose={() => setShowWarRoom(false)} onOpenEvent={(ev) => { setShowWarRoom(false); setSelectedCompetitorEvent(ev); }} />}
       {showWatchedModal && <WatchedAthletesModal watches={myWatches} onRemove={removeMyWatch} onClose={() => setShowWatchedModal(false)} onOpenAthlete={(w) => { const ev = events.find(x => x.id === w.eventId); setShowWatchedModal(false); if (ev) { setCalcResult(w.athleteName); setSelectedCompetitorEvent(ev); } else if (w.eventLink) { window.open(w.eventLink, '_blank'); } }} />}
       {showLeaderboard && <LeaderboardModal onClose={() => {
         try {
@@ -769,6 +774,7 @@ export default function App() {
         />
       )}
 
+      {photogEvent && <EventPhotogModal event={photogEvent} onClose={() => setPhotogEvent(null)} onRefreshCounts={refreshPhotogCounts} />}
       {selectedCommentEvent && (
         <VenueIntelModal
           event={selectedCommentEvent}
@@ -791,7 +797,13 @@ export default function App() {
       <p style={{ color: '#9aa4b2', margin: '4px 0 0 0', fontSize: '0.82rem', letterSpacing: '3px', fontWeight: '600', textTransform: 'uppercase' }}>Every Mat. Every Bracket. Every Podium.</p>
     </div>
   </div>
-  <div style={{ display:'flex', gap:'10px', flexWrap:'wrap' }}><button onClick={() => setShowAthleteSearch(true)} style={{ backgroundColor:'#141820', color:'#38bdf8', padding:'10px 15px', border:'1px solid #0284c7', borderRadius:'5px', fontWeight:'bold', cursor:'pointer' }}>🔍 Athlete Lookup</button><button onClick={() => setShowWarRoom(true)} style={{ backgroundColor:"#2a1215", color:"#fca5a5", padding:"10px 14px", border:"1px solid #ef4444", borderRadius:"5px", fontWeight:"bold", cursor:"pointer" }}>🔥 War Room</button><button onClick={() => setShowWatchedModal(true)} style={{ backgroundColor: myWatches.length > 0 ? '#132a1c' : '#141820', color: myWatches.length > 0 ? '#2ecc71' : '#94a3b8', padding:'10px 14px', border: myWatches.length > 0 ? '1px solid #2ecc71' : '1px solid #334155', borderRadius:'5px', fontWeight:'bold', cursor:'pointer' }}>{'\u{1F514}'} Watching ({myWatches.length})</button><button onClick={() => setShowLeaderboard(true)} style={{ backgroundColor:'#141820', color:'#e2e8f0', padding:'10px 16px', border:'1px solid #475569', borderRadius:'5px', fontWeight:'bold', cursor:'pointer' }}>🏆 Medal Standings</button><button onClick={() => user ? signOut(auth) : setShowAuthModal(true)} style={{ backgroundColor:'transparent', color:'#94a3b8', padding:'10px 12px', border:'1px solid #334155', borderRadius:'5px', cursor:'pointer', fontSize:'0.88rem' }}>{user ? 'Sign Out' : 'Sign In'}</button><button onClick={() => setShowSubmitModal(true)} style={{ backgroundColor: '#ff9f43', color: '#000', padding: '10px 20px', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer' }}>+ Submit Event</button></div>
+  <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', alignItems:'center' }}>
+    <button onClick={() => setShowLeaderboard(true)} style={{ backgroundColor:'#141820', color:'#f8fafc', padding:'9px 14px', border:'1px solid #475569', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.88rem' }}>🏆 Standings</button>
+    <button onClick={() => setShowAthleteSearch(true)} style={{ backgroundColor:'#141820', color:'#38bdf8', padding:'9px 14px', border:'1px solid #0284c7', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.88rem' }}>🔍 Athlete Lookup</button>
+    <button onClick={() => setShowWarRoom(true)} style={{ backgroundColor: myWatches.length > 0 ? '#132a1c' : '#141820', color: myWatches.length > 0 ? '#4ade80' : '#cbd5e1', padding:'9px 14px', border: myWatches.length > 0 ? '1px solid #2ecc71' : '1px solid #334155', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.88rem' }}>🔥 War Room{myWatches.length > 0 ? ` (${myWatches.length})` : ''}</button>
+    <button onClick={() => setShowSubmitModal(true)} style={{ backgroundColor:'#ff9f43', color:'#000', padding:'9px 14px', border:'none', borderRadius:'7px', fontWeight:'800', cursor:'pointer', fontSize:'0.88rem' }}>+ Submit</button>
+    <button onClick={() => user ? signOut(auth) : setShowAuthModal(true)} style={{ backgroundColor:'transparent', color:'#94a3b8', padding:'8px 10px', border:'1px solid #262f3d', borderRadius:'7px', cursor:'pointer', fontSize:'0.8rem' }}>{user ? 'Sign Out' : 'Sign In'}</button>
+  </div>
 </header>
         <SponsorBanner />
         <AnalyticsAndPwaManager />
@@ -824,7 +836,7 @@ export default function App() {
             <span onClick={() => setFederationFilter(prev => prev === 'JJWL' ? 'All' : 'JJWL')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'JJWL' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#ffffff', textShadow: '0 0 2px #000' }}>■</span> JJWL</span>
             <span onClick={() => setFederationFilter(prev => prev === 'ADCC' ? 'All' : 'ADCC')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'ADCC' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#F1C40F' }}>■</span> ADCC</span>
             <span onClick={() => setFederationFilter(prev => prev === 'UFC' ? 'All' : 'UFC')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'UFC' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#d20a0a' }}>■</span> UFC BJJ</span>
-            <span onClick={() => setFederationFilter(prev => prev === 'Super Fight' ? 'All' : 'Super Fight')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'Super Fight' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#e31837' }}>■</span> Super Fights</span>
+            <span onClick={() => setFederationFilter(prev => prev === 'Super Fight' ? 'All' : 'Super Fight')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'Super Fight' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#14b8a6' }}>■</span> Super Fights</span>
             <span onClick={() => setFederationFilter(prev => prev === 'Seminars' ? 'All' : 'Seminars')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'Seminars' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#9b59b6' }}>■</span> Seminars</span>
             <span onClick={() => setAgeFilter(prev => prev === 'Kids' ? 'All' : 'Kids')} style={{ cursor: 'pointer', marginLeft: '10px', padding: '4px 10px', backgroundColor: ageFilter === 'Kids' ? '#222' : 'transparent', borderRadius: '6px', border: ageFilter === 'Kids' ? '1px solid #555' : '1px solid transparent', opacity: ageFilter === 'Kids' ? 1 : 0.8, transition: 'all 0.2s' }}><span style={{ fontSize: '1.2rem' }}>🐯</span> Kids/Youth Events</span> <span onClick={() => { if (!user) { setShowAuthModal(true); return; } setShowSavedOnly(p => !p); }} style={{ cursor: 'pointer', padding: '4px 10px', backgroundColor: showSavedOnly ? '#ff9f43' : '#1a1a1a', color: showSavedOnly ? '#000' : '#ff9f43', fontWeight: 'bold', borderRadius: '6px', border: '1px solid #ff9f43' }}>★ My Schedule ({savedIds.length})</span>{showSavedOnly && savedIds.length > 0 && <button onClick={() => downloadIcs(events.filter(x => savedIds.includes(x.id)), 'my-bjj-season.ics')} style={{ marginLeft: '6px', cursor: 'pointer', padding: '4px 10px', backgroundColor: '#222', color: '#2ecc71', border: '1px solid #2ecc71', borderRadius: '6px', fontWeight: 'bold', fontSize: '0.82rem' }}>Export .ICS</button>}
           </div>
@@ -883,11 +895,18 @@ export default function App() {
               const isStreamOnly = Boolean(ev.id && (ev.id.toLowerCase().startsWith('flograp') || ev.id.toLowerCase().startsWith('ufc') || ev.id.toLowerCase().startsWith('one-') || ev.id.toLowerCase().includes('fightpass'))) || /subscription|fight pass|flograppling|prime video|onefc|ppv/i.test(ev.cost || '');
               const extLink = resolveEventUrl(ev);
               const streamUrl = resolveEventUrl({ ...ev, link: ev.stream_link || (isStreamOnly ? ev.link : '') });
-              const evBorderColor = isUFC ? '#d20a0a' : isADCC ? '#F1C40F' : (ev.type === 'Super Fight' || isStreamOnly) ? '#e31837' : (isJJWL ? '#ffffff' : (ev.color || '#ff9f43'));
+              const evBorderColor = isUFC ? '#d20a0a' : isADCC ? '#F1C40F' : (ev.type === 'Super Fight' || isStreamOnly) ? '#14b8a6' : (isJJWL ? '#ffffff' : (ev.color || '#ff9f43'));
               
               return (
                 <div key={ev.id} style={{ backgroundColor: '#111', borderLeft: `5px solid ${evBorderColor}`, padding: '20px', borderRadius: '4px', display: 'flex', flexDirection: 'column' }}>
+                  {(() => { const dbadge = getDeadlineBadge(ev); return dbadge ? <div style={{ background: dbadge.bg, color: dbadge.color, border: "1px solid " + dbadge.border, borderRadius: "5px", padding: "4px 9px", fontSize: "0.73rem", fontWeight: "800", marginBottom: "8px", textAlign: "left" }}>{dbadge.text}</div> : null; })()}
                   <h3 style={{ margin: '0 0 10px 0', fontSize: '1.2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}><span>{ev.name} {ev.isKidsEvent && <span>🐯</span>}</span><button onClick={() => toggleSaveEvent(ev.id)} title="Save to My Schedule" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.35rem', lineHeight: 1, color: savedIds.includes(ev.id) ? '#ff9f43' : '#555', padding: 0 }}>{savedIds.includes(ev.id) ? '★' : '☆'}</button></h3>
+                  {(() => { const gt = getEventGiTags(ev); return (
+                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "4px" }}>
+                      {gt.gi && <span style={{ background: "#172033", color: "#93c5fd", border: "1px solid #1d4ed8", borderRadius: "4px", padding: "2px 7px", fontSize: "0.71rem", fontWeight: "bold" }}>🥋 Gi</span>}
+                      {gt.nogi && <span style={{ background: "#271b0c", color: "#fcd34d", border: "1px solid #b45309", borderRadius: "4px", padding: "2px 7px", fontSize: "0.71rem", fontWeight: "bold" }}>⚡ No-Gi</span>}
+                    </div>
+                  ); })()}
                   <div style={{ flexGrow: 1, color: '#aaa', fontSize: '0.95rem', lineHeight: '1.6', margin: '8px 0' }}>
                     <div style={{ marginBottom: '2px' }}>📅 {ev.date}</div><div style={{ marginBottom: '4px' }}>{isStreamOnly || /live stream/i.test(ev.location || '') ? <span>📡 {ev.location || 'Live Stream'}</span> : <a href={getMapsUrl(ev)} target="_blank" rel="noreferrer" title="Open in Maps" style={{ color: '#ddd', textDecoration: 'none' }}>📍 <span style={{ borderBottom: '1px dashed #666' }}>{formatEventLoc(ev)}</span><span style={{ whiteSpace: 'nowrap', color: '#94a3b8', fontSize: '0.85em' }}>{'\u00A0↗'}</span></a>}</div>
                     {ev.cost && (
@@ -948,7 +967,7 @@ export default function App() {
                       style={{ flex: 1, backgroundColor: '#222', color: '#fff', border: '1px solid #444', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', minWidth: '120px' }}
                     >
                       ⏰ Remind Me
-                    </button> <button onClick={() => downloadIcs([ev], `${ev.id}.ics`)} title="Add to Calendar (.ics)" style={{ backgroundColor: '#222', color: '#ccc', border: '1px solid #444', padding: '8px 10px', borderRadius: '4px', cursor: 'pointer' }}>+ Cal</button> {(() => { const tc = getTipCount(ev); return (<button onClick={() => setSelectedCommentEvent(ev)} title="Venue & Event Intel" style={{ backgroundColor: tc > 0 ? '#162536' : '#222', color: tc > 0 ? '#38bdf8' : '#ccc', border: tc > 0 ? '1px solid #0284c7' : '1px solid #444', padding: '8px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: tc > 0 ? 'bold' : 'normal', whiteSpace: 'nowrap' }}>💬 Tips{tc > 0 ? ` (${tc})` : ''}</button>); })()}
+                    </button> <button onClick={() => downloadIcs([ev], `${ev.id}.ics`)} title="Add to Calendar (.ics)" style={{ backgroundColor: '#222', color: '#ccc', border: '1px solid #444', padding: '8px 10px', borderRadius: '4px', cursor: 'pointer' }}>+ Cal</button> {(() => { const tc = getTipCount(ev); return (<button onClick={() => setSelectedCommentEvent(ev)} title="Venue & Event Intel" style={{ backgroundColor: tc > 0 ? '#162536' : '#222', color: tc > 0 ? '#38bdf8' : '#ccc', border: tc > 0 ? '1px solid #0284c7' : '1px solid #444', padding: '8px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: tc > 0 ? 'bold' : 'normal', whiteSpace: 'nowrap' }}>💬 Tips{tc > 0 ? ` (${tc})` : ''}</button>); })()} {!isStreamOnly && (<button onClick={() => setPhotogEvent(ev)} title="Book or list event photography & highlight reels" style={{ backgroundColor: photogCounts[ev.id] ? '#14261c' : '#222', color: photogCounts[ev.id] ? '#4ade80' : '#38bdf8', border: photogCounts[ev.id] ? '1px solid #22c55e' : '1px solid #0284c7', padding: '8px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', whiteSpace: 'nowrap' }}>📸 Photogs{photogCounts[ev.id] ? ` (${photogCounts[ev.id]})` : ''}</button>)}
 
                     {!isStreamOnly && extLink && (
                       <a href={extLink} target="_blank" rel="noreferrer" style={{ flex: 1, textAlign: 'center', color: '#fff', textDecoration: 'none', backgroundColor: '#333', padding: '8px 12px', borderRadius: '4px', fontWeight: 'bold', minWidth: '120px' }}>

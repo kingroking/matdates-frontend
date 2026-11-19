@@ -30,7 +30,7 @@ export function TaleOfTheTapeModal({ compA, compB, division, onClose }) {
   return (
     <div onClick={onClose} style={MODAL_BG}>
       <div onClick={e => e.stopPropagation()} style={{ background:"#111622", border:"1.5px solid #f59e0b", borderRadius:"12px", maxWidth:"550px", width:"100%", padding:"16px", color:"#fff", textAlign:"center" }}>
-        <div style={{ color:"#fbbf24", fontWeight:"800", fontSize:"0.8rem" }}>⚔️ MATDATES TALE OF THE TAPE</div>
+        <div style={{ color:"#fbbf24", fontWeight:"800", fontSize:"0.8rem" }}>🆚 HEAD-TO-HEAD BRACKET COMPARISON</div>
         <div style={{ color:"#94a3b8", fontSize:"0.78rem", marginBottom:"12px" }}>{division}</div>
         {!a || !b ? <div style={{ padding:"20px", color:"#94a3b8" }}>Scouting 2026 Podium Records...</div> : (
           <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:"10px", alignItems:"center" }}>
@@ -52,7 +52,7 @@ export function TaleOfTheTapeModal({ compA, compB, division, onClose }) {
   );
 }
 
-export function WeekendWarRoomModal({ events, watches, onClose, onOpenEvent }) {
+export function WeekendWarRoomModal({ events, watches, onRemoveWatch, onOpenAthlete, onClose, onOpenEvent }) {
   const upcoming = (events || []).filter(e => {
     if (!e.sort_date) return false;
     const d = Math.ceil((new Date(e.sort_date + "T12:00:00") - new Date()) / 86400000);
@@ -60,34 +60,45 @@ export function WeekendWarRoomModal({ events, watches, onClose, onOpenEvent }) {
   });
   return (
     <div onClick={onClose} style={MODAL_BG}>
-      <div onClick={e => e.stopPropagation()} style={{ background:"#111622", border:"1px solid #ef4444", borderRadius:"12px", maxWidth:"620px", width:"100%", maxHeight:"88svh", overflowY:"auto", padding:"16px", color:"#fff", textAlign:"left" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"10px" }}>
-          <h3 style={{ margin:0 }}>🔥 Live Weekend War Room &amp; Deadlines</h3>
+      <div onClick={e => e.stopPropagation()} style={{ background:"#111622", border:"1.5px solid #2ecc71", borderRadius:"12px", maxWidth:"640px", width:"100%", maxHeight:"88svh", overflowY:"auto", padding:"16px", color:"#fff", textAlign:"left" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"10px" }}>
+          <h3 style={{ margin:0, color:"#ffffff" }}>🔥 War Room — My Watched Athletes &amp; Live Deadlines</h3>
           <button onClick={onClose} style={{ background:"#1e293b", color:"#fff", border:"1px solid #334155", borderRadius:"6px", padding:"4px 9px", cursor:"pointer" }}>✕</button>
         </div>
-        <div style={{ color:"#fca5a5", fontWeight:"bold", fontSize:"0.8rem", marginBottom:"6px" }}>🔔 MY WATCHED ATHLETES ON DECK ({watches.length})</div>
-        {watches.length === 0 ? <div style={{ color:"#94a3b8", fontSize:"0.8rem", marginBottom:"12px" }}>Tap 🔔 Watch on any athlete in Lookup, Brackets, or Podiums to track live Mat # here!</div> : (
-          <div style={{ display:"grid", gap:"6px", marginBottom:"14px" }}>
+        <div style={{ color:"#4ade80", fontWeight:"800", fontSize:"0.8rem", marginBottom:"6px" }}>🔔 MY WATCHED ATHLETES ({watches.length})</div>
+        {watches.length === 0 ? (
+          <div style={{ background:"#182030", padding:"12px", borderRadius:"8px", color:"#94a3b8", fontSize:"0.8rem", marginBottom:"14px" }}>
+            Tap <b>🔔 Watch</b> on any competitor in Athlete Lookup, Brackets, or Podiums to get live tournament-day Mat #, Match Time &amp; Podium push alerts!
+          </div>
+        ) : (
+          <div style={{ display:"grid", gap:"6px", marginBottom:"16px" }}>
             {watches.map((w, i) => (
-              <div key={i} style={{ background:"#182030", padding:"8px 10px", borderRadius:"7px", display:"flex", justifyContent:"space-between", fontSize:"0.8rem" }}>
-                <span><b>{w.athleteName}</b> ({w.eventName || "Following Next Bracket"})</span>
-                <b style={{ color:"#4ade80" }}>{w.finalResult || [w.lastMat, w.lastTime].filter(Boolean).join(" • ") || "Monitoring Live"}</b>
+              <div key={w.id || i} style={{ background:"#182030", border:"1px solid #283548", padding:"9px 11px", borderRadius:"8px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap", fontSize:"0.81rem" }}>
+                <div>
+                  <div style={{ fontWeight:"bold", color:"#fff" }}>{w.athleteName} {w.division ? <span style={{ color:"#93c5fd", fontWeight:"normal", fontSize:"0.75rem" }}>• {w.division}</span> : null}</div>
+                  <div style={{ color:"#94a3b8", fontSize:"0.75rem" }}>{w.eventName || "Following All Upcoming Registrations"}</div>
+                </div>
+                <div style={{ display:"flex", gap:"6px", alignItems:"center" }}>
+                  <span style={{ color:"#4ade80", fontWeight:"bold", fontSize:"0.76rem" }}>{w.finalResult || [w.lastMat, w.lastTime].filter(Boolean).join(" • ") || "Tracking Live"}</span>
+                  {onOpenAthlete && w.eventId && <button onClick={() => onOpenAthlete(w)} style={{ background:"#162536", color:"#38bdf8", border:"1px solid #0284c7", borderRadius:"5px", padding:"4px 8px", fontSize:"0.72rem", fontWeight:"bold", cursor:"pointer" }}>Bracket</button>}
+                  {onRemoveWatch && <button onClick={() => onRemoveWatch(w)} title="Stop watching" style={{ background:"#2a1215", color:"#fca5a5", border:"1px solid #ef4444", borderRadius:"5px", padding:"4px 7px", fontSize:"0.72rem", cursor:"pointer" }}>✕</button>}
+                </div>
               </div>
             ))}
           </div>
         )}
-        <div style={{ color:"#fbbf24", fontWeight:"bold", fontSize:"0.8rem", marginBottom:"6px" }}>⏳ LIVE &amp; NEXT 14 DAYS TOURNAMENTS ({upcoming.length})</div>
+        <div style={{ color:"#fbbf24", fontWeight:"800", fontSize:"0.8rem", marginBottom:"6px" }}>⏳ THIS WEEKEND &amp; NEXT 14 DAYS ({upcoming.length})</div>
         <div style={{ display:"grid", gap:"7px" }}>
           {upcoming.map(ev => {
             const b = getDeadlineBadge(ev);
             return (
               <div key={ev.id} style={{ background:"#182030", border:"1px solid #2d3748", borderRadius:"8px", padding:"9px 11px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
                 <div>
-                  <div style={{ fontWeight:"bold", fontSize:"0.88rem" }}>{ev.name}</div>
+                  <div style={{ fontWeight:"bold", fontSize:"0.88rem", color:"#fff" }}>{ev.name}</div>
                   <div style={{ fontSize:"0.76rem", color:"#94a3b8" }}>{ev.date} • {ev.location}</div>
                   {b && <span style={{ display:"inline-block", marginTop:"4px", background:b.bg, color:b.color, border:"1px solid " + b.border, borderRadius:"4px", padding:"2px 6px", fontSize:"0.7rem", fontWeight:"bold" }}>{b.text}</span>}
                 </div>
-                <button onClick={() => onOpenEvent(ev)} style={{ background:"#38bdf8", color:"#000", border:"none", borderRadius:"6px", padding:"6px 10px", fontSize:"0.76rem", fontWeight:"bold", cursor:"pointer" }}>Open Brackets</button>
+                <button onClick={() => onOpenEvent(ev)} style={{ background:"#38bdf8", color:"#000", border:"none", borderRadius:"6px", padding:"6px 10px", fontSize:"0.76rem", fontWeight:"bold", cursor:"pointer" }}>Brackets</button>
               </div>
             );
           })}
@@ -101,7 +112,7 @@ export function SubmitEventModal({ onClose }) {
   const [f, setF] = useState({ type: "Tournament", org: "IBJJF", name: "", date: "", venue: "", location: "", link: "", matchmaking: "", earlyBirdDate: "" });
   const submit = async (e) => {
     e.preventDefault();
-    const color = f.type === "SuperFight" ? "#e31837" : f.type === "Seminar" ? "#a855f7" : "#ff9f43";
+    const color = f.type === "SuperFight" ? "#14b8a6" : f.type === "Seminar" ? "#a855f7" : "#ff9f43";
     await addDoc(collection(db, "pending_events"), { ...f, sort_date: f.date, color, createdAt: new Date().toISOString() });
     alert(f.type + " submitted for review!"); onClose();
   };

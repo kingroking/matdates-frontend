@@ -886,7 +886,7 @@ export function LeaderboardModal({ onClose }) {
           >
             🥋 Athlete Podium Search
           </button>
-            <button onClick={() => setMode("SUPERFIGHTS")} style={{ padding:"8px 12px", borderRadius:"7px", fontWeight:"bold", fontSize:"0.82rem", cursor:"pointer", background: mode === "SUPERFIGHTS" ? "#ef4444" : "#181c24", color: mode === "SUPERFIGHTS" ? "#fff" : "#cbd5e1", border: mode === "SUPERFIGHTS" ? "1px solid #ef4444" : "1px solid #2d3748" }}>🥊 SuperFights &amp; Majors</button>
+            <button onClick={() => setMode("SUPERFIGHTS")} style={{ padding:"8px 12px", borderRadius:"7px", fontWeight:"bold", fontSize:"0.82rem", cursor:"pointer", background: mode === "SUPERFIGHTS" ? "#14b8a6" : "#181c24", color: mode === "SUPERFIGHTS" ? "#000" : "#cbd5e1", border: mode === "SUPERFIGHTS" ? "1px solid #14b8a6" : "1px solid #2d3748" }}>🥊 SuperFights &amp; Majors</button>
         </div>
 
         <div style={{ width:"100%", flex:"0 0 auto", position:"relative", marginBottom:"8px", textAlign:"left" }}>
