@@ -5,12 +5,11 @@ import { db } from "./firebase";
 const BG = { position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", zIndex:10080, display:"flex", alignItems:"center", justifyContent:"center", padding:"12px", boxSizing:"border-box" };
 
 export function EventPortalModal({ event, user, onRequireAuth, onOpenQa, onClose, initialSupport = "" }) {
-  const [tab, setTab] = useState("TICKETS");
+  const wantsCheckin = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("checkin") === "1";
+  const [tab, setTab] = useState(wantsCheckin ? "CHECKIN" : "TICKETS");
   const [cfg, setCfg] = useState(null);
   const [sales, setSales] = useState([]);
   const [isPromoterStaff, setIsPromoterStaff] = useState(false);
-  const [pinInput, setPinInput] = useState("");
-  const [pinUnlocked, setPinUnlocked] = useState(false);
   const [msg, setMsg] = useState("");
   const [copiedLink, setCopiedLink] = useState(false);
 
@@ -24,7 +23,18 @@ export function EventPortalModal({ event, user, onRequireAuth, onOpenQa, onClose
 
   useEffect(() => {
     if (!event?.id) return;
-    getDoc(doc(db, "mat_watches", "prom_cfg_" + event.id)).then(d => { if (d.exists()) setCfg(d.data()); }).catch(() => {});
+    getDoc(doc(db, "mat_watches", "prom_cfg_" + event.id)).then(d => {
+      if (d.exists()) {
+        const data = d.data();
+        setCfg(data);
+        const em = (user?.email || "").toLowerCase();
+        const match = (data.bookedRoster || []).find(r => (r.email || "").toLowerCase() === em);
+        if (match) {
+          setChk(prev => ({ ...prev, athleteName: prev.athleteName || match.name || "" }));
+          if (wantsCheckin) setTab("CHECKIN");
+        }
+      }
+    }).catch(() => {});
     getDocs(query(collection(db, "mat_watches"), where("kind", "==", "ticket_referral"))).then(sn => {
       setSales(sn.docs.map(d => d.data()).filter(x => x.eventId === event.id));
     }).catch(() => {});
@@ -39,28 +49,11 @@ export function EventPortalModal({ event, user, onRequireAuth, onOpenQa, onClose
   }, [event?.id, user]);
 
   const userEmailLow = (user?.email || "").toLowerCase();
-  const rosterEmails = (cfg?.fighterEmails || "").split(/[,;\s]+/).map(x => x.trim().toLowerCase()).filter(Boolean);
+  const matchedFighter = (cfg?.bookedRoster || []).find(r => (r.email || "").toLowerCase() === userEmailLow);
+  const legacyEmails = (cfg?.fighterEmails || "").split(/[,;\s]+/).map(x => x.trim().toLowerCase()).filter(Boolean);
   const isAuthorizedCompetitor = Boolean(
-    user && (
-      isPromoterStaff ||
-      pinUnlocked ||
-      (rosterEmails.length > 0 && rosterEmails.includes(userEmailLow))
-    )
+    user && (isPromoterStaff || matchedFighter || legacyEmails.includes(userEmailLow))
   );
-
-  const handleUnlockPin = (e) => {
-    e.preventDefault();
-    if (!user) { onRequireAuth && onRequireAuth(); return; }
-    const expected = (cfg?.fighterPin || "").trim();
-    if (expected && pinInput.trim() === expected) {
-      setPinUnlocked(true);
-      setMsg("");
-    } else if (!expected) {
-      alert("The promoter hasn't opened online Fighter Check-In for this card yet — check Event Info or contact your matchmaker for your invite.");
-    } else {
-      alert("Incorrect Fighter Check-In Code. Check your bout agreement or message your matchmaker.");
-    }
-  };
 
   const submitCheckIn = async (e) => {
     e.preventDefault();
@@ -94,7 +87,8 @@ export function EventPortalModal({ event, user, onRequireAuth, onOpenQa, onClose
     if (dest && dest.startsWith("http")) window.open(dest, "_blank");
   };
 
-  const referralUrl = "https://matdates.com/?hub=" + encodeURIComponent(event?.id || "") + (chk.athleteName ? "&support=" + encodeURIComponent(chk.athleteName.trim()).replace(/%20/g, "+") : "");
+  const activeFighterName = chk.athleteName || matchedFighter?.name || "";
+  const referralUrl = "https://matdates.com/?hub=" + encodeURIComponent(event?.id || "") + (activeFighterName ? "&support=" + encodeURIComponent(activeFighterName.trim()).replace(/%20/g, "+") : "");
 
   const tally = {};
   sales.forEach(s => {
@@ -103,7 +97,6 @@ export function EventPortalModal({ event, user, onRequireAuth, onOpenQa, onClose
   });
   const leaders = Object.entries(tally).sort((a, b) => b[1] - a[1]).slice(0, 6);
   const vipTables = sales.filter(s => /vip|table/i.test(s.tier || ""));
-
   const inp = { padding:"9px 11px", borderRadius:"6px", background:"#0f141e", color:"#fff", border:"1px solid #334155", fontSize:"0.86rem", width:"100%", boxSizing:"border-box" };
 
   return (
@@ -121,9 +114,12 @@ export function EventPortalModal({ event, user, onRequireAuth, onOpenQa, onClose
         <div style={{ display:"flex", gap:"6px", flexWrap:"wrap", marginBottom:"12px" }}>
           <button type="button" onClick={() => setTab("TICKETS")} style={{ flex:"1 1 160px", padding:"8px", borderRadius:"7px", fontWeight:"800", fontSize:"0.79rem", cursor:"pointer", background: tab==="TICKETS" ? "#ff9f43" : "#182030", color: tab==="TICKETS" ? "#000" : "#cbd5e1", border: tab==="TICKETS" ? "none" : "1px solid #334155" }}>🎟️ Tickets &amp; VIP Tables</button>
           <button type="button" onClick={() => setTab("INFO")} style={{ flex:"1 1 150px", padding:"8px", borderRadius:"7px", fontWeight:"800", fontSize:"0.79rem", cursor:"pointer", background: tab==="INFO" ? "#14b8a6" : "#182030", color: tab==="INFO" ? "#000" : "#cbd5e1", border: tab==="INFO" ? "none" : "1px solid #334155" }}>📢 Event Info &amp; Rules</button>
-          <button type="button" onClick={() => setTab("CHECKIN")} style={{ flex:"0 1 auto", padding:"8px 11px", borderRadius:"7px", fontWeight:"700", fontSize:"0.76rem", cursor:"pointer", background: tab==="CHECKIN" ? "#1e293b" : "#141923", color: isAuthorizedCompetitor ? "#4ade80" : "#94a3b8", border:"1px solid #334155" }}>
-            {isAuthorizedCompetitor ? "🥋 Fighter Check-In ✓" : "🔒 Booked Fighter Login"}
-          </button>
+          {/* Exclusive Fighter Check-In button ONLY appears automatically for verified booked fighters (or via their email invite link ?checkin=1)! */}
+          {(isAuthorizedCompetitor || wantsCheckin) && (
+            <button type="button" onClick={() => setTab("CHECKIN")} style={{ flex:"1 1 160px", padding:"8px 11px", borderRadius:"7px", fontWeight:"800", fontSize:"0.79rem", cursor:"pointer", background: tab==="CHECKIN" ? "#2ecc71" : "#132a1c", color: tab==="CHECKIN" ? "#000" : "#4ade80", border:"1px solid #22c55e" }}>
+              🥋 Fighter Check-In ✓
+            </button>
+          )}
         </div>
 
         {msg && <div style={{ background:"#132a1c", border:"1px solid #2ecc71", color:"#4ade80", padding:"8px 11px", borderRadius:"7px", fontSize:"0.8rem", fontWeight:"bold", marginBottom:"10px" }}>{msg}</div>}
@@ -191,27 +187,20 @@ export function EventPortalModal({ event, user, onRequireAuth, onOpenQa, onClose
 
         {tab === "CHECKIN" && (
           !isAuthorizedCompetitor ? (
-            <div style={{ background:"#161d2b", border:"1px solid #334155", borderRadius:"10px", padding:"16px", textAlign:"center" }}>
-              <div style={{ fontSize:"1.5rem", marginBottom:"6px" }}>🔒</div>
-              <div style={{ fontWeight:"800", fontSize:"0.96rem", color:"#fff", marginBottom:"6px" }}>Competing Athletes &amp; Corners Only</div>
-              <div style={{ fontSize:"0.81rem", color:"#94a3b8", lineHeight:1.45, marginBottom:"12px" }}>
-                Virtual Weigh-Ins, Coach Wristband registration, Walkout songs, and Personal Ticket Referral Links are private to athletes booked on this card.
+            <div style={{ background:"#161d2b", border:"1px solid #38bdf8", borderRadius:"10px", padding:"18px", textAlign:"center" }}>
+              <div style={{ fontSize:"1.6rem", marginBottom:"6px" }}>🥋</div>
+              <div style={{ fontWeight:"800", fontSize:"1rem", color:"#fff", marginBottom:"6px" }}>Sign In with Your Verified Fighter Email</div>
+              <div style={{ fontSize:"0.82rem", color:"#cbd5e1", lineHeight:1.5, marginBottom:"14px" }}>
+                Sign in (or create your free MatDates account) using the <b>exact email address your promoter booked you under</b> to instantly unlock Virtual Weigh-Ins, Coach Wristbands &amp; your Personal Ticket Sales Link!
               </div>
-              {!user ? (
-                <button type="button" onClick={() => onRequireAuth && onRequireAuth()} style={{ background:"#38bdf8", color:"#000", border:"none", borderRadius:"7px", padding:"9px 16px", fontWeight:"800", cursor:"pointer" }}>
-                  Sign In with Your Fighter Email
-                </button>
-              ) : (
-                <form onSubmit={handleUnlockPin} style={{ display:"flex", gap:"8px", maxWidth:"340px", margin:"0 auto" }}>
-                  <input required placeholder="Enter Fighter Check-In Code" value={pinInput} onChange={e => setPinInput(e.target.value)} style={inp} />
-                  <button type="submit" style={{ background:"#14b8a6", color:"#000", border:"none", borderRadius:"6px", padding:"9px 14px", fontWeight:"800", cursor:"pointer", whiteSpace:"nowrap" }}>Unlock</button>
-                </form>
-              )}
+              <button type="button" onClick={() => onRequireAuth && onRequireAuth()} style={{ background:"#38bdf8", color:"#000", border:"none", borderRadius:"7px", padding:"10px 18px", fontWeight:"800", cursor:"pointer" }}>
+                Sign In / Create Fighter Account
+              </button>
             </div>
           ) : (
             <form onSubmit={submitCheckIn} style={{ display:"grid", gap:"9px" }}>
               <div style={{ background:"#152228", border:"1px solid #14b8a6", borderRadius:"8px", padding:"10px 12px", fontSize:"0.79rem", color:"#ccfbf1" }}>
-                <b>✓ Verified Fighter Portal Unlocked:</b> Submit your Virtual Weigh-In, Coach Wristbands, Walkout song &amp; copy your personal <b>Athlete Ticket Link</b> below.
+                <b>✓ Verified Booked Fighter ({user.email}):</b> Submit your Virtual Weigh-In, Coach Wristbands, Walkout song &amp; grab your exclusive <b>Athlete Ticket Link</b> below!
               </div>
               <div style={{ display:"flex", gap:"8px", flexWrap:"wrap" }}>
                 <input required placeholder="Competing Athlete Full Name" value={chk.athleteName} onChange={e => setChk({...chk, athleteName: e.target.value})} style={{ ...inp, flex:"1 1 180px" }} />
@@ -232,7 +221,7 @@ export function EventPortalModal({ event, user, onRequireAuth, onOpenQa, onClose
               <input type="url" placeholder="High-Res Fighter Photo Link for Event Poster" value={chk.posterPhotoUrl} onChange={e => setChk({...chk, posterPhotoUrl: e.target.value})} style={inp} />
 
               <div style={{ background:"#182030", border:"1px dashed #38bdf8", borderRadius:"8px", padding:"9px 11px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
-                <div style={{ fontSize:"0.77rem", color:"#cbd5e1" }}>🎟️ <b>Your Personal Athlete Ticket &amp; VIP Table Link:</b></div>
+                <div style={{ fontSize:"0.77rem", color:"#cbd5e1" }}>🎟️ <b>Your Exclusive Athlete Ticket &amp; VIP Table Link:</b></div>
                 <button type="button" onClick={() => { navigator.clipboard.writeText(referralUrl); setCopiedLink(true); setTimeout(() => setCopiedLink(false), 2000); }} style={{ background:"#38bdf8", color:"#000", border:"none", borderRadius:"6px", padding:"6px 10px", fontWeight:"800", fontSize:"0.75rem", cursor:"pointer" }}>
                   {copiedLink ? "✓ Referral Link Copied!" : "🔗 Copy My Ticket Link"}
                 </button>

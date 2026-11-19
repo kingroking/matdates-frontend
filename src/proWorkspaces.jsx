@@ -409,12 +409,13 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, user
 export function PromoterHomeDashboard({ events, user }) {
   const [ws, setWs] = useState(null);
   const [orgName, setOrgName] = useState("");
-  const [tab, setTab] = useState("CHECKINS");
+  const [tab, setTab] = useState("ROSTER");
   const [pool, setPool] = useState([]);
   const [checkins, setCheckins] = useState([]);
   const [sales, setSales] = useState([]);
   const [cardId, setCardId] = useState(events?.[0]?.id || "");
-  const [cfg, setCfg] = useState({ ticketUrl: "", gaLabel: "", vipTableLabel: "", weighInInfo: "", cornerInfo: "", fighterPin: "", fighterEmails: "" });
+  const [cfg, setCfg] = useState({ ticketUrl: "", gaLabel: "", vipTableLabel: "", weighInInfo: "", cornerInfo: "", bookedRoster: [] });
+  const [bulkAthletes, setBulkAthletes] = useState("");
   const [staffInput, setStaffInput] = useState("");
   const [showTour, setShowTour] = useState(false);
   const [msg, setMsg] = useState("");
@@ -431,6 +432,14 @@ export function PromoterHomeDashboard({ events, user }) {
     getDocs(query(collection(db, "mat_watches"), where("kind", "==", "ticket_referral"))).then(sn => setSales(sn.docs.map(d => d.data()))).catch(() => {});
   }, [user]);
 
+  useEffect(() => {
+    if (!cardId) return;
+    getDoc(doc(db, "mat_watches", "prom_cfg_" + cardId)).then(d => {
+      if (d.exists()) setCfg(prev => ({ ...prev, ...d.data(), bookedRoster: d.data().bookedRoster || [] }));
+      else setCfg({ ticketUrl: "", gaLabel: "", vipTableLabel: "", weighInInfo: "", cornerInfo: "", bookedRoster: [] });
+    }).catch(() => {});
+  }, [cardId]);
+
   const activateOrg = async (e) => {
     e.preventDefault();
     const slug = "prom_ws_" + foldStr(orgName).replace(/[^a-z0-9]+/g, "_");
@@ -440,11 +449,52 @@ export function PromoterHomeDashboard({ events, user }) {
     setShowTour(true);
   };
 
+  // Parse newly pasted "Athlete Name, email@domain.com" lines, preserve existing emailed:true records, and queue emails ONLY for newly added athletes!
+  const addBookedFightersAndQueueInvites = async (e) => {
+    e.preventDefault();
+    if (!cardId || !bulkAthletes.trim()) return;
+    const evObj = (events || []).find(x => x.id === cardId) || {};
+    const existing = [...(cfg.bookedRoster || [])];
+    const existingEmails = new Set(existing.map(r => (r.email || "").toLowerCase()));
+    let added = 0;
+
+    bulkAthletes.split(/\n|;/).map(l => l.trim()).filter(Boolean).forEach(line => {
+      const emMatch = line.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+      if (!emMatch) return;
+      const email = emMatch[1].toLowerCase();
+      if (existingEmails.has(email)) return;
+      const namePart = line.replace(emMatch[0], "").replace(/^[,\s|-]+|[,\s|-]+$/g, "").trim() || email.split("@")[0];
+      existing.push({ name: namePart, email, emailed: false, addedAt: new Date().toISOString() });
+      existingEmails.add(email);
+      added++;
+    });
+
+    await setDoc(doc(db, "mat_watches", "prom_cfg_" + cardId), {
+      kind: "prom_cfg",
+      eventId: cardId,
+      eventName: evObj.name || "",
+      eventDate: evObj.date || "",
+      orgName: ws?.orgName || "Promoter",
+      bookedRoster: existing,
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+
+    setCfg(prev => ({ ...prev, bookedRoster: existing }));
+    setBulkAthletes("");
+    setMsg(`✅ Added ${added} new fighter(s)! MatDates is automatically emailing ONLY the newly added athletes their account setup instructions, exclusive Fighter Check-In unlock link & personal Ticket Referral link!`);
+  };
+
   const saveCardConfig = async (e) => {
     e.preventDefault();
     if (!cardId) return;
-    await setDoc(doc(db, "mat_watches", "prom_cfg_" + cardId), { kind: "prom_cfg", eventId: cardId, ...cfg, updatedAt: new Date().toISOString() }, { merge: true });
-    setMsg("✅ Saved Ticket Checkout Link, VIP Table Tiers & Official Weigh-In/Corner Info onto Event Card!");
+    const evObj = (events || []).find(x => x.id === cardId) || {};
+    await setDoc(doc(db, "mat_watches", "prom_cfg_" + cardId), {
+      kind: "prom_cfg", eventId: cardId, eventName: evObj.name || "", orgName: ws?.orgName || "",
+      ticketUrl: cfg.ticketUrl || "", gaLabel: cfg.gaLabel || "", vipTableLabel: cfg.vipTableLabel || "",
+      weighInInfo: cfg.weighInInfo || "", cornerInfo: cfg.cornerInfo || "",
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+    setMsg("✅ Saved Ticket Checkout Link, VIP Table Tiers & Official Briefing onto Event Card!");
   };
 
   const addStaff = async (e) => {
@@ -465,9 +515,9 @@ export function PromoterHomeDashboard({ events, user }) {
       <form onSubmit={activateOrg} style={{ background:"#112226", border:"1.5px solid #14b8a6", borderRadius:"10px", padding:"14px", marginBottom:"16px", display:"flex", gap:"8px", flexWrap:"wrap", alignItems:"center", textAlign:"left" }}>
         <div style={{ flex:"1 1 260px" }}>
           <div style={{ color:"#5eead4", fontSize:"0.74rem", fontWeight:"800" }}>🏟️ WELCOME PROMOTER • ACTIVATE YOUR EVENT COMMAND CENTER</div>
-          <div style={{ color:"#cbd5e1", fontSize:"0.82rem" }}>Name your Promotion to unlock Athlete Check-Ins, VIP Table/Ticket Referrals &amp; Matchmaker Tools:</div>
+          <div style={{ color:"#cbd5e1", fontSize:"0.82rem" }}>Name your Promotion to unlock Automated Fighter Email Onboarding, Check-Ins &amp; VIP Table/Ticket Tracking:</div>
         </div>
-        <input required placeholder="Promotion Name (e.g. Texas SuperFight Series)" value={orgName} onChange={e => setOrgName(e.target.value)} style={{ ...inp, flex:"1 1 220px" }} />
+        <input required placeholder="Promotion Name (e.g. Lone Star SuperFights)" value={orgName} onChange={e => setOrgName(e.target.value)} style={{ ...inp, flex:"1 1 220px" }} />
         <button type="submit" style={{ background:"#14b8a6", color:"#000", border:"none", borderRadius:"7px", padding:"9px 14px", fontWeight:"800", cursor:"pointer" }}>Launch Dashboard</button>
       </form>
     );
@@ -480,10 +530,11 @@ export function PromoterHomeDashboard({ events, user }) {
         <div>
           <div style={{ color:"#5eead4", fontSize:"0.72rem", fontWeight:"800", letterSpacing:"1px" }}>🏟️ PROMOTER &amp; MATCHMAKER HOMEPAGE • {ws.orgName.toUpperCase()}</div>
           <div style={{ display:"flex", gap:"6px", flexWrap:"wrap", marginTop:"6px" }}>
-            <button data-tour="prom-checkins" type="button" onClick={() => setTab("CHECKINS")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: tab==="CHECKINS" ? "#14b8a6" : "#182430", color: tab==="CHECKINS" ? "#000" : "#cbd5e1", border:"none" }}>🥋 Athlete Check-Ins ({checkins.length})</button>
-            <button data-tour="prom-tickets" type="button" onClick={() => setTab("TICKETS")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: tab==="TICKETS" ? "#ff9f43" : "#182430", color: tab==="TICKETS" ? "#000" : "#cbd5e1", border:"none" }}>🎟️ Tickets, VIP Tables &amp; Info ({sales.length})</button>
-            <button data-tour="prom-matchmaker" type="button" onClick={() => setTab("MATCHMAKER")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: tab==="MATCHMAKER" ? "#38bdf8" : "#182430", color: tab==="MATCHMAKER" ? "#000" : "#cbd5e1", border:"none" }}>⚡ Matchmaker DB ({pool.length})</button>
-            <button data-tour="prom-team" type="button" onClick={() => setTab("TEAM")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: tab==="TEAM" ? "#2ecc71" : "#182430", color: tab==="TEAM" ? "#000" : "#cbd5e1", border:"none" }}>👥 Matchmakers &amp; Staff</button>
+            <button type="button" onClick={() => setTab("ROSTER")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: tab==="ROSTER" ? "#38bdf8" : "#182430", color: tab==="ROSTER" ? "#000" : "#cbd5e1", border:"none" }}>📧 Booked Fighters &amp; Auto-Invite ({(cfg.bookedRoster || []).length})</button>
+            <button data-tour="prom-checkins" type="button" onClick={() => setTab("CHECKINS")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: tab==="CHECKINS" ? "#14b8a6" : "#182430", color: tab==="CHECKINS" ? "#000" : "#cbd5e1", border:"none" }}>🥋 Submitted Check-Ins ({checkins.length})</button>
+            <button data-tour="prom-tickets" type="button" onClick={() => setTab("TICKETS")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: tab==="TICKETS" ? "#ff9f43" : "#182430", color: tab==="TICKETS" ? "#000" : "#cbd5e1", border:"none" }}>🎟️ Tickets &amp; Event Info ({sales.length})</button>
+            <button data-tour="prom-matchmaker" type="button" onClick={() => setTab("MATCHMAKER")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: tab==="MATCHMAKER" ? "#f59e0b" : "#182430", color: tab==="MATCHMAKER" ? "#000" : "#cbd5e1", border:"none" }}>⚡ Matchmaker DB ({pool.length})</button>
+            <button data-tour="prom-team" type="button" onClick={() => setTab("TEAM")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: tab==="TEAM" ? "#2ecc71" : "#182430", color: tab==="TEAM" ? "#000" : "#cbd5e1", border:"none" }}>👥 Staff</button>
           </div>
         </div>
         <button type="button" onClick={() => setShowTour(true)} style={{ padding:"5px 9px", borderRadius:"6px", background:"#1e293b", color:"#5eead4", border:"1px solid #14b8a6", fontSize:"0.73rem", fontWeight:"bold", cursor:"pointer" }}>❓ Spotlight Guide</button>
@@ -491,17 +542,45 @@ export function PromoterHomeDashboard({ events, user }) {
 
       {msg && <div style={{ background:"#132a1c", border:"1px solid #2ecc71", color:"#4ade80", padding:"7px 10px", borderRadius:"6px", fontSize:"0.78rem", fontWeight:"bold", marginBottom:"8px" }}>{msg}</div>}
 
+      {tab === "ROSTER" && (
+        <div style={{ display:"grid", gap:"8px" }}>
+          <div style={{ display:"flex", gap:"8px", alignItems:"center", flexWrap:"wrap" }}>
+            <span style={{ fontSize:"0.8rem", color:"#93c5fd", fontWeight:"bold" }}>Select Event Card:</span>
+            <select value={cardId} onChange={e => setCardId(e.target.value)} style={{ ...inp, flex:"1 1 260px" }}>
+              {(events || []).slice(0, 80).map(ev => <option key={ev.id} value={ev.id}>{ev.name} ({ev.date})</option>)}
+            </select>
+          </div>
+          <form onSubmit={addBookedFightersAndQueueInvites} style={{ display:"grid", gap:"7px" }}>
+            <div style={{ fontSize:"0.77rem", color:"#cbd5e1" }}>
+              Paste booked athletes below (<b>Athlete Name, email@example.com</b> — one per line). Adding new names later automatically emails <b>only</b> the newly added athletes their account link, exclusive Fighter Check-In access &amp; personal Ticket Sales link!
+            </div>
+            <textarea rows={3} required placeholder={"Cassia Moura, cassia@example.com\nAndrew Tackett, andrew@example.com"} value={bulkAthletes} onChange={e => setBulkAthletes(e.target.value)} style={{ ...inp, width:"100%" }} />
+            <button type="submit" style={{ background:"#38bdf8", color:"#000", border:"none", borderRadius:"6px", padding:"9px", fontWeight:"800", cursor:"pointer" }}>
+              📧 Save Verified Fighter List &amp; Auto-Email New Athletes
+            </button>
+          </form>
+          {(cfg.bookedRoster || []).length > 0 && (
+            <div style={{ display:"flex", gap:"6px", flexWrap:"wrap", marginTop:"4px" }}>
+              {(cfg.bookedRoster || []).map((r, i) => (
+                <span key={i} style={{ background:"#16202c", border:"1px solid #2d3b52", borderRadius:"6px", padding:"4px 8px", fontSize:"0.74rem", color:"#e2e8f0" }}>
+                  🥋 <b>{r.name}</b> ({r.email}) {r.emailed ? <span style={{ color:"#4ade80" }}>• ✉️ Invite Sent</span> : <span style={{ color:"#fbbf24" }}>• ⏳ Queued</span>}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {tab === "CHECKINS" && (
         <div style={{ display:"grid", gap:"6px" }}>
-          <div style={{ fontSize:"0.78rem", color:"#93c5fd" }}>Athletes submit Virtual Weigh-Ins, Coach Wristbands &amp; Walkout songs via the <b>🥋 Event Hub / Check-In</b> button right on your Event Card:</div>
-          {checkins.length === 0 ? <div style={{ color:"#94a3b8", fontSize:"0.8rem" }}>No pre-fight check-ins submitted yet. Share your Event Card&apos;s Hub link with booked competitors!</div> : checkins.slice(0, 25).map((c, i) => (
+          {checkins.length === 0 ? <div style={{ color:"#94a3b8", fontSize:"0.8rem" }}>As booked fighters click their invite email &amp; complete check-in, their Virtual Weigh-Ins, Corners &amp; Walkout songs appear right here!</div> : checkins.slice(0, 25).map((c, i) => (
             <div key={i} style={{ background:"#16202c", border:"1px solid #283648", borderRadius:"7px", padding:"8px 10px", fontSize:"0.78rem", display:"flex", justifyContent:"space-between", flexWrap:"wrap", gap:"8px" }}>
               <div>
                 <b style={{ color:"#fff" }}>{c.athleteName}</b> ({c.academy}) • <span style={{ color:"#4ade80" }}>Weight: {c.weight || "Pending"}</span>
-                <div style={{ color:"#94a3b8", fontSize:"0.74rem" }}>Corners: {[c.corner1, c.corner2].filter(Boolean).join(", ") || "None listed"} {c.phonetic ? " • Say: " + c.phonetic : ""}</div>
+                <div style={{ color:"#94a3b8", fontSize:"0.74rem" }}>Corners: {[c.corner1, c.corner2].filter(Boolean).join(", ") || "None"} {c.phonetic ? " • Say: " + c.phonetic : ""}</div>
               </div>
               <div style={{ display:"flex", gap:"6px", alignItems:"center" }}>
-                {c.scaleProofUrl && <a href={c.scaleProofUrl} target="_blank" rel="noreferrer" style={{ color:"#38bdf8", fontWeight:"bold" }}>⚖️ Scale Proof ↗</a>}
+                {c.scaleProofUrl && <a href={c.scaleProofUrl} target="_blank" rel="noreferrer" style={{ color:"#38bdf8", fontWeight:"bold" }}>⚖️ Scale ↗</a>}
                 {c.walkoutUrl && <a href={c.walkoutUrl} target="_blank" rel="noreferrer" style={{ color:"#fbbf24", fontWeight:"bold" }}>🎵 Walkout ↗</a>}
                 {c.posterPhotoUrl && <a href={c.posterPhotoUrl} target="_blank" rel="noreferrer" style={{ color:"#4ade80", fontWeight:"bold" }}>📸 Photo ↗</a>}
               </div>
@@ -516,21 +595,17 @@ export function PromoterHomeDashboard({ events, user }) {
             <select value={cardId} onChange={e => setCardId(e.target.value)} style={{ ...inp, flex:"1 1 240px" }}>
               {(events || []).slice(0, 80).map(ev => <option key={ev.id} value={ev.id}>{ev.name} ({ev.date})</option>)}
             </select>
-            <input type="url" placeholder="Official Ticket / VIP Table Checkout URL (Eventbrite, Stripe, Square)" value={cfg.ticketUrl} onChange={e => setCfg({...cfg, ticketUrl: e.target.value})} style={{ ...inp, flex:"1 1 260px" }} />
+            <input type="url" placeholder="Official Ticket / VIP Table Checkout URL (Eventbrite, Stripe, Square)" value={cfg.ticketUrl || ""} onChange={e => setCfg({...cfg, ticketUrl: e.target.value})} style={{ ...inp, flex:"1 1 260px" }} />
           </div>
           <div style={{ display:"flex", gap:"8px", flexWrap:"wrap" }}>
-            <input placeholder="GA Tier Label & Price (e.g. General Admission — $45)" value={cfg.gaLabel} onChange={e => setCfg({...cfg, gaLabel: e.target.value})} style={{ ...inp, flex:1 }} />
-            <input placeholder="VIP Table Label & Price (e.g. 8-Seat Mat-Side Table — $600)" value={cfg.vipTableLabel} onChange={e => setCfg({...cfg, vipTableLabel: e.target.value})} style={{ ...inp, flex:1 }} />
+            <input placeholder="GA Tier Label & Price (e.g. General Admission — $45)" value={cfg.gaLabel || ""} onChange={e => setCfg({...cfg, gaLabel: e.target.value})} style={{ ...inp, flex:1 }} />
+            <input placeholder="VIP Table Label & Price (e.g. 8-Seat Mat-Side Table — $600)" value={cfg.vipTableLabel || ""} onChange={e => setCfg({...cfg, vipTableLabel: e.target.value})} style={{ ...inp, flex:1 }} />
           </div>
           <div style={{ display:"flex", gap:"8px", flexWrap:"wrap" }}>
-            <input placeholder="Official Weigh-In Time / Allowance Info" value={cfg.weighInInfo} onChange={e => setCfg({...cfg, weighInInfo: e.target.value})} style={{ ...inp, flex:1 }} />
-            <input placeholder="Coach / Corner Pass Policy" value={cfg.cornerInfo} onChange={e => setCfg({...cfg, cornerInfo: e.target.value})} style={{ ...inp, flex:1 }} />
+            <input placeholder="Official Weigh-In Time / Allowance Info" value={cfg.weighInInfo || ""} onChange={e => setCfg({...cfg, weighInInfo: e.target.value})} style={{ ...inp, flex:1 }} />
+            <input placeholder="Coach / Corner Pass Policy" value={cfg.cornerInfo || ""} onChange={e => setCfg({...cfg, cornerInfo: e.target.value})} style={{ ...inp, flex:1 }} />
           </div>
-          <div style={{ display:"flex", gap:"8px", flexWrap:"wrap" }}>
-            <input placeholder="Fighter Check-In Access PIN (e.g. 2026 — keeps Check-In private!)" value={cfg.fighterPin || ""} onChange={e => setCfg({...cfg, fighterPin: e.target.value})} style={{ ...inp, flex:"1 1 200px" }} />
-            <input placeholder="Booked Fighter Emails (comma-separated — auto-unlocks Check-In)" value={cfg.fighterEmails || ""} onChange={e => setCfg({...cfg, fighterEmails: e.target.value})} style={{ ...inp, flex:"2 1 260px" }} />
-          </div>
-          <button type="submit" style={{ background:"#ff9f43", color:"#000", border:"none", borderRadius:"6px", padding:"9px", fontWeight:"800", cursor:"pointer" }}>💾 Publish Ticket Tiers, Fighter Access &amp; Briefing to Event Hub</button>
+          <button type="submit" style={{ background:"#ff9f43", color:"#000", border:"none", borderRadius:"6px", padding:"9px", fontWeight:"800", cursor:"pointer" }}>💾 Save Ticket Tiers &amp; Official Briefing</button>
         </form>
       )}
 

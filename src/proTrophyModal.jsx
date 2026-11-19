@@ -91,6 +91,31 @@ export function SuperFightsPanel({ fed, qStr, onOpenTrophy, onWatch, getWatch })
   );
 }
 
+
+function resizeAvatarFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const size = 280;
+        const c = document.createElement("canvas");
+        c.width = size; c.height = size;
+        const ctx = c.getContext("2d");
+        const minSide = Math.min(img.width, img.height);
+        const sx = Math.floor((img.width - minSide) / 2);
+        const sy = Math.floor((img.height - minSide) / 2);
+        ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, size, size);
+        resolve(c.toDataURL("image/jpeg", 0.78));
+      };
+      img.onerror = reject;
+      img.src = ev.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 const IG_ICON = (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" style={{ display:"block" }}>
     <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
@@ -114,7 +139,8 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
   const [editBio, setEditBio] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedBanner, setSavedBanner] = useState(false);
-  const [form, setForm] = useState({ handle: "", age: "", belt: "", coach: "", favMove: "", cheatMeal: "", funFact: "", openSf: false });
+  const [form, setForm] = useState({ handle: "", age: "", belt: "", coach: "", favMove: "", cheatMeal: "", funFact: "", avatarData: "", openSf: false });
+  const initials = nm.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]?.toUpperCase() || "").join("") || "🥋";
 
   useEffect(() => {
     if (!slug) return;
@@ -191,6 +217,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
       favMove: (form.favMove || "").trim(),
       cheatMeal: (form.cheatMeal || "").trim(),
       funFact: (form.funFact || "").trim(),
+      avatarData: form.avatarData || bio?.avatarData || "",
       openSf: Boolean(form.openSf),
       name: nm,
       updatedAt: new Date().toISOString()
@@ -212,8 +239,25 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
       <div onClick={e => e.stopPropagation()} style={{ background:"#0f141e", border:"1.5px solid #f59e0b", borderRadius:"14px", maxWidth:"650px", width:"100%", maxHeight:"90svh", overflowY:"auto", padding:"18px", textAlign:"left", color:"#fff" }}>
 
         {/* 1. PROFILE HEADER FIRST + INLINE INSTAGRAM BUTTON */}
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:"8px" }}>
-          <div>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:"10px" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:"13px" }}>
+            <div
+              onClick={() => { if (!isLockedByOther) startClaimFlow(); }}
+              title={isLockedByOther ? nm : "Click to add or edit Athlete Profile Photo"}
+              style={{
+                width:"64px", height:"64px", borderRadius:"50%", flexShrink:0,
+                border:"2px solid #f59e0b", background:"linear-gradient(135deg,#1e293b,#0f172a)",
+                display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden",
+                cursor: isLockedByOther ? "default" : "pointer", position:"relative"
+              }}
+            >
+              {bio?.avatarData ? (
+                <img src={bio.avatarData} alt={nm} style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }} />
+              ) : (
+                <span style={{ color:"#fbbf24", fontWeight:"900", fontSize:"1.25rem" }}>{initials}</span>
+              )}
+            </div>
+            <div>
             <div style={{ color:"#fbbf24", fontSize:"0.73rem", fontWeight:"800", letterSpacing:"1.4px" }}>🏆 MATDATES OFFICIAL TROPHY ROOM</div>
             <div style={{ display:"flex", alignItems:"center", gap:"9px", flexWrap:"wrap", margin:"4px 0" }}>
               <h2 style={{ margin:0, fontSize:"1.48rem", color:"#ffffff", fontWeight:"900" }}>{nm}</h2>
@@ -236,6 +280,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
             <div style={{ color:"#ff9f43", fontSize:"0.85rem", fontWeight:"bold" }}>
               {cnt.acad || elite.pro?.academy || "Independent"}
               {(bio?.belt || elite.pro?.belt) ? " • " + (bio?.belt || elite.pro?.belt) : ""}
+            </div>
             </div>
           </div>
           <button onClick={onClose} style={{ background:"#1e293b", color:"#fff", border:"1px solid #334155", borderRadius:"6px", padding:"4px 10px", height:"32px", cursor:"pointer" }}>✕</button>
@@ -304,6 +349,18 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
 
           {editBio && (
             <form onSubmit={saveBio} style={{ marginTop:"10px", paddingTop:"10px", borderTop:"1px solid #263346", display:"grid", gap:"8px" }}>
+              <div style={{ background:"#0f141e", border:"1px solid #334155", borderRadius:"7px", padding:"8px 10px", display:"flex", alignItems:"center", gap:"10px", flexWrap:"wrap" }}>
+                {(form.avatarData || bio?.avatarData) && (
+                  <img src={form.avatarData || bio?.avatarData} alt="Preview" style={{ width:"42px", height:"42px", borderRadius:"50%", objectFit:"cover", border:"1.5px solid #fbbf24" }} />
+                )}
+                <div style={{ flex:1, minWidth:"180px" }}>
+                  <div style={{ fontSize:"0.75rem", color:"#fbbf24", fontWeight:"bold", marginBottom:"3px" }}>📸 Athlete Profile Photo (Optional)</div>
+                  <input type="file" accept="image/*" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { const d = await resizeAvatarFile(f); setForm(p => ({ ...p, avatarData: d })); } }} style={{ fontSize:"0.75rem", color:"#cbd5e1", width:"100%" }} />
+                </div>
+                {(form.avatarData || bio?.avatarData) && (
+                  <button type="button" onClick={() => setForm(p => ({ ...p, avatarData: "" }))} style={{ background:"#2a1215", color:"#fca5a5", border:"1px solid #ef4444", borderRadius:"5px", padding:"4px 8px", fontSize:"0.72rem", cursor:"pointer" }}>Remove Pic</button>
+                )}
+              </div>
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(145px, 1fr))", gap:"7px" }}>
                 <input placeholder="Instagram @handle" value={form.handle || ""} onFocus={() => { if (!form.handle) setForm(f => ({...f, handle: "@"})); }} onChange={e => { const v = e.target.value; setForm({...form, handle: v ? ("@" + v.replace(/^@+/, "")) : ""}); }} style={inp} />
                 <input placeholder="Age (Optional)" value={form.age || ""} onChange={e => setForm({...form, age: e.target.value})} style={inp} />

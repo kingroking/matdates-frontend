@@ -26,6 +26,7 @@ export default function AuthModal({ isOpen, onClose, onRoleSaved }) {
           uid: cred.user.uid,
           email: email.trim().toLowerCase(),
           role,
+          explicitSignUpRole: role,
           orgName: orgName.trim(),
           updatedAt: new Date().toISOString()
         };

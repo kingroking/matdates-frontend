@@ -613,22 +613,21 @@ function App() {
 
   useEffect(() => {
     if (!user) { setUserRole('user'); return; }
-    let cached = '';
-    try { cached = localStorage.getItem('md_role_' + user.uid) || ''; } catch {}
-    if (cached) setUserRole(cached);
+    // Clear any legacy test dropdown cache so users never get stuck on Promoter/Academy accidentally
+    try { localStorage.removeItem('md_role_' + user.uid); } catch {}
+    setUserRole('user');
     const em = (user.email || '').toLowerCase();
-    getDocs(query(collection(db, 'mat_watches'), where('uid', '==', user.uid))).then(sn => {
-      const rDoc = sn.docs.map(d => d.data()).find(x => x.kind === 'user_role');
-      if (rDoc?.role) {
-        setUserRole(rDoc.role);
-        try { localStorage.setItem('md_role_' + user.uid, rDoc.role); } catch {}
-      }
-    }).catch(() => {});
-    getDocs(query(collection(db, 'mat_watches'), where('kind', '==', 'academy_workspace'))).then(sn => {
-      if (sn.docs.some(d => (d.data().staffEmails || []).includes(em) || d.data().ownerUid === user.uid)) setUserRole(r => r === 'user' ? 'academy' : r);
-    }).catch(() => {});
-    getDocs(query(collection(db, 'mat_watches'), where('kind', '==', 'promoter_workspace'))).then(sn => {
-      if (sn.docs.some(d => (d.data().staffEmails || []).includes(em) || d.data().ownerUid === user.uid)) setUserRole(r => r === 'user' ? 'promoter' : r);
+    Promise.all([
+      getDocs(query(collection(db, 'mat_watches'), where('uid', '==', user.uid))),
+      getDocs(query(collection(db, 'mat_watches'), where('kind', '==', 'academy_workspace'))),
+      getDocs(query(collection(db, 'mat_watches'), where('kind', '==', 'promoter_workspace')))
+    ]).then(([uSnap, acadSnap, promSnap]) => {
+      const hasPromWs = promSnap.docs.some(d => d.data().ownerUid === user.uid || (d.data().staffEmails || []).includes(em));
+      const hasAcadWs = acadSnap.docs.some(d => d.data().ownerUid === user.uid || (d.data().staffEmails || []).includes(em));
+      const rDoc = uSnap.docs.map(d => d.data()).find(x => x.kind === 'user_role');
+      if (hasPromWs || rDoc?.explicitSignUpRole === 'promoter') setUserRole('promoter');
+      else if (hasAcadWs || rDoc?.explicitSignUpRole === 'academy') setUserRole('academy');
+      else setUserRole('user');
     }).catch(() => {});
   }, [user]);
 
