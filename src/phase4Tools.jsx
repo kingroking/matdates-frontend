@@ -1,3 +1,5 @@
+import { AcademyProSuite } from "./proWorkspaces";
+import { auth } from "./firebase";
 import { PRO_SUPERFIGHTS, computeEliteSpotlight } from "./proHubData";
 import { SuperFightsPanel, AthleteTrophyRoomModal } from "./proTrophyModal";
 import { UniversalAthleteLookupModal } from "./proModals";
@@ -698,7 +700,7 @@ export function LeaderboardModal({ onClose }) {
                 })}
                 style={{ background:'#ff9f43', color:'#000', border:'none', borderRadius:'6px', padding:'6px 10px', cursor:'pointer', fontWeight:'bold', fontSize:'0.78rem' }}
               >
-                📲 Share Card
+                📲 Share Stats
               </button>
               <button onClick={onClose} style={{ background:'#1e293b', color:'#fff', border:'1px solid #475569', borderRadius:'6px', padding:'6px 10px', cursor:'pointer', fontWeight:'bold', fontSize:'0.8rem' }}>
                 ✕
@@ -758,6 +760,7 @@ export function LeaderboardModal({ onClose }) {
               <div style={{ padding:'24px', textAlign:'center', color:'#38bdf8' }}>Loading {activeGym.Academy} trophy room...</div>
             ) : (
               <>
+                <AcademyProSuite gymName={activeGym.Academy} gymKey={activeGym.key} user={auth.currentUser} isAdmin={false} onRequireAuth={() => alert("Please Sign In at the top right of MatDates first!")} />
                 {indivList.length > 0 && (
                   <div>
                     <div style={{ color:'#38bdf8', fontSize:'0.8rem', fontWeight:'bold', marginBottom:'6px' }}>
@@ -768,7 +771,7 @@ export function LeaderboardModal({ onClose }) {
                         <div key={idx} style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:'8px', background:'#151b24', border:'1px solid #222b3a', borderRadius:'6px', padding:'8px 10px', fontSize:'0.82rem' }}>
                           <div style={{ minWidth:0 }}>
                             <div
-                              onClick={() => { setSelectedGymKey(null); setMode('ATHLETES'); setAthQuery(m.n); }}
+                              onClick={() => setOpenAthTrophy({ name: m.n, academy: activeGym.Academy, g: 0, s: 0, b: 0, events: [] })}
                               style={{ color:'#fff', fontWeight:'bold', wordBreak:'break-word', cursor:'pointer' }}
                               title="View full athlete podium record"
                             >
@@ -930,7 +933,7 @@ export function LeaderboardModal({ onClose }) {
                   <div key={idx} style={{ background:'#181f2c', border:'1px solid #283347', borderRadius:'8px', padding:'11px 12px' }}>
                     <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:'8px', flexWrap:'wrap', marginBottom:'6px' }}>
                       <div>
-                        <div style={{ color:'#fff', fontWeight:'bold', fontSize:'0.96rem' }}>{a.name}</div>
+                        <div onClick={() => setOpenAthTrophy(a)} title="Open Official Trophy Room" style={{ color:"#fff", fontWeight:"bold", fontSize:"0.96rem", cursor:"pointer", textDecoration:"underline", textDecorationColor:"rgba(245,158,11,0.55)" }}>{a.name}</div>
                         <div
                           onClick={() => { const gk = normGymKey(a.academy); if (aggregated.byKey[gk]) openTrophyRoom(gk, 'ALL'); }}
                           style={{ color:'#ff9f43', fontSize:'0.78rem', fontWeight:'600', cursor:'pointer', textDecoration:'underline', textDecorationColor:'rgba(255,159,67,0.4)' }}
@@ -967,7 +970,7 @@ export function LeaderboardModal({ onClose }) {
                           })}
                           style={{ background:'#ff9f43', color:'#000', border:'none', borderRadius:'6px', padding:'5px 9px', fontSize:'0.75rem', fontWeight:'bold', cursor:'pointer' }}
                         >
-                          📲 Share Card
+                          📲 Share Stats
                         </button>
                       </div>
                     </div>

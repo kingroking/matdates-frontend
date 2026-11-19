@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { collection, doc, getDoc, getDocs, setDoc, query, where } from "firebase/firestore";
-import { db } from "./firebase";
+import { db, auth } from "./firebase";
+import { addDoc } from "firebase/firestore";
 import { PRO_SUPERFIGHTS, computeEliteSpotlight, foldStr, athBucket } from "./proHubData";
 
 export function SuperFightsPanel({ fed, qStr, onOpenTrophy, onWatch, getWatch }) {
@@ -43,7 +44,7 @@ export function SuperFightsPanel({ fed, qStr, onOpenTrophy, onWatch, getWatch })
           ) : poolFiltered.map((a, i) => (
             <div key={i} style={{ background:"#181f2c", border:"1px solid #22c55e", borderRadius:"9px", padding:"12px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"10px", flexWrap:"wrap" }}>
               <div>
-                <div style={{ color:"#fff", fontWeight:"800", fontSize:"1rem" }}>{a.name} <span style={{ background:"#132a1c", color:"#4ade80", border:"1px solid #22c55e", borderRadius:"4px", padding:"1px 6px", fontSize:"0.7rem", marginLeft:"6px" }}>OPEN FOR BOUTS</span></div>
+                <div onClick={() => onOpenTrophy({ name: a.name, academy: "" })} style={{ color:"#fff", fontWeight:"800", fontSize:"1rem", cursor:"pointer", textDecoration:"underline" }}>{a.name} <span style={{ background:"#132a1c", color:"#4ade80", border:"1px solid #22c55e", borderRadius:"4px", padding:"1px 6px", fontSize:"0.7rem", marginLeft:"6px" }}>OPEN FOR BOUTS</span></div>
                 <div style={{ color:"#ff9f43", fontSize:"0.8rem", fontWeight:"bold", marginTop:"2px" }}>{[a.belt, a.coach ? "Coach: " + a.coach : ""].filter(Boolean).join(" • ") || "Verified Competitor"}</div>
                 {a.funFact && <div style={{ color:"#cbd5e1", fontSize:"0.77rem", marginTop:"4px" }}>★ {a.funFact}</div>}
               </div>
@@ -63,7 +64,7 @@ export function SuperFightsPanel({ fed, qStr, onOpenTrophy, onWatch, getWatch })
             <div key={i} style={{ background:"#181f2c", border:"1px solid #334155", borderRadius:"9px", padding:"12px" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:"8px", flexWrap:"wrap" }}>
                 <div>
-                  <div style={{ color:"#fff", fontWeight:"800", fontSize:"1.02rem" }}>{p.name} <span style={{ color:"#fbbf24", fontSize:"0.75rem", marginLeft:"6px" }}>{p.rec}</span></div>
+                  <div onClick={() => onOpenTrophy({ name: p.name, academy: p.academy, g: 0, s: 0, b: 0, events: [] })} title="Open Official Trophy Room" style={{ color:"#fff", fontWeight:"800", fontSize:"1.02rem", cursor:"pointer", textDecoration:"underline", textDecorationColor:"rgba(251,191,36,0.45)" }}>{p.name} <span style={{ color:"#fbbf24", fontSize:"0.75rem", marginLeft:"6px" }}>{p.rec}</span></div>
                   <div style={{ color:"#ff9f43", fontSize:"0.8rem", fontWeight:"600" }}>{p.academy} • {p.belt}</div>
                 </div>
                 <div style={{ display:"flex", gap:"6px", flexWrap:"wrap" }}>
@@ -133,11 +134,31 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
   }, [nm]);
 
   const elite = computeEliteSpotlight({ name: nm, academy: cnt.acad, g: cnt.g, s: cnt.s, b: cnt.b, events: evs }, bio?.funFact);
+  const curUser = auth.currentUser;
+  const isProProtected = Boolean(elite.pro);
+  const isLockedByOther = Boolean((bio?.ownerUid && (!curUser || bio.ownerUid !== curUser.uid)) || (isProProtected && !curUser));
+  const reportBioDispute = async () => {
+    const email = curUser?.email || window.prompt("Enter your email or @Instagram so our Admin team can verify ownership of " + nm + "'s profile:");
+    if (!email) return;
+    await addDoc(collection(db, "pending_events"), {
+      kind: "bio_dispute",
+      name: "Bio Verification / Dispute: " + nm,
+      requesterEmail: email,
+      athleteSlug: slug,
+      adminNotified: false,
+      createdAt: new Date().toISOString()
+    }).catch(() => {});
+    alert("✅ Ownership verification request sent to MatDates Admin!");
+  };
 
   const saveBio = async (e) => {
     e.preventDefault();
     setSaving(true);
+    if (!curUser) { alert("Please Sign In first (top right of MatDates) so your Athlete Bio is permanently locked to your account and protected from unauthorized edits!"); setSaving(false); return; }
+    if (bio?.ownerUid && bio.ownerUid !== curUser.uid) { alert("This bio is locked to its verified owner."); setSaving(false); return; }
     const clean = {
+      ownerUid: bio?.ownerUid || curUser.uid,
+      ownerEmail: bio?.ownerEmail || curUser.email || "",
       kind: "athlete_bio",
       status: "bio_only",
       handle: (form.handle || "").replace(/^@/, "").trim(),
@@ -200,8 +221,12 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
           <div style={{ background:"#18202f", border:"1px solid #2d3748", borderRadius:"8px", padding:"6px 11px", fontSize:"0.84rem" }}>🥇<b>{cnt.g}</b> 🥈<b>{cnt.s}</b> 🥉<b>{cnt.b}</b> • <b style={{ color:"#34d399" }}>{elite.pts} Pts</b></div>
           <button type="button" onClick={() => onWatch(nm, cnt.acad || elite.pro?.academy || "")} style={{ background: isWatching ? "#132a1c" : "#162536", color: isWatching ? "#2ecc71" : "#38bdf8", border: isWatching ? "1px solid #2ecc71" : "1px solid #0284c7", borderRadius:"7px", padding:"6px 10px", fontWeight:"bold", fontSize:"0.76rem", cursor:"pointer" }}>{isWatching ? "✓ Watching" : "🔔 Watch"}</button>
           <button type="button" onClick={() => { navigator.clipboard.writeText(bioUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); }} style={{ background:"#1e293b", color:"#e2e8f0", border:"1px solid #475569", borderRadius:"7px", padding:"6px 10px", fontWeight:"bold", fontSize:"0.76rem", cursor:"pointer" }}>{copied ? "✓ Link Copied!" : "🔗 Link-in-Bio"}</button>
-          <button type="button" onClick={() => { if (bio) setForm({ ...bio, handle: bio.handle ? "@" + bio.handle.replace(/^@+/, "") : "" }); setEditBio(!editBio); }} style={{ background:"#1e1b4b", color:"#c7d2fe", border:"1px solid #6366f1", borderRadius:"7px", padding:"6px 10px", fontWeight:"bold", fontSize:"0.76rem", cursor:"pointer" }}>🪪 {bio ? "Edit Bio" : "Claim Bio"}</button>
-          {onShareCard && <button type="button" onClick={() => onShareCard({ badge: elite.isElite ? elite.tierLabel : "2026 OFFICIAL TROPHY ROOM", title: nm, subtitle: cnt.acad || elite.pro?.academy || "", gold: cnt.g, silver: cnt.s, bronze: cnt.b, deepLink: bioUrl, lines: [...(elite.pro?.titles || []), ...(elite.isElite ? elite.facts.map(x => "★ " + x) : []), ...evs.slice(0, 5).map(m => (Number(m.p)===1?"🥇":Number(m.p)===2?"🥈":"🥉") + " " + m.ev)] })} style={{ background:"#ff9f43", color:"#000", border:"none", borderRadius:"7px", padding:"6px 10px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer" }}>📲 9:16 Story Card</button>}
+          {isLockedByOther ? (
+            <button type="button" onClick={reportBioDispute} title="Protected profile — request verified ownership or report an issue" style={{ background:"#182030", color:"#94a3b8", border:"1px solid #334155", borderRadius:"7px", padding:"6px 10px", fontWeight:"bold", fontSize:"0.74rem", cursor:"pointer" }}>🔒 Verified Bio • Dispute?</button>
+          ) : (
+            <button type="button" onClick={() => { if (!curUser) { alert("Sign In first (top right) to claim & lock your verified Athlete Bio!"); return; } if (bio) setForm({ ...bio, handle: bio.handle ? "@" + bio.handle.replace(/^@+/, "") : "" }); setEditBio(!editBio); }} style={{ background:"#1e1b4b", color:"#c7d2fe", border:"1px solid #6366f1", borderRadius:"7px", padding:"6px 10px", fontWeight:"bold", fontSize:"0.76rem", cursor:"pointer" }}>🪪 {bio?.ownerUid ? "Edit My Locked Bio" : "Claim & Lock Bio"}</button>
+          )}
+          {onShareCard && <button type="button" onClick={() => onShareCard({ badge: elite.isElite ? elite.tierLabel : "2026 OFFICIAL TROPHY ROOM", title: nm, subtitle: cnt.acad || elite.pro?.academy || "", gold: cnt.g, silver: cnt.s, bronze: cnt.b, deepLink: bioUrl, lines: [...(elite.pro?.titles || []), ...(elite.isElite ? elite.facts.map(x => "★ " + x) : []), ...evs.slice(0, 5).map(m => (Number(m.p)===1?"🥇":Number(m.p)===2?"🥈":"🥉") + " " + m.ev)] })} style={{ background:"#ff9f43", color:"#000", border:"none", borderRadius:"7px", padding:"6px 10px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer" }}>📲 Share Stats</button>}
         </div>
 
         {editBio && (

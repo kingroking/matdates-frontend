@@ -1,3 +1,4 @@
+import { GuidedTourModal, MultiCategoryDropdown, PromoterHostModal } from "./proWorkspaces";
 import { UPCOMING_UFC_SUPERFIGHTS, getEventGiTags, getDeadlineBadge } from "./proHubData";
 import { EventPhotogModal, fetchPhotogCounts } from "./photogModal";
 import { TaleOfTheTapeModal, WeekendWarRoomModal, SubmitEventModal } from "./proModals";
@@ -191,7 +192,7 @@ function CompetitorTable({ calcResult, event, onClose }) {
                 📋 {event.name}
               </h2>
               <p style={{ color: '#aaa', margin: '4px 0 0 0', fontSize: '0.82rem' }}>
-                {loading ? <span style={{ color: '#ff9f43' }}>Fetching live brackets...</span> : `${liveCompetitors.length} athletes registered`}
+                {event.date ? `📅 ${event.date}` : ''}{event.location ? ` • 📍 ${event.location}` : ''} • {loading ? <span style={{ color: '#ff9f43' }}>Fetching live brackets...</span> : `${liveCompetitors.length} athletes registered`}
               </p>
             </div>
             <button onClick={onClose} aria-label="Close" style={{ padding: '7px 12px', backgroundColor: '#1e293b', color: '#fff', border: '1px solid #475569', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.88rem', flexShrink: 0 }}>
@@ -324,6 +325,15 @@ export default function App() {
   
   const [searchTerm, setSearchTerm] = useState('');
   const [federationFilter, setFederationFilter] = useState('All');
+  const [selectedFeds, setSelectedFeds] = useState([]);
+  const [showPromoterModal, setShowPromoterModal] = useState(false);
+  const [showSiteTour, setShowSiteTour] = useState(() => {
+    try { return !localStorage.getItem("md_seen_tour_v1"); } catch { return false; }
+  });
+  const closeSiteTour = () => {
+    try { localStorage.setItem("md_seen_tour_v1", "1"); } catch {}
+    setShowSiteTour(false);
+  };
   const [ageFilter, setAgeFilter] = useState('All');
   const [monthFilter, setMonthFilter] = useState('All');
   const [viewMode, setViewMode] = useState('list'); 
@@ -616,14 +626,16 @@ export default function App() {
 
     const matchesAge = ageFilter === 'All' ? true : ageFilter === 'Kids' ? ev.isKidsEvent : ageFilter === 'Adults' ? ev.isAdultEvent : false;
     const isUfcEv = /\bufc\b/i.test(evId + " " + evNameLow);
-    const matchesFed = federationFilter === 'All' ? true :
-      federationFilter === 'IBJJF' ? evId.startsWith('ibjjf') :
-      federationFilter === 'JJWL' ? evId.startsWith('jjwl') :
-      federationFilter === 'ADCC' ? (evId.includes('adcc') || evNameLow.includes('adcc')) :
-      federationFilter === 'UFC' ? isUfcEv :
-      federationFilter === 'Smoothcomp' ? (evId.startsWith('smoothcomp') && !isUfcEv) :
-      federationFilter === 'Super Fight' ? (ev.type === 'Super Fight' || evId.startsWith('flograp') || evId.startsWith('ufcfightpass') || evId.startsWith('ufcbjj-') || evId.startsWith('one-') || (isUfcEv && !/\bopen\b/i.test(evNameLow))) :
-      federationFilter === 'Seminars' ? (ev.type === 'Seminar' || evId.startsWith('seminar')) : false;
+    const checkSingleFed = (fKey) => (
+      fKey === 'IBJJF' ? evId.startsWith('ibjjf') :
+      fKey === 'JJWL' ? evId.startsWith('jjwl') :
+      fKey === 'ADCC' ? (evId.includes('adcc') || evNameLow.includes('adcc')) :
+      fKey === 'UFC' ? isUfcEv :
+      fKey === 'Smoothcomp' ? (evId.startsWith('smoothcomp') && !isUfcEv) :
+      fKey === 'Super Fight' ? (ev.type === 'Super Fight' || evId.startsWith('flograp') || evId.startsWith('ufcfightpass') || evId.startsWith('ufcbjj-') || evId.startsWith('one-') || (isUfcEv && !/\bopen\b/i.test(evNameLow))) :
+      fKey === 'Seminars' ? (ev.type === 'Seminar' || evId.startsWith('seminar')) : false
+    );
+    const matchesFed = selectedFeds.length > 0 ? selectedFeds.some(checkSingleFed) : (federationFilter === 'All' ? true : checkSingleFed(federationFilter));
     const matchesMonth = monthFilter === 'All' ? true : (ev.sort_date && ev.sort_date.startsWith(monthFilter));
       
     return matchesSearch && matchesFed && matchesAge && matchesMonth && (!showSavedOnly || savedIds.includes(ev.id));
@@ -774,6 +786,8 @@ export default function App() {
         />
       )}
 
+      {showSiteTour && <GuidedTourModal mode="SITE" onClose={closeSiteTour} />}
+      {showPromoterModal && <PromoterHostModal events={mergedWithUfcCards} user={user} isAdmin={isAdmin} onRequireAuth={() => setShowAuthModal(true)} onClose={() => setShowPromoterModal(false)} />}
       {photogEvent && <EventPhotogModal event={photogEvent} onClose={() => setPhotogEvent(null)} onRefreshCounts={refreshPhotogCounts} />}
       {selectedCommentEvent && (
         <VenueIntelModal
@@ -801,7 +815,9 @@ export default function App() {
     <button onClick={() => setShowLeaderboard(true)} style={{ backgroundColor:'#141820', color:'#f8fafc', padding:'9px 14px', border:'1px solid #475569', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.88rem' }}>🏆 Standings</button>
     <button onClick={() => setShowAthleteSearch(true)} style={{ backgroundColor:'#141820', color:'#38bdf8', padding:'9px 14px', border:'1px solid #0284c7', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.88rem' }}>🔍 Athlete Lookup</button>
     <button onClick={() => setShowWarRoom(true)} style={{ backgroundColor: myWatches.length > 0 ? '#132a1c' : '#141820', color: myWatches.length > 0 ? '#4ade80' : '#cbd5e1', padding:'9px 14px', border: myWatches.length > 0 ? '1px solid #2ecc71' : '1px solid #334155', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.88rem' }}>🔥 War Room{myWatches.length > 0 ? ` (${myWatches.length})` : ''}</button>
+    <button onClick={() => setShowPromoterModal(true)} style={{ backgroundColor:'#122629', color:'#5eead4', padding:'9px 13px', border:'1px solid #14b8a6', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.86rem' }}>🏟️ Host / Promoters</button>
     <button onClick={() => setShowSubmitModal(true)} style={{ backgroundColor:'#ff9f43', color:'#000', padding:'9px 14px', border:'none', borderRadius:'7px', fontWeight:'800', cursor:'pointer', fontSize:'0.88rem' }}>+ Submit</button>
+    <button onClick={() => setShowSiteTour(true)} title="Interactive Site Walkthrough" style={{ backgroundColor:'#141820', color:'#cbd5e1', padding:'8px 10px', border:'1px solid #334155', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.82rem' }}>❓ Tour</button>
     <button onClick={() => user ? signOut(auth) : setShowAuthModal(true)} style={{ backgroundColor:'transparent', color:'#94a3b8', padding:'8px 10px', border:'1px solid #262f3d', borderRadius:'7px', cursor:'pointer', fontSize:'0.8rem' }}>{user ? 'Sign Out' : 'Sign In'}</button>
   </div>
 </header>
@@ -830,15 +846,8 @@ export default function App() {
 
         <div className="md-sticky-filters">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '10px' }}>
-          <div className="md-filter-pills" style={{ display: 'flex', gap: '12px', fontSize: '0.92rem', flexWrap: 'wrap', alignItems: 'center', userSelect: 'none' }}>
-            <span onClick={() => setFederationFilter(prev => prev === 'Smoothcomp' ? 'All' : 'Smoothcomp')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'Smoothcomp' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#ff9f43' }}>■</span> Smoothcomp</span>
-            <span onClick={() => setFederationFilter(prev => prev === 'IBJJF' ? 'All' : 'IBJJF')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'IBJJF' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#0055a4' }}>■</span> IBJJF</span>
-            <span onClick={() => setFederationFilter(prev => prev === 'JJWL' ? 'All' : 'JJWL')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'JJWL' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#ffffff', textShadow: '0 0 2px #000' }}>■</span> JJWL</span>
-            <span onClick={() => setFederationFilter(prev => prev === 'ADCC' ? 'All' : 'ADCC')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'ADCC' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#F1C40F' }}>■</span> ADCC</span>
-            <span onClick={() => setFederationFilter(prev => prev === 'UFC' ? 'All' : 'UFC')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'UFC' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#d20a0a' }}>■</span> UFC BJJ</span>
-            <span onClick={() => setFederationFilter(prev => prev === 'Super Fight' ? 'All' : 'Super Fight')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'Super Fight' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#14b8a6' }}>■</span> Super Fights</span>
-            <span onClick={() => setFederationFilter(prev => prev === 'Seminars' ? 'All' : 'Seminars')} style={{ cursor: 'pointer', opacity: federationFilter === 'All' || federationFilter === 'Seminars' ? 1 : 0.4, transition: 'opacity 0.2s' }}><span style={{ color: '#9b59b6' }}>■</span> Seminars</span>
-            <span onClick={() => setAgeFilter(prev => prev === 'Kids' ? 'All' : 'Kids')} style={{ cursor: 'pointer', marginLeft: '10px', padding: '4px 10px', backgroundColor: ageFilter === 'Kids' ? '#222' : 'transparent', borderRadius: '6px', border: ageFilter === 'Kids' ? '1px solid #555' : '1px solid transparent', opacity: ageFilter === 'Kids' ? 1 : 0.8, transition: 'all 0.2s' }}><span style={{ fontSize: '1.2rem' }}>🐯</span> Kids/Youth Events</span> <span onClick={() => { if (!user) { setShowAuthModal(true); return; } setShowSavedOnly(p => !p); }} style={{ cursor: 'pointer', padding: '4px 10px', backgroundColor: showSavedOnly ? '#ff9f43' : '#1a1a1a', color: showSavedOnly ? '#000' : '#ff9f43', fontWeight: 'bold', borderRadius: '6px', border: '1px solid #ff9f43' }}>★ My Schedule ({savedIds.length})</span>{showSavedOnly && savedIds.length > 0 && <button onClick={() => downloadIcs(events.filter(x => savedIds.includes(x.id)), 'my-bjj-season.ics')} style={{ marginLeft: '6px', cursor: 'pointer', padding: '4px 10px', backgroundColor: '#222', color: '#2ecc71', border: '1px solid #2ecc71', borderRadius: '6px', fontWeight: 'bold', fontSize: '0.82rem' }}>Export .ICS</button>}
+          <div className="md-filter-pills" style={{ display: 'flex', gap: '10px', fontSize: '0.9rem', flexWrap: 'wrap', alignItems: 'center', userSelect: 'none' }}>
+            <span onClick={() => setAgeFilter(prev => prev === 'Kids' ? 'All' : 'Kids')} style={{ cursor: 'pointer', padding: '5px 11px', backgroundColor: ageFilter === 'Kids' ? '#222' : 'transparent', borderRadius: '6px', border: ageFilter === 'Kids' ? '1px solid #555' : '1px solid transparent', opacity: ageFilter === 'Kids' ? 1 : 0.8, transition: 'all 0.2s' }}><span style={{ fontSize: '1.2rem' }}>🐯</span> Kids/Youth Events</span> <span onClick={() => { if (!user) { setShowAuthModal(true); return; } setShowSavedOnly(p => !p); }} style={{ cursor: 'pointer', padding: '4px 10px', backgroundColor: showSavedOnly ? '#ff9f43' : '#1a1a1a', color: showSavedOnly ? '#000' : '#ff9f43', fontWeight: 'bold', borderRadius: '6px', border: '1px solid #ff9f43' }}>★ My Schedule ({savedIds.length})</span>{showSavedOnly && savedIds.length > 0 && <button onClick={() => downloadIcs(events.filter(x => savedIds.includes(x.id)), 'my-bjj-season.ics')} style={{ marginLeft: '6px', cursor: 'pointer', padding: '4px 10px', backgroundColor: '#222', color: '#2ecc71', border: '1px solid #2ecc71', borderRadius: '6px', fontWeight: 'bold', fontSize: '0.82rem' }}>Export .ICS</button>}
           </div>
           
           <div style={{ display: 'flex', gap: '0' }}>
@@ -858,16 +867,7 @@ export default function App() {
             )}
           </div>
           
-          <select value={federationFilter} onChange={(e) => setFederationFilter(e.target.value)} style={{ padding: '12px', borderRadius: '5px', border: '1px solid #333', backgroundColor: '#111', color: '#fff', fontSize: '1rem', cursor: 'pointer' }}>
-            <option value="All">All Federations</option>
-            <option value="IBJJF">IBJJF Only</option>
-            <option value="JJWL">JJWL Only</option>
-            <option value="ADCC">ADCC Only</option>
-            <option value="UFC">UFC BJJ (Opens &amp; SuperFights)</option>
-            <option value="Smoothcomp">Smoothcomp</option>
-            <option value="Super Fight">Super Fights</option>
-            <option value="Seminars">Seminars</option>
-          </select>
+          <MultiCategoryDropdown selected={selectedFeds} onChange={setSelectedFeds} />
           <select value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)} style={{ padding: '12px', borderRadius: '5px', border: '1px solid #333', backgroundColor: '#111', color: '#fff', fontSize: '1rem', cursor: 'pointer' }}>
             <option value="All">All Months</option>
             {monthOptions.map(m => (<option key={m} value={m}>{formatMonthDisplay(m)}</option>))}
