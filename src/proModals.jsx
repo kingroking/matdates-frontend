@@ -207,6 +207,16 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
         <input autoFocus value={qStr} onChange={e => setQStr(e.target.value)} placeholder="Search ANY athlete or academy — upcoming brackets, past podiums, or superfights..." style={{ width:"100%", padding:"11px 13px", borderRadius:"8px", background:"#182030", color:"#fff", border:"1.5px solid #38bdf8", fontSize:"0.92rem", boxSizing:"border-box", marginBottom:"12px" }} />
         {qStr.trim().length < 2 ? <div style={{ color:"#94a3b8", fontSize:"0.84rem" }}>Search any athlete — even if they aren&apos;t registered in an upcoming event yet — to open their Trophy Room or activate 🔔 Watch Alerts!</div> : (
           <div style={{ display:"grid", gap:"9px" }}>
+            {podProfiles.length > 0 && <div style={{ color:"#fbbf24", fontWeight:"bold", fontSize:"0.78rem", marginTop:"4px" }}>🏆 VERIFIED PROFILES &amp; TROPHY ROOMS ({podProfiles.length})</div>}
+            {podProfiles.map((p, i) => (
+              <div key={"p"+i} style={{ background:"#182030", border:"1px solid #334155", borderRadius:"8px", padding:"9px 11px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
+                <div><div><b onClick={() => setTrophyPick(p)} style={{ cursor:"pointer", textDecoration:"underline", textDecorationColor:"rgba(251,191,36,0.5)" }} title="Open Official Trophy Room">{p.name}</b> <span style={{ color:"#ff9f43", fontSize:"0.78rem" }}>• {p.academy}</span></div><div style={{ fontSize:"0.76rem", color:"#cbd5e1" }}>🥇{p.g} 🥈{p.s} 🥉{p.b} {p.proTitles ? " • " + p.proTitles[0] : ""}</div></div>
+                <div style={{ display:"flex", gap:"6px" }}>
+                  <button onClick={() => setTrophyPick(p)} style={{ background:"#f59e0b", color:"#000", border:"none", borderRadius:"6px", padding:"5px 9px", fontSize:"0.74rem", fontWeight:"800", cursor:"pointer" }}>🏆 Trophy Room</button>
+                  <button onClick={() => openFollow(p.name, p.academy)} style={{ background: getWatch(p.name) ? "#132a1c" : "#162536", color: getWatch(p.name) ? "#2ecc71" : "#38bdf8", border:"1px solid #0284c7", borderRadius:"6px", padding:"5px 9px", fontSize:"0.74rem", fontWeight:"bold", cursor:"pointer" }}>{getWatch(p.name) ? "✓ Watching" : "🔔 Watch"}</button>
+                </div>
+              </div>
+            ))}
             {regHits.length > 0 && <div style={{ color:"#4ade80", fontWeight:"bold", fontSize:"0.78rem" }}>🟢 LIVE UPCOMING REGISTRATIONS ({regHits.length})</div>}
             {regHits.map((r, i) => {
               const ev = evMap[r.e] || { id: r.e, name: "Upcoming Event" };
@@ -220,16 +230,6 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
                 </div>
               );
             })}
-            {podProfiles.length > 0 && <div style={{ color:"#fbbf24", fontWeight:"bold", fontSize:"0.78rem", marginTop:"4px" }}>🏆 VERIFIED PROFILES &amp; TROPHY ROOMS ({podProfiles.length})</div>}
-            {podProfiles.map((p, i) => (
-              <div key={"p"+i} style={{ background:"#182030", border:"1px solid #334155", borderRadius:"8px", padding:"9px 11px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
-                <div><div><b onClick={() => setTrophyPick(p)} style={{ cursor:"pointer", textDecoration:"underline", textDecorationColor:"rgba(251,191,36,0.5)" }} title="Open Official Trophy Room">{p.name}</b> <span style={{ color:"#ff9f43", fontSize:"0.78rem" }}>• {p.academy}</span></div><div style={{ fontSize:"0.76rem", color:"#cbd5e1" }}>🥇{p.g} 🥈{p.s} 🥉{p.b} {p.proTitles ? " • " + p.proTitles[0] : ""}</div></div>
-                <div style={{ display:"flex", gap:"6px" }}>
-                  <button onClick={() => setTrophyPick(p)} style={{ background:"#f59e0b", color:"#000", border:"none", borderRadius:"6px", padding:"5px 9px", fontSize:"0.74rem", fontWeight:"800", cursor:"pointer" }}>🏆 Trophy Room</button>
-                  <button onClick={() => openFollow(p.name, p.academy)} style={{ background: getWatch(p.name) ? "#132a1c" : "#162536", color: getWatch(p.name) ? "#2ecc71" : "#38bdf8", border:"1px solid #0284c7", borderRadius:"6px", padding:"5px 9px", fontSize:"0.74rem", fontWeight:"bold", cursor:"pointer" }}>{getWatch(p.name) ? "✓ Watching" : "🔔 Watch"}</button>
-                </div>
-              </div>
-            ))}
             {(() => {
               const trimmedQ = qStr.trim();
               const alreadyWatched = Boolean(
