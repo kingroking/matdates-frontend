@@ -1,11 +1,8 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import { collection, doc, getDoc, getDocs, setDoc, addDoc, query, where } from "firebase/firestore";
 import { db } from "./firebase";
 import { foldStr } from "./proHubData";
 
-const BG = { position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", zIndex:10085, display:"flex", alignItems:"center", justifyContent:"center", padding:"12px", boxSizing:"border-box" };
-
-// Compress camera-roll photo on-device (<140 KB JPEG) so team albums load fast & save directly to Firestore!
 function compressImageFile(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -31,64 +28,94 @@ function compressImageFile(file) {
   });
 }
 
-const TOUR_DECKS = {
-  SITE: {
-    badge: "✨ MATDATES QUICK TOUR",
-    title: "Welcome to MatDates",
-    steps: [
-      { icon: "🎯", head: "Multi-Select Categories & Gi/No-Gi Tags", body: "Use the 🎯 Categories dropdown to combine multiple circuits at once (like IBJJF + ADCC + UFC BJJ), and spot 🥋 Gi, ⚡ No-Gi, and 🐯 Youth divisions at a glance on every card." },
-      { icon: "🔍", head: "Universal Athlete Lookup & 1-Tap Watch", body: "Search ANY athlete — even off-season — to open their Official Trophy Room or tap 🔔 Watch for live tournament-day Mat #, Match Time, and Podium push alerts." },
-      { icon: "🏆", head: "Trophy Rooms, Share Stats & Locked Bios", body: "Click any athlete's name across Standings or Podiums to view Insider Spotlight Facts, generate a 📲 Share Stats story graphic, or claim your locked verified @handle bio." },
-      { icon: "💬", head: "Brackets Compare, Event Q&A & Photogs", body: "Inside any event card, tap 👥 Brackets to compare 2 athletes head-to-head (🆚 Compare), ask questions in 💬 Info & Q&A, or book mat-side photographers via 📸 Photogs." },
-      { icon: "🥋", head: "100% Free Academy & Promoter Pro Hubs", body: "Professors get a free Academy Dashboard (Live Coach Mat Clipboard + Team Photo Drop Album), and Promoters get a free Host & Matchmaker Suite!" }
-    ]
-  },
-  ACADEMY: {
-    badge: "🥋 ACADEMY PRO DASHBOARD TOUR",
-    title: "Professor & Coach Suite (100% Free)",
-    steps: [
-      { icon: "📋", head: "Saturday Morning Coach Mat Clipboard", body: "Automatically pulls every student from your academy registered this weekend and sorts them chronologically by live Mat # and Match Time so coaches never miss a corner." },
-      { icon: "📸", head: "Team Podium Photo Drop Album", body: "No more Sunday night texts chasing podium photos! Athletes & parents upload tournament photos tagged with their @Instagram handle so coaches can download & repost in 1 tap." },
-      { icon: "👥", head: "Multi-Coach & Professor Access", body: "Add your fellow Professors, Coaches, and Social Media managers by email under Team Staff so everyone shares full Academy Pro tools." },
-      { icon: "📲", head: "Instant Academy Share Stats", body: "Generate verified season Gold/Silver/Bronze graphics anytime to showcase your team's tournament run." }
-    ]
-  },
-  PROMOTER: {
-    badge: "🏟️ PROMOTER & MATCHMAKER SUITE TOUR",
-    title: "Host on MatDates (100% Free)",
-    steps: [
-      { icon: "⚡", head: "Matchmaker Database & Filtering", body: "Browse and filter every athlete who opted into the Open SuperFight Matchmaking Pool by belt, coach, custom notes, and direct @Instagram contact." },
-      { icon: "🚨", head: "Late-Pullout 'Golden Ticket' Replacement Blast", body: "Had an athlete pull out 48 hours before weigh-ins? Post an urgent open weight/belt slot to surface it at the top of the SuperFight Pool immediately." },
-      { icon: "📢", head: "Official Event Info, Banner & Competitor Q&A", body: "Pin official weigh-in rules, Gi check times, and live schedule banners to your Event Card — and answer competitor questions once instead of 50 separate DMs." },
-      { icon: "🤝", head: "Multi-Seat Matchmaker & Staff Access", body: "Add your Matchmakers, Head Table Directors, and Media team by email so your whole crew can manage bouts and competitor updates." }
-    ]
-  }
+const TOUR_TARGETS = {
+  SITE: [
+    { sel: '[data-tour="filter-bar"]', title: "Filter Federations & Events", text: "Pick multiple federations at once (IBJJF + ADCC + UFC BJJ), filter by month or Youth/Adult, and spot 🥋 Gi & ⚡ No-Gi tags on every card." },
+    { sel: '[data-tour="nav-lookup"]', title: "Universal Athlete Lookup & Watch", text: "Search ANY competitor — even before they register — to view their Trophy Room or tap 🔔 Watch for live tournament-day Mat # alerts." },
+    { sel: '[data-tour="nav-standings"]', title: "Standings, Trophy Rooms & SuperFights", text: "Click any athlete's name to open their Trophy Room, link their @Instagram, fill out their Athlete Bio, or share stats!" },
+    { sel: '[data-tour="nav-warroom"]', title: "Live Weekend War Room", text: "Track all your watched athletes' live Mat assignments, match times, and upcoming registration cutoffs in one place." },
+    { sel: '[data-tour="first-card"]', title: "Brackets, Q&A, Photogs & Event Hub", text: "Every event card lets you compare 2 athletes head-to-head (🆚 Compare), ask questions in 💬 Tips, book 📸 Photogs, or check in on SuperFight cards!" }
+  ],
+  ACADEMY: [
+    { sel: '[data-tour="acad-clipboard"]', title: "Saturday Coach Mat Clipboard", text: "Automatically lists every student from your academy registered in upcoming brackets so Professors never miss a mat!" },
+    { sel: '[data-tour="acad-album"]', title: "Team Podium Photo Drop Album", text: "Athletes & parents upload podium pics tagged with their @Instagram right here so coaches can save & repost in 1 tap." },
+    { sel: '[data-tour="acad-staff"]', title: "Add Co-Professors & Coaches", text: "Link your fellow Professors and Coaches by email so your whole coaching staff gets this Academy Dashboard on login!" }
+  ],
+  PROMOTER: [
+    { sel: '[data-tour="prom-matchmaker"]', title: "Open SuperFight Matchmaker DB", text: "Filter verified athletes who marked themselves Open for SuperFights and message them directly." },
+    { sel: '[data-tour="prom-checkins"]', title: "Athlete Pre-Fight Check-Ins & Corners", text: "See live Virtual Weigh-Ins, Coach Wristband lists, Walkout songs, and Poster photos submitted from your Event Card's Hub!" },
+    { sel: '[data-tour="prom-tickets"]', title: "VIP Tables & Fighter Ticket Referrals", text: "Configure your checkout link and track every ticket & VIP table sold through each competing athlete's personal referral link." },
+    { sel: '[data-tour="prom-team"]', title: "Add Matchmakers & Event Staff", text: "Invite your Matchmakers and Head Table staff by email so they get full Promoter Homepage tools automatically!" }
+  ]
 };
 
+// Contextual Real-Element Spotlight Popup Coach-Mark Tour!
 export function GuidedTourModal({ mode = "SITE", onClose }) {
-  const deck = TOUR_DECKS[mode] || TOUR_DECKS.SITE;
+  const steps = TOUR_TARGETS[mode] || TOUR_TARGETS.SITE;
   const [idx, setIdx] = useState(0);
-  const step = deck.steps[idx];
+  const [rect, setRect] = useState(null);
+  const cur = steps[idx];
+
+  useEffect(() => {
+    const updateRect = () => {
+      const el = document.querySelector(cur.sel);
+      if (!el) { setRect(null); return; }
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      setTimeout(() => {
+        const r = el.getBoundingClientRect();
+        setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+      }, 220);
+    };
+    updateRect();
+    window.addEventListener("resize", updateRect);
+    return () => window.removeEventListener("resize", updateRect);
+  }, [idx, cur.sel]);
+
+  const vw = typeof window !== "undefined" ? window.innerWidth : 900;
+  const vh = typeof window !== "undefined" ? window.innerHeight : 700;
+  const popWidth = Math.min(330, vw - 24);
+  const placeAbove = rect && (rect.top + rect.height + 195 > vh) && rect.top > 190;
+  const popTop = rect ? (placeAbove ? Math.max(12, rect.top - 175) : Math.min(vh - 185, rect.top + rect.height + 14)) : Math.max(80, vh / 2 - 90);
+  const popLeft = rect ? Math.min(vw - popWidth - 12, Math.max(12, rect.left + rect.width / 2 - popWidth / 2)) : Math.max(12, vw / 2 - popWidth / 2);
+
   return (
-    <div onClick={onClose} style={BG}>
-      <div onClick={e => e.stopPropagation()} style={{ background:"#0f1522", border:"1.5px solid #38bdf8", borderRadius:"14px", maxWidth:"480px", width:"100%", padding:"20px", color:"#fff", textAlign:"left" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"8px" }}>
-          <span style={{ color:"#38bdf8", fontSize:"0.73rem", fontWeight:"800", letterSpacing:"1.2px" }}>{deck.badge} • {idx + 1}/{deck.steps.length}</span>
-          <button onClick={onClose} style={{ background:"transparent", color:"#94a3b8", border:"none", cursor:"pointer", fontSize:"0.85rem" }}>Skip ✕</button>
+    <div onClick={onClose} style={{ position:"fixed", inset:0, zIndex:10120, background: rect ? "transparent" : "rgba(0,0,0,0.65)" }}>
+      {rect && (
+        <div style={{
+          position:"fixed",
+          top: Math.max(4, rect.top - 6),
+          left: Math.max(4, rect.left - 6),
+          width: rect.width + 12,
+          height: rect.height + 12,
+          borderRadius:"10px",
+          border:"2px solid #38bdf8",
+          boxShadow:"0 0 0 9999px rgba(0,0,0,0.72), 0 0 22px rgba(56,189,248,0.85)",
+          pointerEvents:"none",
+          transition:"all 0.25s ease"
+        }} />
+      )}
+      <div onClick={e => e.stopPropagation()} style={{
+        position:"fixed", top: popTop, left: popLeft, width: popWidth,
+        background:"#0f172a", border:"1.5px solid #38bdf8", borderRadius:"12px",
+        padding:"14px 15px", color:"#fff", textAlign:"left",
+        boxShadow:"0 14px 34px rgba(0,0,0,0.85)", transition:"all 0.25s ease"
+      }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"5px" }}>
+          <span style={{ color:"#38bdf8", fontSize:"0.7rem", fontWeight:"800", letterSpacing:"1px" }}>SPOTLIGHT GUIDE • {idx + 1} OF {steps.length}</span>
+          <button onClick={onClose} style={{ background:"none", border:"none", color:"#94a3b8", fontSize:"0.78rem", cursor:"pointer", padding:0 }}>Close ✕</button>
         </div>
-        <div style={{ fontSize:"2.2rem", margin:"6px 0" }}>{step.icon}</div>
-        <h3 style={{ margin:"0 0 8px", color:"#ffffff", fontSize:"1.2rem" }}>{step.head}</h3>
-        <p style={{ margin:"0 0 18px", color:"#cbd5e1", fontSize:"0.9rem", lineHeight:1.5 }}>{step.body}</p>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px" }}>
-          <div style={{ display:"flex", gap:"5px" }}>
-            {deck.steps.map((_, i) => <span key={i} style={{ width: i===idx ? "18px" : "7px", height:"7px", borderRadius:"4px", background: i===idx ? "#38bdf8" : "#334155", transition:"all 0.2s" }} />)}
+        <div style={{ fontWeight:"800", fontSize:"0.98rem", color:"#ffffff", marginBottom:"5px" }}>👆 {cur.title}</div>
+        <div style={{ fontSize:"0.82rem", color:"#cbd5e1", lineHeight:1.45, marginBottom:"12px" }}>{cur.text}</div>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <div style={{ display:"flex", gap:"4px" }}>
+            {steps.map((_, i) => <span key={i} style={{ width: i===idx ? "14px" : "6px", height:"6px", borderRadius:"3px", background: i===idx ? "#38bdf8" : "#334155" }} />)}
           </div>
-          <div style={{ display:"flex", gap:"8px" }}>
-            {idx > 0 && <button onClick={() => setIdx(idx - 1)} style={{ padding:"8px 12px", borderRadius:"7px", background:"#1e293b", color:"#fff", border:"1px solid #334155", cursor:"pointer", fontWeight:"bold" }}>Back</button>}
-            {idx < deck.steps.length - 1 ? (
-              <button onClick={() => setIdx(idx + 1)} style={{ padding:"8px 16px", borderRadius:"7px", background:"#38bdf8", color:"#000", border:"none", cursor:"pointer", fontWeight:"800" }}>Next →</button>
+          <div style={{ display:"flex", gap:"6px" }}>
+            {idx > 0 && <button onClick={() => setIdx(idx - 1)} style={{ padding:"5px 10px", borderRadius:"6px", background:"#1e293b", color:"#fff", border:"1px solid #334155", fontSize:"0.76rem", fontWeight:"bold", cursor:"pointer" }}>← Back</button>}
+            {idx < steps.length - 1 ? (
+              <button onClick={() => setIdx(idx + 1)} style={{ padding:"5px 12px", borderRadius:"6px", background:"#38bdf8", color:"#000", border:"none", fontSize:"0.76rem", fontWeight:"800", cursor:"pointer" }}>Next →</button>
             ) : (
-              <button onClick={onClose} style={{ padding:"8px 16px", borderRadius:"7px", background:"#2ecc71", color:"#000", border:"none", cursor:"pointer", fontWeight:"800" }}>Got It!</button>
+              <button onClick={onClose} style={{ padding:"5px 12px", borderRadius:"6px", background:"#2ecc71", color:"#000", border:"none", fontSize:"0.76rem", fontWeight:"800", cursor:"pointer" }}>Done ✓</button>
             )}
           </div>
         </div>
@@ -113,79 +140,95 @@ export function MultiCategoryDropdown({ selected, onChange }) {
     else onChange([...selected, k]);
   };
   return (
-    <div style={{ position:"relative", minWidth:"215px" }}>
-      <button type="button" onClick={() => setOpen(!open)} style={{ width:"100%", padding:"12px 14px", borderRadius:"6px", border: selected.length ? "1.5px solid #38bdf8" : "1px solid #333", background:"#111", color:"#fff", fontSize:"0.95rem", fontWeight:"bold", cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px" }}>
-        <span style={{ display:"flex", alignItems:"center", gap:"6px" }}>
-          🎯 {selected.length === 0 ? "Categories: All (Color Key)" : `Categories (${selected.length} Selected)`}
-        </span>
-        <span style={{ color:"#94a3b8", fontSize:"0.8rem" }}>{open ? "▴" : "▾"}</span>
+    <div style={{ position:"relative", minWidth:"205px", flex:"0 1 auto" }}>
+      <button type="button" onClick={() => setOpen(!open)} style={{ width:"100%", padding:"11px 13px", borderRadius:"6px", border: selected.length ? "1px solid #38bdf8" : "1px solid #2b3340", background:"#0d1117", color: selected.length ? "#38bdf8" : "#e2e8f0", fontSize:"0.92rem", fontWeight:"600", cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"10px" }}>
+        <span>{selected.length === 0 ? "Filter Federations" : `Federations (${selected.length} Active)`}</span>
+        <span style={{ color:"#94a3b8", fontSize:"0.78rem" }}>{open ? "▴" : "▾"}</span>
       </button>
       {open && (
-        <div style={{ position:"absolute", top:"calc(100% + 6px)", left:0, zIndex:9500, background:"#141923", border:"1px solid #38bdf8", borderRadius:"9px", padding:"10px", minWidth:"265px", boxShadow:"0 12px 32px rgba(0,0,0,0.75)", textAlign:"left" }}>
-          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"8px", paddingBottom:"6px", borderBottom:"1px solid #263145", fontSize:"0.76rem" }}>
-            <span style={{ color:"#94a3b8", fontWeight:"bold" }}>Check 1 or more categories:</span>
-            {selected.length > 0 && <button type="button" onClick={() => onChange([])} style={{ background:"none", border:"none", color:"#38bdf8", cursor:"pointer", fontWeight:"bold", padding:0 }}>Reset All</button>}
+        <div style={{ position:"absolute", top:"calc(100% + 6px)", left:0, zIndex:9500, background:"#141923", border:"1px solid #334155", borderRadius:"9px", padding:"10px", minWidth:"260px", boxShadow:"0 14px 32px rgba(0,0,0,0.8)", textAlign:"left" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"7px", paddingBottom:"6px", borderBottom:"1px solid #263145", fontSize:"0.75rem" }}>
+            <span style={{ color:"#94a3b8", fontWeight:"bold" }}>Select federations to show:</span>
+            {selected.length > 0 && <button type="button" onClick={() => onChange([])} style={{ background:"none", border:"none", color:"#38bdf8", cursor:"pointer", fontWeight:"bold", padding:0 }}>Clear All</button>}
           </div>
           {ITEMS.map(([k, lbl, col]) => {
-            const on = selected.length === 0 || selected.includes(k);
             const checked = selected.includes(k);
             return (
-              <label key={k} onClick={() => toggle(k)} style={{ display:"flex", alignItems:"center", gap:"9px", padding:"6px 6px", borderRadius:"6px", cursor:"pointer", opacity: on ? 1 : 0.55, fontSize:"0.86rem", color:"#f1f5f9" }}>
+              <label key={k} onClick={() => toggle(k)} style={{ display:"flex", alignItems:"center", gap:"9px", padding:"6px", borderRadius:"6px", cursor:"pointer", fontSize:"0.85rem", color:"#f1f5f9", background: checked ? "#1c2638" : "transparent" }}>
                 <input type="checkbox" checked={checked} onChange={() => {}} style={{ accentColor:"#38bdf8", cursor:"pointer" }} />
-                <span style={{ width:"11px", height:"11px", borderRadius:"2px", background:col, display:"inline-block", border: col==="#ffffff" ? "1px solid #555" : "none", flexShrink:0 }} />
-                <span style={{ fontWeight: checked ? "800" : "500" }}>{lbl}</span>
+                <span style={{ width:"10px", height:"10px", borderRadius:"2px", background:col, display:"inline-block", border: col==="#ffffff" ? "1px solid #666" : "none", flexShrink:0 }} />
+                <span style={{ fontWeight: checked ? "700" : "400" }}>{lbl}</span>
               </label>
             );
           })}
-          <button type="button" onClick={() => setOpen(false)} style={{ marginTop:"8px", width:"100%", padding:"7px", borderRadius:"6px", background:"#1e293b", color:"#fff", border:"1px solid #334155", fontWeight:"bold", cursor:"pointer", fontSize:"0.8rem" }}>Done</button>
+          <button type="button" onClick={() => setOpen(false)} style={{ marginTop:"8px", width:"100%", padding:"7px", borderRadius:"6px", background:"#1e293b", color:"#fff", border:"1px solid #334155", fontWeight:"bold", cursor:"pointer", fontSize:"0.79rem" }}>Apply Filter</button>
         </div>
       )}
     </div>
   );
 }
 
-// 📸 Team Podium Photo Drop Album + Free Multi-Coach Academy Pro Dashboard
-export function AcademyProSuite({ gymName, gymKey, user, isAdmin, onRequireAuth }) {
-  const [sub, setSub] = useState("ALBUM");
+// 📸 Team Podium Photo Drop Album + Coach Clipboard (used inside both Academy Homepage AND Academy Trophy Room!)
+export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, user, isAdmin, onRequireAuth, isHomepage = false }) {
+  const [ws, setWs] = useState(null);
+  const [newGymName, setNewGymName] = useState("");
+  const activeName = propGymName || ws?.gymName || "";
+  const activeKey = propGymKey || ws?.gymKey || (activeName ? foldStr(activeName).replace(/[^a-z0-9]+/g, "_") : "");
+  const wsId = "acad_ws_" + (activeKey || "unlinked");
+
+  const [sub, setSub] = useState(isHomepage ? "CLIPBOARD" : "ALBUM");
   const [photos, setPhotos] = useState([]);
   const [roster, setRoster] = useState([]);
-  const [ws, setWs] = useState(null);
   const [staffInput, setStaffInput] = useState("");
   const [showTour, setShowTour] = useState(false);
   const [upForm, setUpForm] = useState({ athlete: "", eventName: "", medal: "🥇 Gold", insta: "", fileData: "" });
   const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState("");
-  const wsId = "acad_ws_" + (gymKey || foldStr(gymName).replace(/[^a-z0-9]+/g, "_"));
 
-  const isStaff = Boolean(user && (isAdmin || ws?.ownerUid === user.uid || (ws?.staffEmails || []).includes((user.email || "").toLowerCase())));
+  useEffect(() => {
+    if (propGymKey) {
+      getDoc(doc(db, "mat_watches", "acad_ws_" + propGymKey)).then(d => { if (d.exists()) setWs(d.data()); }).catch(() => {});
+    } else if (user?.email) {
+      const em = user.email.toLowerCase();
+      getDocs(query(collection(db, "mat_watches"), where("kind", "==", "academy_workspace"))).then(sn => {
+        const hit = sn.docs.map(d => d.data()).find(w => w.ownerUid === user.uid || (w.staffEmails || []).includes(em));
+        if (hit) setWs(hit);
+      }).catch(() => {});
+    }
+  }, [propGymKey, user]);
 
-  const loadAlbumAndWs = () => {
-    getDoc(doc(db, "mat_watches", wsId)).then(d => { if (d.exists()) setWs(d.data()); }).catch(() => {});
+  const loadAlbum = () => {
+    if (!activeKey) return;
     getDocs(query(collection(db, "mat_watches"), where("kind", "==", "academy_photo"))).then(sn => {
-      const list = sn.docs.map(d => ({ id: d.id, ...d.data() })).filter(x => x.gymKey === gymKey).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+      const list = sn.docs.map(d => ({ id: d.id, ...d.data() }))
+        .filter(x => x.gymKey === activeKey || foldStr(x.gymName || "") === foldStr(activeName))
+        .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
       setPhotos(list);
     }).catch(() => {});
   };
 
   useEffect(() => {
-    loadAlbumAndWs();
+    if (!activeName) return;
+    loadAlbum();
     getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__athlete_index__"))).then(sn => {
-      const gFold = foldStr(gymName);
+      const gFold = foldStr(activeName);
       const hits = [];
       sn.forEach(d => ((d.data() || {}).items || []).forEach(it => {
-        if (foldStr(it.a || "").includes(gFold) || gFold.includes(foldStr(it.a || ""))) {
-          if ((it.a || "").length >= 3) hits.push(it);
-        }
+        if ((it.a || "").length >= 3 && (foldStr(it.a).includes(gFold) || gFold.includes(foldStr(it.a)))) hits.push(it);
       }));
       setRoster(hits.slice(0, 80));
     }).catch(() => {});
-  }, [gymKey, gymName]);
+  }, [activeName, activeKey]);
 
-  const claimAcademy = async () => {
+  const claimAcademy = async (e) => {
+    if (e) e.preventDefault();
     if (!user) { onRequireAuth && onRequireAuth(); return; }
-    const payload = { kind: "academy_workspace", gymKey, gymName, ownerUid: user.uid, ownerEmail: (user.email || "").toLowerCase(), staffEmails: [(user.email || "").toLowerCase()], createdAt: new Date().toISOString() };
-    await setDoc(doc(db, "mat_watches", wsId), payload, { merge: true });
-    await addDoc(collection(db, "pending_events"), { kind: "workspace_claim", roleType: "Academy Pro", orgName: gymName, ownerEmail: user.email, adminNotified: false, createdAt: new Date().toISOString() }).catch(() => {});
+    const targetName = activeName || newGymName.trim();
+    if (!targetName) return;
+    const gKey = propGymKey || foldStr(targetName).replace(/[^a-z0-9]+/g, "_");
+    const payload = { kind: "academy_workspace", gymKey: gKey, gymName: targetName, ownerUid: user.uid, ownerEmail: (user.email || "").toLowerCase(), staffEmails: [(user.email || "").toLowerCase()], createdAt: new Date().toISOString() };
+    await setDoc(doc(db, "mat_watches", "acad_ws_" + gKey), payload, { merge: true });
+    await addDoc(collection(db, "pending_events"), { kind: "workspace_claim", roleType: "Academy Pro", orgName: targetName, ownerEmail: user.email, adminNotified: false, createdAt: new Date().toISOString() }).catch(() => {});
     setWs(payload);
     setShowTour(true);
   };
@@ -195,10 +238,10 @@ export function AcademyProSuite({ gymName, gymKey, user, isAdmin, onRequireAuth 
     const em = staffInput.trim().toLowerCase();
     if (!em.includes("@") || !ws) return;
     const next = Array.from(new Set([...(ws.staffEmails || []), em]));
-    await setDoc(doc(db, "mat_watches", wsId), { staffEmails: next }, { merge: true });
+    await setDoc(doc(db, "mat_watches", "acad_ws_" + ws.gymKey), { staffEmails: next }, { merge: true });
     setWs({ ...ws, staffEmails: next });
     setStaffInput("");
-    setMsg("✅ Added Coach/Professor " + em + " to Academy Dashboard!");
+    setMsg("✅ Linked Professor / Coach " + em + " — they now get this Academy Homepage on login!");
   };
 
   const onPickPhoto = async (e) => {
@@ -211,39 +254,48 @@ export function AcademyProSuite({ gymName, gymKey, user, isAdmin, onRequireAuth 
   const submitPhoto = async (e) => {
     e.preventDefault();
     if (!user) { onRequireAuth && onRequireAuth(); return; }
-    if (!upForm.fileData) { alert("Please select a podium or tournament photo first."); return; }
+    if (!upForm.fileData) { alert("Select a tournament or podium photo first."); return; }
     setUploading(true);
     await addDoc(collection(db, "mat_watches"), {
-      kind: "academy_photo",
-      gymKey,
-      gymName,
-      athlete: upForm.athlete.trim(),
-      eventName: upForm.eventName.trim(),
-      medal: upForm.medal,
-      insta: upForm.insta.replace(/^@+/, "").trim(),
-      photoData: upForm.fileData,
-      uploaderEmail: user.email || "",
-      uid: user.uid,
-      createdAt: new Date().toISOString()
+      kind: "academy_photo", gymKey: activeKey, gymName: activeName,
+      athlete: upForm.athlete.trim(), eventName: upForm.eventName.trim(), medal: upForm.medal,
+      insta: upForm.insta.replace(/^@+/, "").trim(), photoData: upForm.fileData,
+      uploaderEmail: user.email || "", uid: user.uid, createdAt: new Date().toISOString()
     });
     setUploading(false);
     setUpForm({ athlete: "", eventName: "", medal: "🥇 Gold", insta: "", fileData: "" });
-    setMsg("✅ Photo added to " + gymName + "'s Team Podium Album!");
-    loadAlbumAndWs();
+    setMsg("✅ Photo added to " + activeName + "'s Team Podium Album!");
+    loadAlbum();
   };
 
   const inp = { padding:"7px 9px", borderRadius:"6px", background:"#0f141e", color:"#fff", border:"1px solid #334155", fontSize:"0.82rem" };
 
-  return (
-    <div style={{ background:"#131924", border:"1px solid #2d3b52", borderRadius:"10px", padding:"12px", marginBottom:"10px" }}>
-      {showTour && <GuidedTourModal mode="ACADEMY" onClose={() => setShowTour(false)} />}
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:"6px", flexWrap:"wrap", marginBottom:"10px" }}>
-        <div style={{ display:"flex", gap:"6px", flexWrap:"wrap" }}>
-          <button type="button" onClick={() => setSub("ALBUM")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: sub==="ALBUM" ? "#ff9f43" : "#1c2434", color: sub==="ALBUM" ? "#000" : "#cbd5e1", border:"none" }}>📸 Team Podium Album ({photos.length})</button>
-          <button type="button" onClick={() => setSub("CLIPBOARD")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: sub==="CLIPBOARD" ? "#38bdf8" : "#1c2434", color: sub==="CLIPBOARD" ? "#000" : "#cbd5e1", border:"none" }}>📋 Coach Mat Clipboard ({roster.length})</button>
-          <button type="button" onClick={() => setSub("STAFF")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: sub==="STAFF" ? "#2ecc71" : "#1c2434", color: sub==="STAFF" ? "#000" : "#cbd5e1", border:"none" }}>👥 Coaches &amp; Staff</button>
+  if (isHomepage && !activeName) {
+    return (
+      <form onSubmit={claimAcademy} style={{ background:"#131b28", border:"1.5px solid #38bdf8", borderRadius:"10px", padding:"14px", marginBottom:"16px", display:"flex", gap:"8px", flexWrap:"wrap", alignItems:"center", textAlign:"left" }}>
+        <div style={{ flex:"1 1 260px" }}>
+          <div style={{ color:"#38bdf8", fontSize:"0.74rem", fontWeight:"800" }}>🥋 WELCOME PROFESSOR / COACH • SET UP YOUR ACADEMY HOMEPAGE</div>
+          <div style={{ color:"#cbd5e1", fontSize:"0.82rem" }}>Enter your Academy name to pin your Live Coach Mat Clipboard &amp; Team Photo Drop Album right here:</div>
         </div>
-        <button type="button" onClick={() => setShowTour(true)} style={{ padding:"5px 9px", borderRadius:"6px", background:"#1e293b", color:"#93c5fd", border:"1px solid #334155", fontSize:"0.73rem", fontWeight:"bold", cursor:"pointer" }}>❓ Academy Tour</button>
+        <input required placeholder="Academy Name (e.g. Carlson Gracie San Antonio)" value={newGymName} onChange={e => setNewGymName(e.target.value)} style={{ ...inp, flex:"1 1 220px", padding:"9px 11px" }} />
+        <button type="submit" style={{ background:"#38bdf8", color:"#000", border:"none", borderRadius:"7px", padding:"9px 14px", fontWeight:"800", cursor:"pointer" }}>Link My Academy</button>
+      </form>
+    );
+  }
+
+  return (
+    <div style={{ background:"#131924", border: isHomepage ? "1.5px solid #38bdf8" : "1px solid #2d3b52", borderRadius:"10px", padding:"14px", marginBottom:"16px", textAlign:"left" }}>
+      {showTour && <GuidedTourModal mode="ACADEMY" onClose={() => setShowTour(false)} />}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap", marginBottom:"10px" }}>
+        <div>
+          {isHomepage && <div style={{ color:"#38bdf8", fontSize:"0.72rem", fontWeight:"800", letterSpacing:"1px" }}>🥋 ACADEMY PRO HOMEPAGE • {activeName.toUpperCase()}</div>}
+          <div style={{ display:"flex", gap:"6px", flexWrap:"wrap", marginTop: isHomepage ? "6px" : 0 }}>
+            <button data-tour="acad-clipboard" type="button" onClick={() => setSub("CLIPBOARD")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: sub==="CLIPBOARD" ? "#38bdf8" : "#1c2434", color: sub==="CLIPBOARD" ? "#000" : "#cbd5e1", border:"none" }}>📋 Coach Mat Clipboard ({roster.length})</button>
+            <button data-tour="acad-album" type="button" onClick={() => setSub("ALBUM")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: sub==="ALBUM" ? "#ff9f43" : "#1c2434", color: sub==="ALBUM" ? "#000" : "#cbd5e1", border:"none" }}>📸 Team Podium Album ({photos.length})</button>
+            <button data-tour="acad-staff" type="button" onClick={() => setSub("STAFF")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: sub==="STAFF" ? "#2ecc71" : "#1c2434", color: sub==="STAFF" ? "#000" : "#cbd5e1", border:"none" }}>👥 Coaches &amp; Staff</button>
+          </div>
+        </div>
+        <button type="button" onClick={() => setShowTour(true)} style={{ padding:"5px 9px", borderRadius:"6px", background:"#1e293b", color:"#93c5fd", border:"1px solid #334155", fontSize:"0.73rem", fontWeight:"bold", cursor:"pointer" }}>❓ Spotlight Guide</button>
       </div>
 
       {msg && <div style={{ background:"#132a1c", border:"1px solid #2ecc71", color:"#4ade80", padding:"6px 10px", borderRadius:"6px", fontSize:"0.78rem", fontWeight:"bold", marginBottom:"8px" }}>{msg}</div>}
@@ -251,31 +303,29 @@ export function AcademyProSuite({ gymName, gymKey, user, isAdmin, onRequireAuth 
       {sub === "ALBUM" && (
         <div>
           <form onSubmit={submitPhoto} style={{ background:"#182030", border:"1px solid #2d3748", borderRadius:"8px", padding:"10px", marginBottom:"10px", display:"grid", gap:"7px" }}>
-            <div style={{ fontSize:"0.78rem", color:"#fcd34d", fontWeight:"bold" }}>📸 Drop a Podium / Tournament Photo for Your Professors &amp; Academy IG:</div>
+            <div style={{ fontSize:"0.78rem", color:"#fcd34d", fontWeight:"bold" }}>📸 Drop a Podium / Tournament Photo for {activeName}&apos;s Coaches:</div>
             <div style={{ display:"flex", gap:"6px", flexWrap:"wrap" }}>
               <input required placeholder="Athlete Name(s)" value={upForm.athlete} onChange={e => setUpForm({...upForm, athlete: e.target.value})} style={{ ...inp, flex:"1 1 130px" }} />
               <input required placeholder="Tournament Name" value={upForm.eventName} onChange={e => setUpForm({...upForm, eventName: e.target.value})} style={{ ...inp, flex:"1 1 140px" }} />
               <select value={upForm.medal} onChange={e => setUpForm({...upForm, medal: e.target.value})} style={inp}>
                 {["🥇 Gold","🥈 Silver","🥉 Bronze","🥋 Team / Action"].map(m => <option key={m} value={m}>{m}</option>)}
               </select>
-              <input placeholder="@instagram to tag" value={upForm.insta} onFocus={() => { if (!upForm.insta) setUpForm(f => ({...f, insta: "@"})); }} onChange={e => { const v = e.target.value; setUpForm({...upForm, insta: v ? ("@" + v.replace(/^@+/, "")) : ""}); }} style={{ ...inp, flex:"1 1 120px" }} />
+              <input placeholder="@instagram" value={upForm.insta} onFocus={() => { if (!upForm.insta) setUpForm(f => ({...f, insta: "@"})); }} onChange={e => { const v = e.target.value; setUpForm({...upForm, insta: v ? ("@" + v.replace(/^@+/, "")) : ""}); }} style={{ ...inp, flex:"1 1 115px" }} />
             </div>
             <div style={{ display:"flex", gap:"8px", alignItems:"center", flexWrap:"wrap" }}>
               <input type="file" accept="image/*" onChange={onPickPhoto} style={{ fontSize:"0.76rem", color:"#cbd5e1", flex:1 }} />
-              <button type="submit" disabled={uploading} style={{ background:"#ff9f43", color:"#000", border:"none", borderRadius:"6px", padding:"7px 12px", fontWeight:"800", fontSize:"0.78rem", cursor:"pointer" }}>{uploading ? "Uploading..." : "➕ Upload to Team Album"}</button>
+              <button type="submit" disabled={uploading} style={{ background:"#ff9f43", color:"#000", border:"none", borderRadius:"6px", padding:"7px 12px", fontWeight:"800", fontSize:"0.78rem", cursor:"pointer" }}>{uploading ? "Uploading..." : "➕ Add Photo"}</button>
             </div>
           </form>
-          {photos.length === 0 ? (
-            <div style={{ color:"#94a3b8", fontSize:"0.78rem", padding:"8px 2px" }}>No podium photos uploaded yet — athletes &amp; parents can drop tournament pics right here so coaches never have to chase texts!</div>
-          ) : (
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(155px, 1fr))", gap:"8px" }}>
+          {photos.length === 0 ? <div style={{ color:"#94a3b8", fontSize:"0.78rem" }}>No podium photos dropped yet — athletes &amp; parents can upload photos right here so Professors never have to text for pictures!</div> : (
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(150px, 1fr))", gap:"8px" }}>
               {photos.map(ph => (
                 <div key={ph.id} style={{ background:"#182030", border:"1px solid #334155", borderRadius:"8px", overflow:"hidden" }}>
-                  <img src={ph.photoData} alt={ph.athlete} style={{ width:"100%", height:"135px", objectFit:"cover", display:"block" }} />
+                  <img src={ph.photoData} alt={ph.athlete} style={{ width:"100%", height:"130px", objectFit:"cover", display:"block" }} />
                   <div style={{ padding:"7px" }}>
-                    <div style={{ fontWeight:"bold", fontSize:"0.78rem", color:"#fff" }}>{ph.medal.split(" ")[0]} {ph.athlete}</div>
+                    <div style={{ fontWeight:"bold", fontSize:"0.77rem", color:"#fff" }}>{ph.medal.split(" ")[0]} {ph.athlete}</div>
                     <div style={{ fontSize:"0.7rem", color:"#94a3b8" }}>{ph.eventName}</div>
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:"5px" }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:"4px" }}>
                       {ph.insta ? <span style={{ color:"#38bdf8", fontSize:"0.7rem", fontWeight:"bold" }}>@{ph.insta}</span> : <span />}
                       <a href={ph.photoData} download={(ph.athlete || "podium") + ".jpg"} style={{ background:"#1e293b", color:"#fff", padding:"2px 6px", borderRadius:"4px", fontSize:"0.68rem", textDecoration:"none", fontWeight:"bold" }}>⬇ Save</a>
                     </div>
@@ -289,35 +339,30 @@ export function AcademyProSuite({ gymName, gymKey, user, isAdmin, onRequireAuth 
 
       {sub === "CLIPBOARD" && (
         <div style={{ display:"grid", gap:"6px" }}>
-          <div style={{ fontSize:"0.78rem", color:"#93c5fd", fontWeight:"bold" }}>🥋 Upcoming Registered Squad ({roster.length} entries across upcoming events):</div>
-          {roster.length === 0 ? <div style={{ color:"#94a3b8", fontSize:"0.78rem" }}>No upcoming bracket registrations indexed right now — syncs automatically as students register!</div> : roster.map((r, i) => (
+          <div style={{ fontSize:"0.78rem", color:"#93c5fd", fontWeight:"bold" }}>📋 Upcoming Registered Squad ({roster.length} entries):</div>
+          {roster.length === 0 ? <div style={{ color:"#94a3b8", fontSize:"0.78rem" }}>No upcoming bracket registrations indexed right now — populates automatically as your students register!</div> : roster.slice(0, 25).map((r, i) => (
             <div key={i} style={{ background:"#182030", padding:"7px 10px", borderRadius:"6px", display:"flex", justifyContent:"space-between", gap:"8px", fontSize:"0.78rem" }}>
               <span><b style={{ color:"#fff" }}>{r.n}</b> — <span style={{ color:"#cbd5e1" }}>{r.d}</span></span>
-              <span style={{ color:"#4ade80", fontWeight:"bold", flexShrink:0 }}>Live Watch Ready</span>
+              <span style={{ color:"#4ade80", fontWeight:"bold", flexShrink:0 }}>Mat Watch Ready</span>
             </div>
           ))}
         </div>
       )}
 
       {sub === "STAFF" && (
-        <div style={{ display:"grid", gap:"8px" }}>
+        <div>
           {!ws ? (
-            <div style={{ background:"#182030", padding:"12px", borderRadius:"8px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
-              <div style={{ fontSize:"0.8rem", color:"#cbd5e1" }}><b>Free Academy Pro Account:</b> Claim <b>{gymName}</b> to link Co-Professors &amp; Coaches by email!</div>
-              <button type="button" onClick={claimAcademy} style={{ background:"#2ecc71", color:"#000", border:"none", borderRadius:"6px", padding:"7px 12px", fontWeight:"800", fontSize:"0.78rem", cursor:"pointer" }}>🥋 Activate Free Academy Pro</button>
-            </div>
+            <button type="button" onClick={claimAcademy} style={{ background:"#2ecc71", color:"#000", border:"none", borderRadius:"6px", padding:"8px 14px", fontWeight:"800", fontSize:"0.78rem", cursor:"pointer" }}>🥋 Claim {activeName} &amp; Add Coaches</button>
           ) : (
-            <div style={{ background:"#182030", padding:"10px", borderRadius:"8px", display:"grid", gap:"8px" }}>
-              <div style={{ fontSize:"0.8rem", color:"#4ade80", fontWeight:"bold" }}>✓ Verified Academy Pro Workspace • Linked Professors &amp; Coaches ({(ws.staffEmails || []).length}):</div>
+            <div style={{ display:"grid", gap:"8px" }}>
+              <div style={{ fontSize:"0.79rem", color:"#4ade80", fontWeight:"bold" }}>✓ Linked Professors &amp; Coaches ({(ws.staffEmails || []).length}):</div>
               <div style={{ display:"flex", gap:"6px", flexWrap:"wrap" }}>
                 {(ws.staffEmails || []).map((em, i) => <span key={i} style={{ background:"#111622", border:"1px solid #334155", borderRadius:"5px", padding:"3px 8px", fontSize:"0.74rem", color:"#cbd5e1" }}>🥋 {em}</span>)}
               </div>
-              {isStaff && (
-                <form onSubmit={addCoachStaff} style={{ display:"flex", gap:"6px", flexWrap:"wrap" }}>
-                  <input required type="email" placeholder="Add Professor / Coach email..." value={staffInput} onChange={e => setStaffInput(e.target.value)} style={{ ...inp, flex:1 }} />
-                  <button type="submit" style={{ background:"#38bdf8", color:"#000", border:"none", borderRadius:"6px", padding:"7px 12px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer" }}>+ Add Coach</button>
-                </form>
-              )}
+              <form onSubmit={addCoachStaff} style={{ display:"flex", gap:"6px", flexWrap:"wrap" }}>
+                <input required type="email" placeholder="Add Co-Professor / Coach email..." value={staffInput} onChange={e => setStaffInput(e.target.value)} style={{ ...inp, flex:1 }} />
+                <button type="submit" style={{ background:"#38bdf8", color:"#000", border:"none", borderRadius:"6px", padding:"7px 12px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer" }}>+ Add Coach</button>
+              </form>
             </div>
           )}
         </div>
@@ -326,49 +371,49 @@ export function AcademyProSuite({ gymName, gymKey, user, isAdmin, onRequireAuth 
   );
 }
 
-// 🏟️ Free Host on MatDates Promoter & Matchmaker Suite (with Multi-Seat Matchmakers + Late-Pullout Blast + Live Event Banner)
-export function PromoterHostModal({ events, user, isAdmin, onRequireAuth, onClose }) {
-  const [tab, setTab] = useState("MATCHMAKER");
+// 🏟️ Logged-In Promoter Homepage Command Bar (Matchmakers, Athlete Pre-Fight Check-Ins, Tickets/VIP Tables, Official Info & Staff!)
+export function PromoterHomeDashboard({ events, user }) {
   const [ws, setWs] = useState(null);
   const [orgName, setOrgName] = useState("");
-  const [staffInput, setStaffInput] = useState("");
+  const [tab, setTab] = useState("CHECKINS");
   const [pool, setPool] = useState([]);
-  const [blasts, setBlasts] = useState([]);
-  const [blastForm, setBlastForm] = useState({ eventName: "", weightBelt: "", rules: "No-Gi SuperFight", note: "", contact: "" });
-  const [bannerEvId, setBannerEvId] = useState(events?.[0]?.id || "");
-  const [bannerTxt, setBannerTxt] = useState("");
-  const [officialFaq, setOfficialFaq] = useState("");
+  const [checkins, setCheckins] = useState([]);
+  const [sales, setSales] = useState([]);
+  const [cardId, setCardId] = useState(events?.[0]?.id || "");
+  const [cfg, setCfg] = useState({ ticketUrl: "", gaLabel: "", vipTableLabel: "", weighInInfo: "", cornerInfo: "", bannerTxt: "" });
+  const [staffInput, setStaffInput] = useState("");
   const [showTour, setShowTour] = useState(false);
   const [msg, setMsg] = useState("");
 
   useEffect(() => {
-    getDocs(query(collection(db, "mat_watches"), where("kind", "==", "athlete_bio"))).then(sn => {
-      setPool(sn.docs.map(d => d.data()).filter(x => x.openSf && x.name));
+    if (!user?.email) return;
+    const em = user.email.toLowerCase();
+    getDocs(query(collection(db, "mat_watches"), where("kind", "==", "promoter_workspace"))).then(sn => {
+      const hit = sn.docs.map(d => ({ id: d.id, ...d.data() })).find(w => w.ownerUid === user.uid || (w.staffEmails || []).includes(em));
+      if (hit) setWs(hit);
     }).catch(() => {});
-    getDocs(query(collection(db, "mat_watches"), where("kind", "==", "pullout_blast"))).then(sn => {
-      setBlasts(sn.docs.map(d => ({ id: d.id, ...d.data() })));
-    }).catch(() => {});
-    if (user?.email) {
-      const em = user.email.toLowerCase();
-      getDocs(query(collection(db, "mat_watches"), where("kind", "==", "promoter_workspace"))).then(sn => {
-        const hit = sn.docs.map(d => ({ id: d.id, ...d.data() })).find(w => w.ownerUid === user.uid || (w.staffEmails || []).includes(em));
-        if (hit) setWs(hit);
-      }).catch(() => {});
-    }
+    getDocs(query(collection(db, "mat_watches"), where("kind", "==", "athlete_bio"))).then(sn => setPool(sn.docs.map(d => d.data()).filter(x => x.openSf && x.name))).catch(() => {});
+    getDocs(query(collection(db, "mat_watches"), where("kind", "==", "fighter_checkin"))).then(sn => setCheckins(sn.docs.map(d => d.data()))).catch(() => {});
+    getDocs(query(collection(db, "mat_watches"), where("kind", "==", "ticket_referral"))).then(sn => setSales(sn.docs.map(d => d.data()))).catch(() => {});
   }, [user]);
 
-  const activatePromoter = async (e) => {
+  const activateOrg = async (e) => {
     e.preventDefault();
-    if (!user) { onRequireAuth && onRequireAuth(); return; }
     const slug = "prom_ws_" + foldStr(orgName).replace(/[^a-z0-9]+/g, "_");
     const payload = { kind: "promoter_workspace", orgName: orgName.trim(), ownerUid: user.uid, ownerEmail: user.email.toLowerCase(), staffEmails: [user.email.toLowerCase()], createdAt: new Date().toISOString() };
     await setDoc(doc(db, "mat_watches", slug), payload, { merge: true });
-    await addDoc(collection(db, "pending_events"), { kind: "workspace_claim", roleType: "Promoter Host", orgName: orgName.trim(), ownerEmail: user.email, adminNotified: false, createdAt: new Date().toISOString() }).catch(() => {});
     setWs({ id: slug, ...payload });
     setShowTour(true);
   };
 
-  const addMatchmaker = async (e) => {
+  const saveCardConfig = async (e) => {
+    e.preventDefault();
+    if (!cardId) return;
+    await setDoc(doc(db, "mat_watches", "prom_cfg_" + cardId), { kind: "prom_cfg", eventId: cardId, ...cfg, updatedAt: new Date().toISOString() }, { merge: true });
+    setMsg("✅ Saved Ticket Checkout Link, VIP Table Tiers & Official Weigh-In/Corner Info onto Event Card!");
+  };
+
+  const addStaff = async (e) => {
     e.preventDefault();
     const em = staffInput.trim().toLowerCase();
     if (!ws || !em.includes("@")) return;
@@ -376,126 +421,104 @@ export function PromoterHostModal({ events, user, isAdmin, onRequireAuth, onClos
     await setDoc(doc(db, "mat_watches", ws.id), { staffEmails: next }, { merge: true });
     setWs({ ...ws, staffEmails: next });
     setStaffInput("");
-    setMsg("✅ Added Matchmaker / Event Staff (" + em + ")!");
+    setMsg("✅ Added Matchmaker / Staff (" + em + ") — they now get this Promoter Dashboard on login!");
   };
 
-  const postReplacementBlast = async (e) => {
-    e.preventDefault();
-    if (!user) { onRequireAuth && onRequireAuth(); return; }
-    const b = { kind: "pullout_blast", ...blastForm, orgName: ws?.orgName || user.email, createdAt: new Date().toISOString() };
-    await addDoc(collection(db, "mat_watches"), b);
-    setBlasts([b, ...blasts]);
-    setBlastForm({ eventName: "", weightBelt: "", rules: "No-Gi SuperFight", note: "", contact: "" });
-    setMsg("🚨 Golden-Ticket Replacement Slot published to the SuperFight Pool!");
-  };
+  const inp = { padding:"8px 10px", borderRadius:"6px", background:"#0f141e", color:"#fff", border:"1px solid #334155", fontSize:"0.82rem", boxSizing:"border-box" };
 
-  const publishOfficialUpdate = async (e) => {
-    e.preventDefault();
-    if (!user) { onRequireAuth && onRequireAuth(); return; }
-    const ev = (events || []).find(x => x.id === bannerEvId);
-    if (!ev) return;
-    if (officialFaq.trim()) {
-      await addDoc(collection(db, "venue_comments"), {
-        eventId: ev.id, eventName: ev.name, venueKey: "", venueName: ev.venue || ev.location || "",
-        category: "OFFICIAL", text: officialFaq.trim(),
-        author: "🏟️ Official Host (" + (ws?.orgName || "Promoter") + ")", uid: user.uid, likes: 0, createdAt: new Date().toISOString()
-      });
-    }
-    if (bannerTxt.trim()) {
-      await setDoc(doc(db, "mat_watches", "ev_banner_" + ev.id), { kind: "event_banner", eventId: ev.id, banner: bannerTxt.trim(), updatedAt: new Date().toISOString() }, { merge: true });
-    }
-    setBannerTxt(""); setOfficialFaq("");
-    setMsg("✅ Official Competitor Update & Banner published to " + ev.name + "!");
-  };
-
-  const inp = { padding:"9px 11px", borderRadius:"6px", background:"#0f141e", color:"#fff", border:"1px solid #334155", fontSize:"0.86rem", width:"100%", boxSizing:"border-box" };
+  if (!ws) {
+    return (
+      <form onSubmit={activateOrg} style={{ background:"#112226", border:"1.5px solid #14b8a6", borderRadius:"10px", padding:"14px", marginBottom:"16px", display:"flex", gap:"8px", flexWrap:"wrap", alignItems:"center", textAlign:"left" }}>
+        <div style={{ flex:"1 1 260px" }}>
+          <div style={{ color:"#5eead4", fontSize:"0.74rem", fontWeight:"800" }}>🏟️ WELCOME PROMOTER • ACTIVATE YOUR EVENT COMMAND CENTER</div>
+          <div style={{ color:"#cbd5e1", fontSize:"0.82rem" }}>Name your Promotion to unlock Athlete Check-Ins, VIP Table/Ticket Referrals &amp; Matchmaker Tools:</div>
+        </div>
+        <input required placeholder="Promotion Name (e.g. Texas SuperFight Series)" value={orgName} onChange={e => setOrgName(e.target.value)} style={{ ...inp, flex:"1 1 220px" }} />
+        <button type="submit" style={{ background:"#14b8a6", color:"#000", border:"none", borderRadius:"7px", padding:"9px 14px", fontWeight:"800", cursor:"pointer" }}>Launch Dashboard</button>
+      </form>
+    );
+  }
 
   return (
-    <div onClick={onClose} style={BG}>
+    <div style={{ background:"#111c24", border:"1.5px solid #14b8a6", borderRadius:"11px", padding:"14px", marginBottom:"18px", textAlign:"left", color:"#fff" }}>
       {showTour && <GuidedTourModal mode="PROMOTER" onClose={() => setShowTour(false)} />}
-      <div onClick={e => e.stopPropagation()} style={{ background:"#111622", border:"1.5px solid #14b8a6", borderRadius:"14px", maxWidth:"680px", width:"100%", maxHeight:"90svh", overflowY:"auto", padding:"18px", color:"#fff", textAlign:"left" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:"8px", marginBottom:"10px" }}>
-          <div>
-            <div style={{ color:"#14b8a6", fontSize:"0.74rem", fontWeight:"800", letterSpacing:"1.2px" }}>🏟️ HOST ON MATDATES • FREE PROMOTER &amp; MATCHMAKER SUITE</div>
-            <h3 style={{ margin:"3px 0 0", color:"#ffffff", fontSize:"1.28rem" }}>{ws ? ws.orgName + " Command Center" : "Promoter & Matchmaker Hub"}</h3>
-          </div>
-          <div style={{ display:"flex", gap:"6px" }}>
-            <button onClick={() => setShowTour(true)} style={{ background:"#1e293b", color:"#5eead4", border:"1px solid #14b8a6", borderRadius:"6px", padding:"5px 10px", fontSize:"0.76rem", fontWeight:"bold", cursor:"pointer" }}>❓ Promoter Tour</button>
-            <button onClick={onClose} style={{ background:"#1e293b", color:"#fff", border:"1px solid #334155", borderRadius:"6px", padding:"5px 10px", cursor:"pointer" }}>✕</button>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap", marginBottom:"10px" }}>
+        <div>
+          <div style={{ color:"#5eead4", fontSize:"0.72rem", fontWeight:"800", letterSpacing:"1px" }}>🏟️ PROMOTER &amp; MATCHMAKER HOMEPAGE • {ws.orgName.toUpperCase()}</div>
+          <div style={{ display:"flex", gap:"6px", flexWrap:"wrap", marginTop:"6px" }}>
+            <button data-tour="prom-checkins" type="button" onClick={() => setTab("CHECKINS")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: tab==="CHECKINS" ? "#14b8a6" : "#182430", color: tab==="CHECKINS" ? "#000" : "#cbd5e1", border:"none" }}>🥋 Athlete Check-Ins ({checkins.length})</button>
+            <button data-tour="prom-tickets" type="button" onClick={() => setTab("TICKETS")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: tab==="TICKETS" ? "#ff9f43" : "#182430", color: tab==="TICKETS" ? "#000" : "#cbd5e1", border:"none" }}>🎟️ Tickets, VIP Tables &amp; Info ({sales.length})</button>
+            <button data-tour="prom-matchmaker" type="button" onClick={() => setTab("MATCHMAKER")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: tab==="MATCHMAKER" ? "#38bdf8" : "#182430", color: tab==="MATCHMAKER" ? "#000" : "#cbd5e1", border:"none" }}>⚡ Matchmaker DB ({pool.length})</button>
+            <button data-tour="prom-team" type="button" onClick={() => setTab("TEAM")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: tab==="TEAM" ? "#2ecc71" : "#182430", color: tab==="TEAM" ? "#000" : "#cbd5e1", border:"none" }}>👥 Matchmakers &amp; Staff</button>
           </div>
         </div>
+        <button type="button" onClick={() => setShowTour(true)} style={{ padding:"5px 9px", borderRadius:"6px", background:"#1e293b", color:"#5eead4", border:"1px solid #14b8a6", fontSize:"0.73rem", fontWeight:"bold", cursor:"pointer" }}>❓ Spotlight Guide</button>
+      </div>
 
-        {!ws && (
-          <form onSubmit={activatePromoter} style={{ background:"#16222f", border:"1px solid #14b8a6", borderRadius:"9px", padding:"12px", marginBottom:"12px", display:"flex", gap:"8px", flexWrap:"wrap", alignItems:"center" }}>
-            <input required placeholder="Your Promotion / Organization Name (100% Free Instant Activation)" value={orgName} onChange={e => setOrgName(e.target.value)} style={{ ...inp, flex:"1 1 240px" }} />
-            <button type="submit" style={{ background:"#14b8a6", color:"#000", border:"none", borderRadius:"6px", padding:"9px 14px", fontWeight:"800", cursor:"pointer" }}>🚀 Activate Free Promoter Account</button>
-          </form>
-        )}
+      {msg && <div style={{ background:"#132a1c", border:"1px solid #2ecc71", color:"#4ade80", padding:"7px 10px", borderRadius:"6px", fontSize:"0.78rem", fontWeight:"bold", marginBottom:"8px" }}>{msg}</div>}
 
-        <div style={{ display:"flex", gap:"6px", flexWrap:"wrap", marginBottom:"12px" }}>
-          {[["MATCHMAKER","🥊 Matchmaker DB (" + pool.length + ")"],["BLAST","🚨 Pullout Replacement"],["UPDATES","📢 Competitor Info & Q&A"],["TEAM","👥 Matchmakers & Staff"]].map(([k, l]) => (
-            <button key={k} type="button" onClick={() => setTab(k)} style={{ flex:"1 1 135px", padding:"8px", borderRadius:"7px", fontWeight:"800", fontSize:"0.77rem", cursor:"pointer", background: tab===k ? "#14b8a6" : "#182030", color: tab===k ? "#000" : "#cbd5e1", border:"none" }}>{l}</button>
+      {tab === "CHECKINS" && (
+        <div style={{ display:"grid", gap:"6px" }}>
+          <div style={{ fontSize:"0.78rem", color:"#93c5fd" }}>Athletes submit Virtual Weigh-Ins, Coach Wristbands &amp; Walkout songs via the <b>🥋 Event Hub / Check-In</b> button right on your Event Card:</div>
+          {checkins.length === 0 ? <div style={{ color:"#94a3b8", fontSize:"0.8rem" }}>No pre-fight check-ins submitted yet. Share your Event Card&apos;s Hub link with booked competitors!</div> : checkins.slice(0, 25).map((c, i) => (
+            <div key={i} style={{ background:"#16202c", border:"1px solid #283648", borderRadius:"7px", padding:"8px 10px", fontSize:"0.78rem", display:"flex", justifyContent:"space-between", flexWrap:"wrap", gap:"8px" }}>
+              <div>
+                <b style={{ color:"#fff" }}>{c.athleteName}</b> ({c.academy}) • <span style={{ color:"#4ade80" }}>Weight: {c.weight || "Pending"}</span>
+                <div style={{ color:"#94a3b8", fontSize:"0.74rem" }}>Corners: {[c.corner1, c.corner2].filter(Boolean).join(", ") || "None listed"} {c.phonetic ? " • Say: " + c.phonetic : ""}</div>
+              </div>
+              <div style={{ display:"flex", gap:"6px", alignItems:"center" }}>
+                {c.scaleProofUrl && <a href={c.scaleProofUrl} target="_blank" rel="noreferrer" style={{ color:"#38bdf8", fontWeight:"bold" }}>⚖️ Scale Proof ↗</a>}
+                {c.walkoutUrl && <a href={c.walkoutUrl} target="_blank" rel="noreferrer" style={{ color:"#fbbf24", fontWeight:"bold" }}>🎵 Walkout ↗</a>}
+                {c.posterPhotoUrl && <a href={c.posterPhotoUrl} target="_blank" rel="noreferrer" style={{ color:"#4ade80", fontWeight:"bold" }}>📸 Photo ↗</a>}
+              </div>
+            </div>
           ))}
         </div>
+      )}
 
-        {msg && <div style={{ background:"#132a1c", border:"1px solid #2ecc71", color:"#4ade80", padding:"8px 11px", borderRadius:"7px", fontSize:"0.8rem", fontWeight:"bold", marginBottom:"10px" }}>{msg}</div>}
-
-        {tab === "MATCHMAKER" && (
-          <div style={{ display:"grid", gap:"8px" }}>
-            {pool.length === 0 ? <div style={{ color:"#94a3b8", fontSize:"0.84rem" }}>Athletes who check &quot;Open for SuperFight Matchmaking&quot; inside their Trophy Room appear here automatically for your matchmakers!</div> : pool.map((a, i) => (
-              <div key={i} style={{ background:"#182030", border:"1px solid #2d3748", borderRadius:"8px", padding:"10px 12px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
-                <div>
-                  <div style={{ fontWeight:"800", color:"#fff" }}>{a.name} {a.belt && <span style={{ color:"#fbbf24", fontSize:"0.78rem" }}>• {a.belt}</span>}</div>
-                  <div style={{ fontSize:"0.76rem", color:"#94a3b8" }}>{a.coach ? "Coach: " + a.coach : "Verified Athlete"} {a.funFact ? " • ★ " + a.funFact : ""}</div>
-                </div>
-                {a.handle && <a href={"https://instagram.com/" + a.handle} target="_blank" rel="noreferrer" style={{ background:"#38bdf8", color:"#000", padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", textDecoration:"none" }}>📩 Offer Bout @{a.handle}</a>}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {tab === "BLAST" && (
-          <form onSubmit={postReplacementBlast} style={{ display:"grid", gap:"8px" }}>
-            <div style={{ fontSize:"0.82rem", color:"#fde68a", fontWeight:"bold" }}>🚨 Need a Late-Notice SuperFight Replacement? Post an Open Slot to the Matchmaking Pool:</div>
-            <input required placeholder="Event Name & Date (e.g. ATX Invitational — This Saturday)" value={blastForm.eventName} onChange={e => setBlastForm({...blastForm, eventName: e.target.value})} style={inp} />
-            <div style={{ display:"flex", gap:"8px", flexWrap:"wrap" }}>
-              <input required placeholder="Weight & Belt Needed (e.g. 145 lbs Purple/Brown)" value={blastForm.weightBelt} onChange={e => setBlastForm({...blastForm, weightBelt: e.target.value})} style={{ ...inp, flex:1 }} />
-              <input required placeholder="Matchmaker @IG or Email" value={blastForm.contact} onChange={e => setBlastForm({...blastForm, contact: e.target.value})} style={{ ...inp, flex:1 }} />
-            </div>
-            <input placeholder="Purse / Ruleset / Travel Note" value={blastForm.note} onChange={e => setBlastForm({...blastForm, note: e.target.value})} style={inp} />
-            <button type="submit" style={{ background:"#f59e0b", color:"#000", border:"none", borderRadius:"7px", padding:"10px", fontWeight:"800", cursor:"pointer" }}>⚡ Broadcast Open Slot Now</button>
-          </form>
-        )}
-
-        {tab === "UPDATES" && (
-          <form onSubmit={publishOfficialUpdate} style={{ display:"grid", gap:"9px" }}>
-            <div style={{ fontSize:"0.82rem", color:"#93c5fd", fontWeight:"bold" }}>📢 Pin Official Weigh-In / Schedule Answers &amp; Live Banners to Your Event Card:</div>
-            <select value={bannerEvId} onChange={e => setBannerEvId(e.target.value)} style={inp}>
+      {tab === "TICKETS" && (
+        <form onSubmit={saveCardConfig} style={{ display:"grid", gap:"8px" }}>
+          <div style={{ display:"flex", gap:"8px", flexWrap:"wrap" }}>
+            <select value={cardId} onChange={e => setCardId(e.target.value)} style={{ ...inp, flex:"1 1 240px" }}>
               {(events || []).slice(0, 80).map(ev => <option key={ev.id} value={ev.id}>{ev.name} ({ev.date})</option>)}
             </select>
-            <input placeholder="Top-of-Card Alert Banner (e.g. Doors Open 7:30 AM • Brackets Live!)" value={bannerTxt} onChange={e => setBannerTxt(e.target.value)} style={inp} />
-            <textarea rows={3} placeholder="Official Competitor Info / FAQ Answer (weigh-in allowance, coach pass policy, ruleset notes — pins at top of Event Info & Q&A!)" value={officialFaq} onChange={e => setOfficialFaq(e.target.value)} style={inp} />
-            <button type="submit" style={{ background:"#2ecc71", color:"#000", border:"none", borderRadius:"7px", padding:"10px", fontWeight:"800", cursor:"pointer" }}>📢 Publish Official Update to Event Card</button>
-          </form>
-        )}
-
-        {tab === "TEAM" && (
-          <div style={{ display:"grid", gap:"9px" }}>
-            {!ws ? <div style={{ color:"#94a3b8", fontSize:"0.84rem" }}>Activate your free Promoter Organization above first to add Matchmakers &amp; Event Staff!</div> : (
-              <>
-                <div style={{ fontSize:"0.82rem", color:"#4ade80", fontWeight:"bold" }}>✓ Linked Matchmakers &amp; Event Staff ({(ws.staffEmails || []).length}):</div>
-                <div style={{ display:"flex", gap:"6px", flexWrap:"wrap" }}>
-                  {(ws.staffEmails || []).map((em, i) => <span key={i} style={{ background:"#182030", border:"1px solid #334155", borderRadius:"5px", padding:"4px 9px", fontSize:"0.76rem" }}>🥊 {em}</span>)}
-                </div>
-                <form onSubmit={addMatchmaker} style={{ display:"flex", gap:"8px", flexWrap:"wrap" }}>
-                  <input required type="email" placeholder="Add Matchmaker or Staff email..." value={staffInput} onChange={e => setStaffInput(e.target.value)} style={{ ...inp, flex:1 }} />
-                  <button type="submit" style={{ background:"#14b8a6", color:"#000", border:"none", borderRadius:"6px", padding:"9px 14px", fontWeight:"800", cursor:"pointer" }}>+ Grant Matchmaker Access</button>
-                </form>
-              </>
-            )}
+            <input type="url" placeholder="Official Ticket / VIP Table Checkout URL (Eventbrite, Stripe, Square)" value={cfg.ticketUrl} onChange={e => setCfg({...cfg, ticketUrl: e.target.value})} style={{ ...inp, flex:"1 1 260px" }} />
           </div>
-        )}
-      </div>
+          <div style={{ display:"flex", gap:"8px", flexWrap:"wrap" }}>
+            <input placeholder="GA Tier Label & Price (e.g. General Admission — $45)" value={cfg.gaLabel} onChange={e => setCfg({...cfg, gaLabel: e.target.value})} style={{ ...inp, flex:1 }} />
+            <input placeholder="VIP Table Label & Price (e.g. 8-Seat Mat-Side Table — $600)" value={cfg.vipTableLabel} onChange={e => setCfg({...cfg, vipTableLabel: e.target.value})} style={{ ...inp, flex:1 }} />
+          </div>
+          <div style={{ display:"flex", gap:"8px", flexWrap:"wrap" }}>
+            <input placeholder="Official Weigh-In Time / Allowance Info" value={cfg.weighInInfo} onChange={e => setCfg({...cfg, weighInInfo: e.target.value})} style={{ ...inp, flex:1 }} />
+            <input placeholder="Coach / Corner Pass Policy" value={cfg.cornerInfo} onChange={e => setCfg({...cfg, cornerInfo: e.target.value})} style={{ ...inp, flex:1 }} />
+          </div>
+          <button type="submit" style={{ background:"#ff9f43", color:"#000", border:"none", borderRadius:"6px", padding:"9px", fontWeight:"800", cursor:"pointer" }}>💾 Publish Ticket Tiers &amp; Competitor Briefing to Event Hub</button>
+        </form>
+      )}
+
+      {tab === "MATCHMAKER" && (
+        <div style={{ display:"grid", gap:"6px" }}>
+          {pool.length === 0 ? <div style={{ color:"#94a3b8", fontSize:"0.8rem" }}>Athletes who check &quot;Open for SuperFights&quot; in their Trophy Room Bio appear here automatically!</div> : pool.map((a, i) => (
+            <div key={i} style={{ background:"#16202c", padding:"8px 10px", borderRadius:"6px", display:"flex", justifyContent:"space-between", alignItems:"center", fontSize:"0.8rem" }}>
+              <span><b>{a.name}</b> {a.belt ? "• " + a.belt : ""} {a.age ? "• Age " + a.age : ""}</span>
+              {a.handle && <a href={"https://instagram.com/" + a.handle} target="_blank" rel="noreferrer" style={{ background:"#38bdf8", color:"#000", padding:"4px 9px", borderRadius:"5px", fontWeight:"800", textDecoration:"none", fontSize:"0.74rem" }}>DM @{a.handle}</a>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tab === "TEAM" && (
+        <div style={{ display:"grid", gap:"8px" }}>
+          <div style={{ fontSize:"0.79rem", color:"#4ade80", fontWeight:"bold" }}>✓ Linked Matchmakers &amp; Event Staff ({(ws.staffEmails || []).length}):</div>
+          <div style={{ display:"flex", gap:"6px", flexWrap:"wrap" }}>
+            {(ws.staffEmails || []).map((em, i) => <span key={i} style={{ background:"#16202c", border:"1px solid #334155", borderRadius:"5px", padding:"3px 8px", fontSize:"0.74rem" }}>🥊 {em}</span>)}
+          </div>
+          <form onSubmit={addStaff} style={{ display:"flex", gap:"6px", flexWrap:"wrap" }}>
+            <input required type="email" placeholder="Add Matchmaker or Staff email..." value={staffInput} onChange={e => setStaffInput(e.target.value)} style={{ ...inp, flex:1 }} />
+            <button type="submit" style={{ background:"#14b8a6", color:"#000", border:"none", borderRadius:"6px", padding:"7px 12px", fontWeight:"800", cursor:"pointer" }}>+ Add Matchmaker / Staff</button>
+          </form>
+        </div>
+      )}
     </div>
   );
 }

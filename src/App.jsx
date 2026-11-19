@@ -1,4 +1,5 @@
-import { GuidedTourModal, MultiCategoryDropdown, PromoterHostModal } from "./proWorkspaces";
+import { GuidedTourModal, MultiCategoryDropdown, AcademyProSuite, PromoterHomeDashboard } from "./proWorkspaces";
+import { EventPortalModal } from "./EventPortalModal";
 import { UPCOMING_UFC_SUPERFIGHTS, getEventGiTags, getDeadlineBadge } from "./proHubData";
 import { EventPhotogModal, fetchPhotogCounts } from "./photogModal";
 import { TaleOfTheTapeModal, WeekendWarRoomModal, SubmitEventModal } from "./proModals";
@@ -326,7 +327,43 @@ export default function App() {
   const [searchTerm, setSearchTerm] = useState('');
   const [federationFilter, setFederationFilter] = useState('All');
   const [selectedFeds, setSelectedFeds] = useState([]);
-  const [showPromoterModal, setShowPromoterModal] = useState(false);
+  const [userRole, setUserRole] = useState('user');
+  const [portalEvent, setPortalEvent] = useState(null);
+  const [portalSupport, setPortalSupport] = useState('');
+  useEffect(() => {
+    if (!user) { setUserRole('user'); return; }
+    let cached = '';
+    try { cached = localStorage.getItem('md_role_' + user.uid) || ''; } catch {}
+    if (cached) setUserRole(cached);
+    const em = (user.email || '').toLowerCase();
+    getDocs(query(collection(db, 'mat_watches'), where('uid', '==', user.uid))).then(sn => {
+      const rDoc = sn.docs.map(d => d.data()).find(x => x.kind === 'user_role');
+      if (rDoc?.role) {
+        setUserRole(rDoc.role);
+        try { localStorage.setItem('md_role_' + user.uid, rDoc.role); } catch {}
+      }
+    }).catch(() => {});
+    getDocs(query(collection(db, 'mat_watches'), where('kind', '==', 'academy_workspace'))).then(sn => {
+      if (sn.docs.some(d => (d.data().staffEmails || []).includes(em) || d.data().ownerUid === user.uid)) setUserRole(r => r === 'user' ? 'academy' : r);
+    }).catch(() => {});
+    getDocs(query(collection(db, 'mat_watches'), where('kind', '==', 'promoter_workspace'))).then(sn => {
+      if (sn.docs.some(d => (d.data().staffEmails || []).includes(em) || d.data().ownerUid === user.uid)) setUserRole(r => r === 'user' ? 'promoter' : r);
+    }).catch(() => {});
+  }, [user]);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const hubId = params.get('hub');
+    if (hubId && events.length > 0) {
+      const target = events.find(e => e.id === hubId) || UPCOMING_UFC_SUPERFIGHTS.find(e => e.id === hubId);
+      if (target) { setPortalSupport(params.get('support') || ''); setPortalEvent(target); }
+    }
+  }, [events]);
+  const cycleOrSetRole = async (nextRole) => {
+    if (!user) return;
+    setUserRole(nextRole);
+    try { localStorage.setItem('md_role_' + user.uid, nextRole); } catch {}
+    await setDoc(doc(db, 'mat_watches', 'role_' + user.uid), { kind: 'user_role', uid: user.uid, email: (user.email || '').toLowerCase(), role: nextRole, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
+  };
   const [showSiteTour, setShowSiteTour] = useState(() => {
     try { return !localStorage.getItem("md_seen_tour_v1"); } catch { return false; }
   });
@@ -655,7 +692,7 @@ export default function App() {
   return (
     <div style={{ backgroundColor: '#000', minHeight: '100vh', color: '#fff', padding: '20px', fontFamily: 'sans-serif', position: 'relative' }}>
       
-      {showAuthModal && <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />}
+      {showAuthModal && <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} onRoleSaved={setUserRole} />}
       {livePushToast && (
         <div style={{ position:'fixed', top:'18px', right:'18px', zIndex:10099, background:'#132a1c', border:'2px solid #2ecc71', borderRadius:'10px', padding:'14px 18px', maxWidth:'calc(100vw - 36px)', boxShadow:'0 10px 30px rgba(0,0,0,0.6)', color:'#fff' }}>
           <div style={{ display:'flex', justifyContent:'space-between', gap:'10px', alignItems:'flex-start' }}>
@@ -787,7 +824,7 @@ export default function App() {
       )}
 
       {showSiteTour && <GuidedTourModal mode="SITE" onClose={closeSiteTour} />}
-      {showPromoterModal && <PromoterHostModal events={mergedWithUfcCards} user={user} isAdmin={isAdmin} onRequireAuth={() => setShowAuthModal(true)} onClose={() => setShowPromoterModal(false)} />}
+      {portalEvent && <EventPortalModal event={portalEvent} user={user} initialSupport={portalSupport} onRequireAuth={() => setShowAuthModal(true)} onOpenQa={() => setSelectedCommentEvent(portalEvent)} onClose={() => { setPortalEvent(null); setPortalSupport(''); }} />}
       {photogEvent && <EventPhotogModal event={photogEvent} onClose={() => setPhotogEvent(null)} onRefreshCounts={refreshPhotogCounts} />}
       {selectedCommentEvent && (
         <VenueIntelModal
@@ -812,16 +849,24 @@ export default function App() {
     </div>
   </div>
   <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', alignItems:'center' }}>
-    <button onClick={() => setShowLeaderboard(true)} style={{ backgroundColor:'#141820', color:'#f8fafc', padding:'9px 14px', border:'1px solid #475569', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.88rem' }}>🏆 Standings</button>
-    <button onClick={() => setShowAthleteSearch(true)} style={{ backgroundColor:'#141820', color:'#38bdf8', padding:'9px 14px', border:'1px solid #0284c7', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.88rem' }}>🔍 Athlete Lookup</button>
-    <button onClick={() => setShowWarRoom(true)} style={{ backgroundColor: myWatches.length > 0 ? '#132a1c' : '#141820', color: myWatches.length > 0 ? '#4ade80' : '#cbd5e1', padding:'9px 14px', border: myWatches.length > 0 ? '1px solid #2ecc71' : '1px solid #334155', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.88rem' }}>🔥 War Room{myWatches.length > 0 ? ` (${myWatches.length})` : ''}</button>
-    <button onClick={() => setShowPromoterModal(true)} style={{ backgroundColor:'#122629', color:'#5eead4', padding:'9px 13px', border:'1px solid #14b8a6', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.86rem' }}>🏟️ Host / Promoters</button>
+    <button data-tour="nav-standings" onClick={() => setShowLeaderboard(true)} style={{ backgroundColor:'#141820', color:'#f8fafc', padding:'9px 14px', border:'1px solid #475569', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.88rem' }}>🏆 Standings</button>
+    <button data-tour="nav-lookup" onClick={() => setShowAthleteSearch(true)} style={{ backgroundColor:'#141820', color:'#38bdf8', padding:'9px 14px', border:'1px solid #0284c7', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.88rem' }}>🔍 Athlete Lookup</button>
+    <button data-tour="nav-warroom" onClick={() => setShowWarRoom(true)} style={{ backgroundColor: myWatches.length > 0 ? '#132a1c' : '#141820', color: myWatches.length > 0 ? '#4ade80' : '#cbd5e1', padding:'9px 14px', border: myWatches.length > 0 ? '1px solid #2ecc71' : '1px solid #334155', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.88rem' }}>🔥 War Room{myWatches.length > 0 ? ` (${myWatches.length})` : ''}</button>
     <button onClick={() => setShowSubmitModal(true)} style={{ backgroundColor:'#ff9f43', color:'#000', padding:'9px 14px', border:'none', borderRadius:'7px', fontWeight:'800', cursor:'pointer', fontSize:'0.88rem' }}>+ Submit</button>
-    <button onClick={() => setShowSiteTour(true)} title="Interactive Site Walkthrough" style={{ backgroundColor:'#141820', color:'#cbd5e1', padding:'8px 10px', border:'1px solid #334155', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.82rem' }}>❓ Tour</button>
+    <button onClick={() => setShowSiteTour(true)} title="Interactive Spotlight Walkthrough" style={{ backgroundColor:'#141820', color:'#cbd5e1', padding:'8px 10px', border:'1px solid #334155', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.82rem' }}>❓ Guide</button>
+    {user && (
+      <select value={userRole} onChange={e => cycleOrSetRole(e.target.value)} title="Account View Mode" style={{ backgroundColor:'#141820', color:'#93c5fd', padding:'8px 9px', border:'1px solid #2d3b52', borderRadius:'7px', fontSize:'0.78rem', fontWeight:'bold', cursor:'pointer' }}>
+        <option value="user">🥋 Athlete/User</option>
+        <option value="academy">🏛️ Academy Hub</option>
+        <option value="promoter">🏟️ Promoter Hub</option>
+      </select>
+    )}
     <button onClick={() => user ? signOut(auth) : setShowAuthModal(true)} style={{ backgroundColor:'transparent', color:'#94a3b8', padding:'8px 10px', border:'1px solid #262f3d', borderRadius:'7px', cursor:'pointer', fontSize:'0.8rem' }}>{user ? 'Sign Out' : 'Sign In'}</button>
   </div>
 </header>
         <SponsorBanner />
+        {user && userRole === 'academy' && <AcademyProSuite user={user} isAdmin={isAdmin} isHomepage={true} onRequireAuth={() => setShowAuthModal(true)} />}
+        {user && userRole === 'promoter' && <PromoterHomeDashboard events={mergedWithUfcCards} user={user} />}
         <AnalyticsAndPwaManager />
 {isAdmin && (
   <div style={{ backgroundColor: '#161616', border: '1px solid #ff9f43', borderRadius: '8px', padding: '16px', marginBottom: '20px' }}>
@@ -857,7 +902,9 @@ export default function App() {
           </div>
         </div>
 
-        <div className="md-filter-inputs" style={{ display: 'flex', gap: '10px', marginBottom: '4px', flexWrap: 'wrap' }}>
+        <div data-tour="filter-bar" style={{ backgroundColor:'#12161f', border:'1px solid #232b3a', borderRadius:'10px', padding:'11px 13px', marginBottom:'14px', textAlign:'left' }}>
+          <div style={{ color:'#94a3b8', fontSize:'0.7rem', fontWeight:'800', letterSpacing:'1.6px', textTransform:'uppercase', marginBottom:'7px' }}>Filter Events</div>
+          <div className="md-filter-inputs" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ position: 'relative', flex: '1', minWidth: '200px' }}>
             <input type="text" placeholder="Search events or locations..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '12px 35px 12px 12px', borderRadius: '5px', border: '1px solid #333', backgroundColor: '#111', color: '#fff', fontSize: '1rem' }} />
             {searchTerm && (
@@ -879,6 +926,7 @@ export default function App() {
           </select>
         </div>
         </div>
+        </div>
 
         {showSavedOnly && user && (<div style={{ backgroundColor:'#141820', border:'1px solid #3155', borderRadius:'8px', padding:'12px 16px', marginBottom:'18px', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'10px' }}><span style={{ color:'#e2e8f0', fontSize:'0.92rem' }}>Showing <strong>{savedIds.length}</strong> saved tournaments in your personal schedule ({user.email}).</span>{savedIds.length > 0 && <button onClick={() => downloadIcs(events.filter(x => savedIds.includes(x.id)), 'my-matdates-schedule.ics')} style={{ backgroundColor:'#1e293b', color:'#38bdf8', border:'1px solid #38bdf8', borderRadius:'6px', padding:'7px 12px', fontWeight:'bold', cursor:'pointer', fontSize:'0.85rem' }}>📅 Add My {savedIds.length} Saved Events to Phone Calendar</button>}</div>)}
           {viewMode === 'calendar' ? (
@@ -887,7 +935,7 @@ export default function App() {
           </div>
         ) : (
           <div style={{ display: viewMode === 'grid' ? 'grid' : 'flex', flexDirection: viewMode === 'list' ? 'column' : 'row', gridTemplateColumns: viewMode === 'grid' ? 'repeat(auto-fill, minmax(300px, 1fr))' : 'none', gap: '20px' }}>
-            {filteredEvents.map(ev => {
+            {filteredEvents.map((ev, evIdx) => {
               const isJJWL = ev.id && ev.id.toLowerCase().startsWith('jjwl');
               const isADCC = (ev.id && ev.id.toLowerCase().includes('adcc')) || (ev.name && ev.name.toLowerCase().includes('adcc'));
               const isUFC = /\bufc\b/i.test((ev.id || '') + ' ' + (ev.name || ''));
@@ -898,7 +946,7 @@ export default function App() {
               const evBorderColor = isUFC ? '#d20a0a' : isADCC ? '#F1C40F' : (ev.type === 'Super Fight' || isStreamOnly) ? '#14b8a6' : (isJJWL ? '#ffffff' : (ev.color || '#ff9f43'));
               
               return (
-                <div key={ev.id} style={{ backgroundColor: '#111', borderLeft: `5px solid ${evBorderColor}`, padding: '20px', borderRadius: '4px', display: 'flex', flexDirection: 'column' }}>
+                <div key={ev.id} data-tour={evIdx === 0 ? 'first-card' : undefined} style={{ backgroundColor: '#111', borderLeft: `5px solid ${evBorderColor}`, padding: '20px', borderRadius: '4px', display: 'flex', flexDirection: 'column' }}>
                   {(() => { const dbadge = getDeadlineBadge(ev); return dbadge ? <div style={{ background: dbadge.bg, color: dbadge.color, border: "1px solid " + dbadge.border, borderRadius: "5px", padding: "4px 9px", fontSize: "0.73rem", fontWeight: "800", marginBottom: "8px", textAlign: "left" }}>{dbadge.text}</div> : null; })()}
                   <h3 style={{ margin: '0 0 10px 0', fontSize: '1.2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}><span>{ev.name} {ev.isKidsEvent && <span>🐯</span>}</span><button onClick={() => toggleSaveEvent(ev.id)} title="Save to My Schedule" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.35rem', lineHeight: 1, color: savedIds.includes(ev.id) ? '#ff9f43' : '#555', padding: 0 }}>{savedIds.includes(ev.id) ? '★' : '☆'}</button></h3>
                   {(() => { const gt = getEventGiTags(ev); return (
@@ -942,6 +990,11 @@ export default function App() {
                         style={{ flex: 1, backgroundColor: '#1a1a1a', color: evBorderColor, border: `1px solid ${evBorderColor}`, padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', minWidth: '120px' }}
                       >
                         🥊 View Fight Card
+                      </button>
+                    )}
+                    {(ev.type === 'Super Fight' || isStreamOnly || ev.autoApproved) && (
+                      <button onClick={() => setPortalEvent(ev)} title="Official Competitor Info, Virtual Weigh-In, Corner Passes & VIP Tables" style={{ flex: 1, backgroundColor: '#112226', color: '#5eead4', border: '1px solid #14b8a6', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', minWidth: '135px' }}>
+                        🥋 Event Hub / Check-In
                       </button>
                     )}
 
