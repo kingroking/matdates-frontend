@@ -56,19 +56,53 @@ export function GuidedTourModal({ mode = "SITE", onClose }) {
   const [rect, setRect] = useState(null);
   const cur = steps[idx];
 
+  // Strictly block manual user wheel, touch-drag & keyboard scrolling while Spotlight Guide is open!
   useEffect(() => {
-    const updateRect = () => {
-      const el = document.querySelector(cur.sel);
-      if (!el) { setRect(null); return; }
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-      setTimeout(() => {
-        const r = el.getBoundingClientRect();
-        setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
-      }, 220);
+    const blockScroll = (e) => { e.preventDefault(); };
+    const blockKeys = (e) => {
+      if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", " "].includes(e.key)) e.preventDefault();
     };
-    updateRect();
-    window.addEventListener("resize", updateRect);
-    return () => window.removeEventListener("resize", updateRect);
+    window.addEventListener("wheel", blockScroll, { passive: false });
+    window.addEventListener("touchmove", blockScroll, { passive: false });
+    window.addEventListener("keydown", blockKeys, { passive: false });
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("wheel", blockScroll);
+      window.removeEventListener("touchmove", blockScroll);
+      window.removeEventListener("keydown", blockKeys);
+    };
+  }, []);
+
+  useEffect(() => {
+    let lockTimer;
+    const measure = () => {
+      const el = document.querySelector(cur.sel);
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
+    };
+    const syncToTarget = () => {
+      const el = document.querySelector(cur.sel);
+      if (!el) { setRect(null); document.body.style.overflow = "hidden"; return; }
+      // Briefly allow programmatic centering, track position, then freeze body scroll
+      document.body.style.overflow = "";
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      measure();
+      const t1 = setTimeout(measure, 140);
+      lockTimer = setTimeout(() => {
+        measure();
+        document.body.style.overflow = "hidden";
+      }, 320);
+      return () => clearTimeout(t1);
+    };
+    syncToTarget();
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, { passive: true });
+    return () => {
+      clearTimeout(lockTimer);
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure);
+    };
   }, [idx, cur.sel]);
 
   const vw = typeof window !== "undefined" ? window.innerWidth : 900;
@@ -79,7 +113,7 @@ export function GuidedTourModal({ mode = "SITE", onClose }) {
   const popLeft = rect ? Math.min(vw - popWidth - 12, Math.max(12, rect.left + rect.width / 2 - popWidth / 2)) : Math.max(12, vw / 2 - popWidth / 2);
 
   return (
-    <div onClick={onClose} style={{ position:"fixed", inset:0, zIndex:10120, background: rect ? "transparent" : "rgba(0,0,0,0.65)" }}>
+    <div onClick={onClose} style={{ position:"fixed", inset:0, zIndex:10120, touchAction:"none", overscrollBehavior:"none", background: rect ? "transparent" : "rgba(0,0,0,0.65)" }}>
       {rect && (
         <div style={{
           position:"fixed",
@@ -89,16 +123,16 @@ export function GuidedTourModal({ mode = "SITE", onClose }) {
           height: rect.height + 12,
           borderRadius:"10px",
           border:"2px solid #38bdf8",
-          boxShadow:"0 0 0 9999px rgba(0,0,0,0.72), 0 0 22px rgba(56,189,248,0.85)",
+          boxShadow:"0 0 0 9999px rgba(0,0,0,0.75), 0 0 22px rgba(56,189,248,0.85)",
           pointerEvents:"none",
-          transition:"all 0.25s ease"
+          transition:"all 0.22s ease"
         }} />
       )}
       <div onClick={e => e.stopPropagation()} style={{
         position:"fixed", top: popTop, left: popLeft, width: popWidth,
         background:"#0f172a", border:"1.5px solid #38bdf8", borderRadius:"12px",
         padding:"14px 15px", color:"#fff", textAlign:"left",
-        boxShadow:"0 14px 34px rgba(0,0,0,0.85)", transition:"all 0.25s ease"
+        boxShadow:"0 14px 34px rgba(0,0,0,0.88)", transition:"all 0.22s ease"
       }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"5px" }}>
           <span style={{ color:"#38bdf8", fontSize:"0.7rem", fontWeight:"800", letterSpacing:"1px" }}>SPOTLIGHT GUIDE • {idx + 1} OF {steps.length}</span>
@@ -380,7 +414,7 @@ export function PromoterHomeDashboard({ events, user }) {
   const [checkins, setCheckins] = useState([]);
   const [sales, setSales] = useState([]);
   const [cardId, setCardId] = useState(events?.[0]?.id || "");
-  const [cfg, setCfg] = useState({ ticketUrl: "", gaLabel: "", vipTableLabel: "", weighInInfo: "", cornerInfo: "", bannerTxt: "" });
+  const [cfg, setCfg] = useState({ ticketUrl: "", gaLabel: "", vipTableLabel: "", weighInInfo: "", cornerInfo: "", fighterPin: "", fighterEmails: "" });
   const [staffInput, setStaffInput] = useState("");
   const [showTour, setShowTour] = useState(false);
   const [msg, setMsg] = useState("");
@@ -492,7 +526,11 @@ export function PromoterHomeDashboard({ events, user }) {
             <input placeholder="Official Weigh-In Time / Allowance Info" value={cfg.weighInInfo} onChange={e => setCfg({...cfg, weighInInfo: e.target.value})} style={{ ...inp, flex:1 }} />
             <input placeholder="Coach / Corner Pass Policy" value={cfg.cornerInfo} onChange={e => setCfg({...cfg, cornerInfo: e.target.value})} style={{ ...inp, flex:1 }} />
           </div>
-          <button type="submit" style={{ background:"#ff9f43", color:"#000", border:"none", borderRadius:"6px", padding:"9px", fontWeight:"800", cursor:"pointer" }}>💾 Publish Ticket Tiers &amp; Competitor Briefing to Event Hub</button>
+          <div style={{ display:"flex", gap:"8px", flexWrap:"wrap" }}>
+            <input placeholder="Fighter Check-In Access PIN (e.g. 2026 — keeps Check-In private!)" value={cfg.fighterPin || ""} onChange={e => setCfg({...cfg, fighterPin: e.target.value})} style={{ ...inp, flex:"1 1 200px" }} />
+            <input placeholder="Booked Fighter Emails (comma-separated — auto-unlocks Check-In)" value={cfg.fighterEmails || ""} onChange={e => setCfg({...cfg, fighterEmails: e.target.value})} style={{ ...inp, flex:"2 1 260px" }} />
+          </div>
+          <button type="submit" style={{ background:"#ff9f43", color:"#000", border:"none", borderRadius:"6px", padding:"9px", fontWeight:"800", cursor:"pointer" }}>💾 Publish Ticket Tiers, Fighter Access &amp; Briefing to Event Hub</button>
         </form>
       )}
 

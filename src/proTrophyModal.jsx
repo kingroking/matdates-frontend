@@ -223,8 +223,8 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
                 title={bio?.handle ? "Follow @" + bio.handle + " on Instagram" : "Instagram profile not linked yet — click to claim"}
                 style={{
                   display:"inline-flex", alignItems:"center", gap:"5px",
-                  background: bio?.handle ? "linear-gradient(135deg,#f58529,#dd2a7b,#8134af)" : "#1e293b",
-                  color:"#ffffff", border: bio?.handle ? "none" : "1px solid #475569",
+                  background: bio?.handle ? "#E1306C" : "#1e293b",
+                  color: bio?.handle ? "#ffffff" : "#94a3b8", border: bio?.handle ? "1px solid #f472b6" : "1px solid #475569", boxShadow: bio?.handle ? "0 2px 10px rgba(225,48,108,0.45)" : "none",
                   borderRadius:"7px", padding:"5px 9px", cursor:"pointer", fontWeight:"800", fontSize:"0.75rem"
                 }}
               >

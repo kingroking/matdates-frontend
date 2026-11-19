@@ -642,7 +642,10 @@ function App() {
     }
     try {
       if (!localStorage.getItem('md_seen_tour_v1')) {
-        const t = setTimeout(() => setShowSiteTour(true), 700);
+        const t = setTimeout(() => {
+          try { localStorage.setItem('md_seen_tour_v1', '1'); } catch {}
+          setShowSiteTour(true);
+        }, 700);
         return () => clearTimeout(t);
       }
     } catch {}
@@ -846,6 +849,9 @@ function App() {
       )}
 
       <div style={{ maxWidth: '1200px', margin: '0 auto', minHeight: 'calc(100vh - 120px)' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '4px' }}>
+          <button onClick={() => setShowSiteTour(true)} title="Take quick spotlight tour" style={{ backgroundColor: 'transparent', color: '#64748b', padding: '3px 9px', border: '1px solid #1e293b', borderRadius: '12px', fontSize: '0.73rem', cursor: 'pointer' }}>❓ Site Guide</button>
+        </div>
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
   <div onClick={handleLogoClick} style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', userSelect: 'none' }}>
     <img src="/mat-icon.png" alt="MatDates" style={{ height: '58px', width: '58px', objectFit: 'contain' }} />
@@ -861,14 +867,6 @@ function App() {
     <button data-tour="nav-lookup" onClick={() => setShowAthleteSearch(true)} style={{ backgroundColor:'#141820', color:'#38bdf8', padding:'9px 14px', border:'1px solid #0284c7', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.88rem' }}>🔍 Athlete Lookup</button>
     <button data-tour="nav-warroom" onClick={() => setShowWarRoom(true)} style={{ backgroundColor: myWatches.length > 0 ? '#132a1c' : '#141820', color: myWatches.length > 0 ? '#4ade80' : '#cbd5e1', padding:'9px 14px', border: myWatches.length > 0 ? '1px solid #2ecc71' : '1px solid #334155', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.88rem' }}>🔥 War Room{myWatches.length > 0 ? ` (${myWatches.length})` : ''}</button>
     <button onClick={() => setShowSubmitModal(true)} style={{ backgroundColor:'#ff9f43', color:'#000', padding:'9px 14px', border:'none', borderRadius:'7px', fontWeight:'800', cursor:'pointer', fontSize:'0.88rem' }}>+ Submit</button>
-    <button onClick={() => setShowSiteTour(true)} title="Interactive Spotlight Walkthrough" style={{ backgroundColor:'#141820', color:'#cbd5e1', padding:'8px 10px', border:'1px solid #334155', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.82rem' }}>❓ Guide</button>
-    {user && (
-      <select value={userRole} onChange={e => cycleOrSetRole(e.target.value)} title="Account View Mode" style={{ backgroundColor:'#141820', color:'#93c5fd', padding:'8px 9px', border:'1px solid #2d3b52', borderRadius:'7px', fontSize:'0.78rem', fontWeight:'bold', cursor:'pointer' }}>
-        <option value="user">🥋 Athlete/User</option>
-        <option value="academy">🏛️ Academy Hub</option>
-        <option value="promoter">🏟️ Promoter Hub</option>
-      </select>
-    )}
     <button onClick={() => user ? signOut(auth) : setShowAuthModal(true)} style={{ backgroundColor:'transparent', color:'#94a3b8', padding:'8px 10px', border:'1px solid #262f3d', borderRadius:'7px', cursor:'pointer', fontSize:'0.8rem' }}>{user ? 'Sign Out' : 'Sign In'}</button>
   </div>
 </header>
@@ -1002,7 +1000,7 @@ function App() {
                     )}
                     {(ev.type === 'Super Fight' || isStreamOnly || ev.autoApproved) && (
                       <button onClick={() => setPortalEvent(ev)} title="Official Competitor Info, Virtual Weigh-In, Corner Passes & VIP Tables" style={{ flex: 1, backgroundColor: '#112226', color: '#5eead4', border: '1px solid #14b8a6', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', minWidth: '135px' }}>
-                        🥋 Event Hub / Check-In
+                        🎟️ Event Hub & Tickets
                       </button>
                     )}
 
