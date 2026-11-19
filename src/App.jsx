@@ -296,7 +296,7 @@ function CompetitorTable({ calcResult, event, onClose }) {
 const locales = { 'en-US': enUS }
 const localizer = dateFnsLocalizer({ format, parse, startOfWeek, getDay, locales })
 
-export default function App() {
+function App() {
   const [events, setEvents] = useState([]);
   const [pendingEvents, setPendingEvents] = useState([]);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -330,43 +330,7 @@ export default function App() {
   const [userRole, setUserRole] = useState('user');
   const [portalEvent, setPortalEvent] = useState(null);
   const [portalSupport, setPortalSupport] = useState('');
-  useEffect(() => {
-    if (!user) { setUserRole('user'); return; }
-    let cached = '';
-    try { cached = localStorage.getItem('md_role_' + user.uid) || ''; } catch {}
-    if (cached) setUserRole(cached);
-    const em = (user.email || '').toLowerCase();
-    getDocs(query(collection(db, 'mat_watches'), where('uid', '==', user.uid))).then(sn => {
-      const rDoc = sn.docs.map(d => d.data()).find(x => x.kind === 'user_role');
-      if (rDoc?.role) {
-        setUserRole(rDoc.role);
-        try { localStorage.setItem('md_role_' + user.uid, rDoc.role); } catch {}
-      }
-    }).catch(() => {});
-    getDocs(query(collection(db, 'mat_watches'), where('kind', '==', 'academy_workspace'))).then(sn => {
-      if (sn.docs.some(d => (d.data().staffEmails || []).includes(em) || d.data().ownerUid === user.uid)) setUserRole(r => r === 'user' ? 'academy' : r);
-    }).catch(() => {});
-    getDocs(query(collection(db, 'mat_watches'), where('kind', '==', 'promoter_workspace'))).then(sn => {
-      if (sn.docs.some(d => (d.data().staffEmails || []).includes(em) || d.data().ownerUid === user.uid)) setUserRole(r => r === 'user' ? 'promoter' : r);
-    }).catch(() => {});
-  }, [user]);
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const hubId = params.get('hub');
-    if (hubId && events.length > 0) {
-      const target = events.find(e => e.id === hubId) || UPCOMING_UFC_SUPERFIGHTS.find(e => e.id === hubId);
-      if (target) { setPortalSupport(params.get('support') || ''); setPortalEvent(target); }
-    }
-  }, [events]);
-  const cycleOrSetRole = async (nextRole) => {
-    if (!user) return;
-    setUserRole(nextRole);
-    try { localStorage.setItem('md_role_' + user.uid, nextRole); } catch {}
-    await setDoc(doc(db, 'mat_watches', 'role_' + user.uid), { kind: 'user_role', uid: user.uid, email: (user.email || '').toLowerCase(), role: nextRole, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
-  };
-  const [showSiteTour, setShowSiteTour] = useState(() => {
-    try { return !localStorage.getItem("md_seen_tour_v1"); } catch { return false; }
-  });
+  const [showSiteTour, setShowSiteTour] = useState(false);
   const closeSiteTour = () => {
     try { localStorage.setItem("md_seen_tour_v1", "1"); } catch {}
     setShowSiteTour(false);
@@ -645,6 +609,50 @@ export default function App() {
   const formatMonthDisplay = (yyyy_mm) => {
     const [y, m] = yyyy_mm.split('-');
     return new Date(y, m - 1).toLocaleString('default', { month: 'short', year: 'numeric' });
+  };
+
+  useEffect(() => {
+    if (!user) { setUserRole('user'); return; }
+    let cached = '';
+    try { cached = localStorage.getItem('md_role_' + user.uid) || ''; } catch {}
+    if (cached) setUserRole(cached);
+    const em = (user.email || '').toLowerCase();
+    getDocs(query(collection(db, 'mat_watches'), where('uid', '==', user.uid))).then(sn => {
+      const rDoc = sn.docs.map(d => d.data()).find(x => x.kind === 'user_role');
+      if (rDoc?.role) {
+        setUserRole(rDoc.role);
+        try { localStorage.setItem('md_role_' + user.uid, rDoc.role); } catch {}
+      }
+    }).catch(() => {});
+    getDocs(query(collection(db, 'mat_watches'), where('kind', '==', 'academy_workspace'))).then(sn => {
+      if (sn.docs.some(d => (d.data().staffEmails || []).includes(em) || d.data().ownerUid === user.uid)) setUserRole(r => r === 'user' ? 'academy' : r);
+    }).catch(() => {});
+    getDocs(query(collection(db, 'mat_watches'), where('kind', '==', 'promoter_workspace'))).then(sn => {
+      if (sn.docs.some(d => (d.data().staffEmails || []).includes(em) || d.data().ownerUid === user.uid)) setUserRole(r => r === 'user' ? 'promoter' : r);
+    }).catch(() => {});
+  }, [user]);
+
+  useEffect(() => {
+    if (!events || events.length === 0) return;
+    const params = new URLSearchParams(window.location.search);
+    const hubId = params.get('hub');
+    if (hubId) {
+      const target = events.find(e => e.id === hubId) || UPCOMING_UFC_SUPERFIGHTS.find(e => e.id === hubId);
+      if (target) { setPortalSupport(params.get('support') || ''); setPortalEvent(target); }
+    }
+    try {
+      if (!localStorage.getItem('md_seen_tour_v1')) {
+        const t = setTimeout(() => setShowSiteTour(true), 700);
+        return () => clearTimeout(t);
+      }
+    } catch {}
+  }, [events]);
+
+  const cycleOrSetRole = async (nextRole) => {
+    if (!user) return;
+    setUserRole(nextRole);
+    try { localStorage.setItem('md_role_' + user.uid, nextRole); } catch {}
+    await setDoc(doc(db, 'mat_watches', 'role_' + user.uid), { kind: 'user_role', uid: user.uid, email: (user.email || '').toLowerCase(), role: nextRole, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
   };
 
   const mergedWithUfcCards = React.useMemo(() => {
@@ -1058,3 +1066,21 @@ export default function App() {
     </div>
   );
 }
+class MatDatesSafeBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { err: null }; }
+  static getDerivedStateFromError(err) { return { err }; }
+  render() {
+    if (this.state.err) {
+      return (
+        <div style={{ minHeight:'100vh', background:'#0b0e14', color:'#fff', padding:'32px', textAlign:'center', fontFamily:'sans-serif' }}>
+          <h2 style={{ color:'#ff9f43' }}>MatDates Quick Reload Needed</h2>
+          <p style={{ color:'#94a3b8', fontSize:'0.9rem' }}>{String(this.state.err?.message || this.state.err)}</p>
+          <button onClick={() => window.location.reload()} style={{ padding:'10px 18px', background:'#e31837', color:'#fff', border:'none', borderRadius:'7px', fontWeight:'bold', cursor:'pointer' }}>Reload MatDates</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export default function SafeApp(props) { return <MatDatesSafeBoundary><App {...props} /></MatDatesSafeBoundary>; }
