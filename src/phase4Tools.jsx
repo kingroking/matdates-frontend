@@ -1,3 +1,6 @@
+import { PRO_SUPERFIGHTS, computeEliteSpotlight } from "./proHubData";
+import { SuperFightsPanel, AthleteTrophyRoomModal } from "./proTrophyModal";
+import { UniversalAthleteLookupModal } from "./proModals";
 import { trackEvent } from './analytics';
 import { MatAlertModal, useWatchedAthletes } from './MatAlertModal';
 import { resolveEventUrl } from './locationFmt';
@@ -391,6 +394,8 @@ export function LeaderboardModal({ onClose }) {
   const [loadingBucket, setLoadingBucket] = useState('');
   const [loadingAthShard, setLoadingAthShard] = useState('');
   const [trophyCard, setTrophyCard] = useState(null);
+  const [sortBy, setSortBy] = useState("MEDALS");
+  const [openAthTrophy, setOpenAthTrophy] = useState(() => { const t = new URLSearchParams(window.location.search).get("trophy"); return t ? { name: t, academy: "", g: 0, s: 0, b: 0, events: [] } : null; });
   const [copiedToast, setCopiedToast] = useState('');
 
   const copyDirectLink = async (paramName, paramVal) => {
@@ -501,7 +506,8 @@ export function LeaderboardModal({ onClose }) {
         : b.startsWith('smoothcomp') ? 'SMOOTHCOMP'
         : 'JJWL';
       const rAge = b.includes('youth') ? 'YOUTH' : 'ADULT';
-      if ((fed !== 'ALL' && rFed !== fed) || (age !== 'ALL' && rAge !== age)) return;
+      const rFedNorm = /ufc/i.test((r.Event||"")+" "+(rFed||"")) ? "UFC" : rFed;
+      if ((fed !== 'ALL' && rFedNorm !== fed) || (age !== 'ALL' && rAge !== age)) return;
       const k = normGymKey(r.Academy);
       if (!k) return;
       if (!map[k]) map[k] = {
@@ -552,7 +558,7 @@ export function LeaderboardModal({ onClose }) {
     const score = x => (x.Gold * 9 + x.Silver * 3 + x.Bronze) + x.Points * 0.05;
     const rankedAll = Object.values(map)
       .filter(x => (x.Gold + x.Silver + x.Bronze) > 0 || x.Points > 0 || x.allTimeClub)
-      .sort((a, b) => score(b) - score(a) || b.Points - a.Points)
+      .sort((a, b) => sortBy === "POINTS" ? (b.Points - a.Points || b.Gold - a.Gold) : sortBy === "TOTAL" ? ((b.Gold+b.Silver+b.Bronze)-(a.Gold+a.Silver+a.Bronze) || b.Gold-a.Gold) : (b.Gold-a.Gold || b.Silver-a.Silver || b.Bronze-a.Bronze || b.Points-a.Points))
       .map((item, idx) => ({ ...item, trueRank: idx + 1 }));
 
     const byKey = {};
@@ -573,16 +579,16 @@ export function LeaderboardModal({ onClose }) {
       return { totalGyms: rankedAll.length, list: [...direct, ...parents].slice(0, 100), byKey };
     }
     return { totalGyms: rankedAll.length, list: direct.slice(0, 120), byKey };
-  }, [rows, fed, age, qStr]);
+  }, [rows, fed, age, qStr, sortBy]);
 
   const athleteResults = React.useMemo(() => {
     const trimmed = athQuery.trim();
     if (trimmed.length < 2) return [];
     const bkt = athLastBucket(trimmed);
-    const pool = canonicalizeHits((athShardMap[bkt] || []).filter(m => athleteMatchesQuery(m.n, trimmed) && (fed === "ALL" || m.f === fed) && (age === "ALL" || !m.ag || m.ag === age)));
+    const pool = canonicalizeHits((athShardMap[bkt] || []).filter(m => athleteMatchesQuery(m.n, trimmed) && (fed === "ALL" || (/ufc/i.test((m.ev||"")+" "+(m.f||"")) ? "UFC" : m.f) === fed) && (age === "ALL" || !m.ag || m.ag === age)));
     const hits = pool.filter(m =>
       athleteMatchesQuery(m.n, trimmed) &&
-      (fed === 'ALL' || m.f === fed) &&
+      (fed === "ALL" || (/ufc/i.test((m.ev||"")+" "+(m.f||"")) ? "UFC" : m.f) === fed) &&
       (age === 'ALL' || !m.ag || m.ag === age)
     );
     // Prefer specific local chapter (e.g. Carlson Gracie San Antonio) over generic HQ banner ("Carlson Gracie Team") for the same athlete/event
@@ -615,7 +621,7 @@ export function LeaderboardModal({ onClose }) {
     return Object.values(grouped)
       .sort((a, b) => (b.g * 9 + b.s * 3 + b.b) - (a.g * 9 + a.s * 3 + a.b))
       .slice(0, 80);
-  }, [athQuery, athShardMap, fed, age]);
+  }, [athQuery, athShardMap, fed, age, sortBy]);
 
   const activeGym = selectedGymKey ? aggregated.byKey[selectedGymKey] : null;
   const box = { position:'fixed', top:0, left:0, right:0, bottom:0, width:'100%', maxWidth:'100vw', overflowX:'hidden', backgroundColor:'rgba(0,0,0,0.88)', zIndex:9999, display:'flex', justifyContent:'center', alignItems:'center', padding:'8px', boxSizing:'border-box' };
@@ -638,7 +644,7 @@ export function LeaderboardModal({ onClose }) {
     const isLoading = loadingBucket === bkt || !bucketMap[bkt];
     const matchingAll = rawItems.filter(m =>
       normGymKey(m.a) === activeGym.key &&
-      (fed === 'ALL' || m.f === fed) &&
+      (fed === "ALL" || (/ufc/i.test((m.ev||"")+" "+(m.f||"")) ? "UFC" : m.f) === fed) &&
       (age === 'ALL' || !m.ag || m.ag === 'ALL' || m.ag === age)
     );
     const indivList = matchingAll.filter(m => !m.isEventSummary && (medalFilter === 'ALL' || Number(m.p) === Number(medalFilter)));
@@ -880,23 +886,33 @@ export function LeaderboardModal({ onClose }) {
           >
             🥋 Athlete Podium Search
           </button>
+            <button onClick={() => setMode("SUPERFIGHTS")} style={{ padding:"8px 12px", borderRadius:"7px", fontWeight:"bold", fontSize:"0.82rem", cursor:"pointer", background: mode === "SUPERFIGHTS" ? "#ef4444" : "#181c24", color: mode === "SUPERFIGHTS" ? "#fff" : "#cbd5e1", border: mode === "SUPERFIGHTS" ? "1px solid #ef4444" : "1px solid #2d3748" }}>🥊 SuperFights &amp; Majors</button>
         </div>
 
-        <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', marginBottom:'10px', alignItems:'center', flexShrink:0 }}>
-          {[['ALL','🌐 All'],['IBJJF','IBJJF'],['ADCC','ADCC'],['JJWL','JJWL'],['AGF','AGF'],['AJP','AJP'],['SMOOTHCOMP','Smoothcomp']].map(([k, lbl]) => (
-            <button key={k} onClick={() => setFed(k)} style={{ padding:'5px 9px', borderRadius:'6px', border: fed === k ? '1px solid #38bdf8' : '1px solid #2d3748', background: fed === k ? '#162536' : '#181c24', color: fed === k ? '#38bdf8' : '#cbd5e1', fontWeight:'bold', fontSize:'0.76rem', cursor:'pointer' }}>{lbl}</button>
-          ))}
-          {[['ALL','All Ages'],['YOUTH','🐯 Youth'],['ADULT','🥋 Adult']].map(([ak, albl]) => (
-            <button key={ak} onClick={() => setAge(ak)} style={{ padding:'5px 8px', borderRadius:'6px', border:'1px solid #2d3748', background: age === ak ? '#2d3748' : '#181c24', color: age === ak ? '#fff' : '#94a3b8', fontSize:'0.75rem', fontWeight:'bold', cursor:'pointer' }}>{albl}</button>
-          ))}
-          {mode === 'GYMS' ? (
-            <input value={qStr} onChange={e => setQStr(e.target.value)} placeholder="Search any academy..." style={{ flex:'1 1 140px', minWidth:'120px', padding:'7px 10px', borderRadius:'6px', background:'#181c24', color:'#fff', border:'1px solid #2d3748', fontSize:'0.86rem', boxSizing:'border-box' }} />
-          ) : (
-            <input value={athQuery} onChange={e => setAthQuery(e.target.value)} placeholder="Athlete full or last name (e.g. Isabella King)..." autoFocus style={{ flex:'1 1 180px', minWidth:'150px', padding:'7px 10px', borderRadius:'6px', background:'#181c24', color:'#fff', border:'1px solid #38bdf8', fontSize:'0.86rem', boxSizing:'border-box' }} />
+        <div style={{ width:"100%", flex:"0 0 auto", position:"relative", marginBottom:"8px", textAlign:"left" }}>
+          <span style={{ position:"absolute", left:"12px", top:"50%", transform:"translateY(-50%)", pointerEvents:"none" }}>🔍</span>
+          <input value={mode === "ATHLETES" ? athQuery : qStr} onChange={e => mode === "ATHLETES" ? setAthQuery(e.target.value) : setQStr(e.target.value)} placeholder={mode === "GYMS" ? "Search any academy or local chapter (e.g. Carlson Gracie San Antonio, AOJ, Atos)..." : mode === "SUPERFIGHTS" ? "Search SuperFight champions, belts, or cards (e.g. Cassia Moura, Helena Crevar, UFC BJJ)..." : "Search any competitor full or last name (e.g. Isabella King, Steven Ortiz, Cassia Moura)..."} style={{ display:"block", width:"100%", padding:"10px 34px 10px 36px", borderRadius:"8px", background:"#18202c", color:"#fff", border:"1.5px solid #38bdf8", fontSize:"0.92rem", boxSizing:"border-box" }} />
+          {(mode === "ATHLETES" ? athQuery : qStr) && <button type="button" onClick={() => mode === "ATHLETES" ? setAthQuery("") : setQStr("")} style={{ position:"absolute", right:"8px", top:"50%", transform:"translateY(-50%)", background:"#2d3748", color:"#fff", border:"none", borderRadius:"50%", width:"22px", height:"22px", cursor:"pointer" }}>✕</button>}
+        </div>
+        <div style={{ display:"flex", gap:"5px", flexWrap:"wrap", marginBottom:"10px", alignItems:"center", justifyContent:"space-between", flexShrink:0 }}>
+          <div style={{ display:"flex", gap:"5px", flexWrap:"wrap", alignItems:"center" }}>
+            {[["ALL","🌐 All"],["IBJJF","IBJJF"],["ADCC","ADCC"],["UFC","🟥 UFC BJJ"],["JJWL","JJWL"],["AGF","AGF"],["AJP","AJP"],["SMOOTHCOMP","Smoothcomp"]].map(([k, lbl]) => (
+              <button key={k} onClick={() => setFed(k)} style={{ padding:"5px 8px", borderRadius:"6px", border: fed === k ? "1px solid #38bdf8" : "1px solid #2d3748", background: fed === k ? "#162536" : "#181c24", color: fed === k ? "#38bdf8" : "#cbd5e1", fontWeight:"bold", fontSize:"0.74rem", cursor:"pointer" }}>{lbl}</button>
+            ))}
+            {mode !== "SUPERFIGHTS" && [["ALL","All Ages"],["YOUTH","🐯 Youth"],["ADULT","🥋 Adult"]].map(([ak, albl]) => (
+              <button key={ak} onClick={() => setAge(ak)} style={{ padding:"5px 7px", borderRadius:"6px", border:"1px solid #2d3748", background: age === ak ? "#2d3748" : "#181c24", color: age === ak ? "#fff" : "#94a3b8", fontSize:"0.73rem", fontWeight:"bold", cursor:"pointer" }}>{albl}</button>
+            ))}
+          </div>
+          {mode !== "SUPERFIGHTS" && (
+            <div style={{ display:"flex", gap:"4px", alignItems:"center" }}>
+              {[["MEDALS","🥇 Medals"],["POINTS","📈 Points"],["TOTAL","🏅 Total"]].map(([sk, sl]) => (
+                <button key={sk} onClick={() => setSortBy(sk)} style={{ padding:"4px 8px", borderRadius:"6px", border: sortBy === sk ? "1px solid #fbbf24" : "1px solid #2d3748", background: sortBy === sk ? "#292011" : "#141820", color: sortBy === sk ? "#fde68a" : "#94a3b8", fontSize:"0.72rem", fontWeight:"bold", cursor:"pointer" }}>{sl}</button>
+              ))}
+            </div>
           )}
         </div>
 
-        {mode === 'ATHLETES' ? (
+        {mode === "SUPERFIGHTS" ? (<SuperFightsPanel fed={fed} qStr={qStr} getWatch={getPodiumWatch} onOpenTrophy={setOpenAthTrophy} onWatch={(nm, ac) => setPodiumWatchPick({ event: { id: "", name: "All Upcoming Tournaments", link: "https://matdates.com/?athlete=" + encodeURIComponent(nm).replace(/%20/g, "+"), sort_date: "" }, comp: { Name: nm, Academy: ac || "", Division: "" }, division: "" })} />) : mode === "ATHLETES" ? (
           <div style={{ overflowY:'auto', border:'1px solid #242b38', borderRadius:'8px', background:'#151922', flex:1, padding:'10px' }}>
             {athQuery.trim().length < 2 ? (
               <div style={{ padding:'24px 12px', textAlign:'center', color:'#94a3b8', fontSize:'0.85rem' }}>
@@ -929,6 +945,7 @@ export function LeaderboardModal({ onClose }) {
                           <span>🥉 <strong>{a.b}</strong></span>
                         </div>
                         <button type="button" onClick={() => { const nm = a.name || a.n || ""; const ac = a.academy || a.a || ""; setPodiumWatchPick({ event: { id: "", name: "All Upcoming Tournaments", link: "https://matdates.com/?athlete=" + encodeURIComponent(nm).replace(/%20/g, "+"), sort_date: "" }, comp: { Name: nm, Academy: ac, Division: "" }, division: "" }); }} style={{ background: getPodiumWatch(a.name || a.n) ? "#132a1c" : "#162536", color: getPodiumWatch(a.name || a.n) ? "#2ecc71" : "#38bdf8", border: getPodiumWatch(a.name || a.n) ? "1px solid #2ecc71" : "1px solid #0284c7", borderRadius:"6px", padding:"5px 9px", fontSize:"0.74rem", fontWeight:"bold", cursor:"pointer", whiteSpace:"nowrap" }}>{getPodiumWatch(a.name || a.n) ? "✓ Watching" : "🔔 Watch"}</button>
+                        <button type="button" onClick={() => setOpenAthTrophy(a)} style={{ background:"#f59e0b", color:"#000", border:"none", borderRadius:"6px", padding:"5px 9px", fontSize:"0.74rem", fontWeight:"800", cursor:"pointer" }}>🏆 Trophy Room</button>
                         <button
                           type="button"
                           onClick={() => copyDirectLink('athlete', a.name)}
@@ -1018,87 +1035,11 @@ export function LeaderboardModal({ onClose }) {
           </div>
         )}
       </div>
-    {podiumWatchPick && <div onClick={e=>e.stopPropagation()}><MatAlertModal event={podiumWatchPick.event} comp={podiumWatchPick.comp} division={podiumWatchPick.division} existingWatch={getPodiumWatch(podiumWatchPick.comp.Name)} onRemove={removePodiumWatch} onClose={()=>setPodiumWatchPick(null)}/></div>}</div>
+    {openAthTrophy && <div onClick={e=>e.stopPropagation()}><AthleteTrophyRoomModal athlete={openAthTrophy} onClose={() => setOpenAthTrophy(null)} isWatching={Boolean(getPodiumWatch(openAthTrophy.name || openAthTrophy.n))} onWatch={(nm, ac) => setPodiumWatchPick({ event: { id: "", name: "All Upcoming Tournaments", link: "https://matdates.com/?athlete=" + encodeURIComponent(nm).replace(/%20/g, "+"), sort_date: "" }, comp: { Name: nm, Academy: ac || "", Division: "" }, division: "" })} onShareCard={(cd) => { setOpenAthTrophy(null); setTrophyCard(cd); }} /></div>}
+      {podiumWatchPick && <div onClick={e=>e.stopPropagation()}><MatAlertModal event={podiumWatchPick.event} comp={podiumWatchPick.comp} division={podiumWatchPick.division} existingWatch={getPodiumWatch(podiumWatchPick.comp.Name)} onRemove={removePodiumWatch} onClose={()=>setPodiumWatchPick(null)}/></div>}</div>
   );
 }
 
 export function AthleteSearchModal({ events, onClose, onOpenBracket }) {
-  const [items, setItems] = useState([]);
-  const [watchPick, setWatchPick] = useState(null);
-  const { getWatch, removeWatch } = useWatchedAthletes();
-  const [loading, setLoading] = useState(true);
-  const [qStr, setQStr] = useState('');
-
-  useEffect(() => {
-    trackEvent('athleteSearches');
-    getDocs(query(collection(db, 'event_competitors'), where('event_id', '==', '__athlete_index__')))
-      .then(snap => {
-        const all = [];
-        snap.docs.forEach(d => (d.data().items || []).forEach(it => all.push(it)));
-        setItems(all);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, []);
-
-  const evMap = React.useMemo(() => {
-    const m = {};
-    (events || []).forEach(e => { m[e.id] = e; });
-    return m;
-  }, [events]);
-
-  const matches = React.useMemo(() => {
-    const terms = qStr.toLowerCase().trim().split(/\s+/).filter(Boolean);
-    if (terms.length === 0 || qStr.trim().length < 2) return [];
-    return items
-      .filter(it => evMap[it.e] && terms.every(t => { const raw = `${it.n} ${it.a}`.toLowerCase(); const ex = (raw.includes('art of jiu') ? ' aoj' : '') + (raw.includes('gracie barra') ? ' gb' : '') + (raw.includes('carlson gracie') ? ' cg' : '') + (raw.includes('brazilian top team') ? ' btt' : ''); return (raw + ex).includes(t); }))
-      .sort((a, b) => (evMap[a.e]?.sort_date || '2099').localeCompare(evMap[b.e]?.sort_date || '2099'))
-      .slice(0, 80);
-  }, [items, qStr, evMap]);
-  const box = { position:'fixed', inset:0, backgroundColor:'rgba(0,0,0,0.86)', zIndex:9999, display:'flex', justifyContent:'center', alignItems:'center', padding:'10px', boxSizing:'border-box' };
-  const card = { backgroundColor:'#11141b', padding:'16px', boxSizing:'border-box', overflowX:'hidden', borderRadius:'12px', border:'1px solid #2d3748', width:'100%', maxWidth:'900px', maxHeight:'88svh', display:'flex', flexDirection:'column' };
-
-  return (
-    <div onClick={onClose} style={box}><div onClick={e => e.stopPropagation()} style={card}>
-      <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'12px', gap:'12px' }}>
-        <div>
-          <h2 style={{ margin:0, color:'#fff', fontSize:'1.3rem' }}>🔍 Who's Registered? — Athlete & Squad Lookup</h2>
-          <p style={{ margin:'4px 0 0', color:'#94a3b8', fontSize:'0.82rem' }}>
-            {loading ? 'Loading live rosters...' : `Search ${items.length.toLocaleString()} live registrations across upcoming IBJJF, JJWL & Smoothcomp tournaments.`}
-          </p>
-    </div>
-        <button onClick={onClose} style={{ background:'#1e293b', color:'#fff', border:'1px solid #334155', borderRadius:'6px', padding:'6px 12px', cursor:'pointer', height:'fit-content' }}>Close</button>
-      </div>
-      <input autoFocus value={qStr} onChange={e => setQStr(e.target.value)} placeholder="Type an athlete name or academy (e.g. Carlson Gracie, Art of Jiu Jitsu)..." style={{ padding:'11px 14px', borderRadius:'8px', background:'#181c24', color:'#fff', border:'1px solid #38bdf8', fontSize:'0.95rem', marginBottom:'12px' }} />
-      <div style={{ overflowY:'auto', border:'1px solid #242b38', borderRadius:'8px', background:'#151922' }}>
-        {qStr.trim().length < 2 ? (
-          <div style={{ padding:'28px', textAlign:'center', color:'#64748b', fontSize:'0.9rem' }}>Enter at least 2 characters to see every upcoming tournament an athlete or team is registered for.</div>
-        ) : matches.length === 0 ? (
-          <div style={{ padding:'28px', textAlign:'center', color:'#94a3b8', fontSize:'0.9rem' }}>No upcoming registrations found matching "{qStr}".</div>
-        ) : matches.map((m, i) => {
-          const ev = evMap[m.e];
-          return (
-            <div key={`${m.e}_${m.n}_${i}`} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'12px 15px', borderBottom:'1px solid #1f2532', gap:'10px', flexWrap:'wrap' }}>
-              <div style={{ flex:1, minWidth:'220px' }}>
-                <div style={{ color:'#fff', fontWeight:'bold', fontSize:'0.96rem' }}>{m.n} <span style={{ color:'#38bdf8', fontWeight:'normal', fontSize:'0.84rem' }}>· {m.a || 'Independent'}</span></div>
-                <div style={{ color:'#cbd5e1', fontSize:'0.8rem', marginTop:'2px' }}>{m.d}</div>
-                <div style={{ color:'#ff9f43', fontSize:'0.8rem', marginTop:'3px' }}>📅 {ev.date} · <strong>{ev.name}</strong></div>
-              </div>
-              <div style={{ display:'flex', gap:'6px', alignItems:'center', flexWrap:'wrap' }}><button onClick={() => setWatchPick({ ev, comp: { Name: m.n, Academy: m.a || '', Division: m.d || '', Profile: m.p || '' }, division: m.d || '' })} style={{ background: getWatch(m.n, ev.id) ? '#132a1c' : '#162536', color: getWatch(m.n, ev.id) ? '#2ecc71' : '#38bdf8', border: getWatch(m.n, ev.id) ? '1px solid #2ecc71' : '1px solid #0284c7', borderRadius:'6px', padding:'7px 10px', fontWeight:'bold', cursor:'pointer', fontSize:'0.8rem', whiteSpace:'nowrap' }}>{getWatch(m.n, ev.id) ? (getWatch(m.n, ev.id).fcmToken ? '\u2713 Watching \u{1F4F2}' : '\u2713 Watching \u2709\uFE0F') : '\u{1F514} Mat Alert'}</button><button onClick={() => onOpenBracket(ev, m.n)} style={{ background:'#1e293b', color:'#38bdf8', border:'1px solid #0284c7', borderRadius:'6px', padding:'7px 12px', fontWeight:'bold', cursor:'pointer', fontSize:'0.82rem' }}>View Bracket →</button>{m.p && m.p !== '#' && (<a href={m.p.startsWith('http') ? m.p : 'https://smoothcomp.com' + (m.p.startsWith('/') ? m.p : '/' + m.p)} target='_blank' rel='noopener noreferrer' style={{ background:'#181c24', color:'#a78bfa', border:'1px solid #4c1d95', borderRadius:'6px', padding:'7px 9px', fontSize:'0.78rem', textDecoration:'none', fontWeight:'bold' }}>{m.p.includes('jits.gg') ? 'Jits.gg ↗' : 'Profile ↗'}</a>)}{(() => { let u = ''; try { const r = typeof resolveEventUrl === 'function' ? resolveEventUrl(ev) : ''; u = typeof r === 'string' && r ? r : String(ev?.link || ev?.url || ''); } catch { u = String(ev?.link || ev?.url || ''); } return u.startsWith('http') ? (<a href={u.includes('smoothcomp.com') ? u.replace(/\/$/, '') + '/schedule' : u} target='_blank' rel='noopener noreferrer' style={{ background:'#181c24', color:'#cbd5e1', border:'1px solid #38bdf8', borderRadius:'6px', padding:'7px 9px', fontSize:'0.78rem', textDecoration:'none', fontWeight:'bold' }}>Official ↗</a>) : null; })()}</div>
-            </div>
-          );
-        })}
-      </div>
-      {watchPick && (
-        <MatAlertModal
-          event={watchPick.ev}
-          comp={watchPick.comp}
-          division={watchPick.division}
-          existingWatch={getWatch(watchPick.comp.Name, watchPick.ev.id)}
-          onRemove={removeWatch}
-          onClose={() => setWatchPick(null)}
-        />
-      )}
-    </div></div>
-  );
+  return <UniversalAthleteLookupModal events={events} onClose={onClose} onOpenBracket={onOpenBracket} />;
 }

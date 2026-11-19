@@ -1,3 +1,4 @@
+import { TaleOfTheTapeModal, WeekendWarRoomModal, SubmitEventModal } from "./proModals";
 import { formatEventLoc, resolveEventUrl } from './locationFmt';
 import React, { useState, useEffect } from 'react';
 import { collection, getDocs, addDoc, query, where, doc, setDoc, deleteDoc } from 'firebase/firestore';
@@ -31,6 +32,7 @@ function CompetitorTable({ calcResult, event, onClose }) {
   const [tempUrl, setTempUrl] = useState("");
   const [storyPayload, setStoryPayload] = useState(null);
   const [watchTarget, setWatchTarget] = useState(null);
+  const [scoutPair, setScoutPair] = useState([]);
   useEffect(() => { if (event && event.id) trackEvent('bracketOpens'); }, [event?.id]);
   const { getWatch, removeWatch } = useWatchedAthletes();
 
@@ -222,6 +224,7 @@ function CompetitorTable({ calcResult, event, onClose }) {
         </div>
 
         {storyPayload && <StoryShareModal payload={storyPayload} onClose={() => setStoryPayload(null)} />}
+        {scoutPair.length === 2 && <TaleOfTheTapeModal compA={scoutPair[0]} compB={scoutPair[1]} division={event.name} onClose={() => setScoutPair([])} />}
         {watchTarget && <MatAlertModal event={event} comp={watchTarget.comp} division={watchTarget.division} existingWatch={getWatch(watchTarget.comp.Name, event.id)} onRemove={removeWatch} onClose={() => setWatchTarget(null)} />}
           <EventSquadChips competitors={liveCompetitors} onSelectGym={setSearchTerm} />
           <div style={{ overflowY: 'auto', backgroundColor: '#1a1a1a', borderRadius: '8px', border: '1px solid #333', padding: '10px' }}>
@@ -240,7 +243,7 @@ function CompetitorTable({ calcResult, event, onClose }) {
                         <td style={{ padding: "12px", fontWeight: "bold", color: "#fff", width: "34%" }}>
                           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
                             <a href={getProfileLink(comp)} target="_blank" rel="noreferrer" style={{ color: "#fff", textDecoration: "none", minWidth: 0, overflowWrap: "anywhere", lineHeight: 1.3 }}>{comp.Name}</a>
-                            <button onClick={() => setWatchTarget({ comp, division })} title="Live Mat # & Match Time alerts" style={{ flexShrink: 0, background: getWatch(comp.Name, event.id) ? "#132a1c" : "#162536", color: getWatch(comp.Name, event.id) ? "#2ecc71" : "#38bdf8", border: getWatch(comp.Name, event.id) ? "1px solid #2ecc71" : "1px solid #0284c7", borderRadius: "5px", padding: "4px 8px", fontSize: "0.72rem", cursor: "pointer", fontWeight: "bold", whiteSpace: "nowrap" }}>{getWatch(comp.Name, event.id) ? (getWatch(comp.Name, event.id).fcmToken ? "\u2713 Watching \u{1F4F2}" : "\u2713 Watching \u2709\uFE0F") : "\u{1F514} Watch"}</button>
+                            <button onClick={() => setWatchTarget({ comp, division })} title="Live Mat # & Match Time alerts" style={{ flexShrink: 0, background: getWatch(comp.Name, event.id) ? "#132a1c" : "#162536", color: getWatch(comp.Name, event.id) ? "#2ecc71" : "#38bdf8", border: getWatch(comp.Name, event.id) ? "1px solid #2ecc71" : "1px solid #0284c7", borderRadius: "5px", padding: "4px 8px", fontSize: "0.72rem", cursor: "pointer", fontWeight: "bold", whiteSpace: "nowrap" }}>{getWatch(comp.Name, event.id) ? (getWatch(comp.Name, event.id).fcmToken ? "\u2713 Watching \u{1F4F2}" : "\u2713 Watching \u2709\uFE0F") : "\u{1F514} Watch"}</button> <button onClick={() => setScoutPair(p => p.some(x => x.id === comp.id) ? p.filter(x => x.id !== comp.id) : [...p.slice(-1), comp])} title="Scout 2 athletes head-to-head" style={{ flexShrink:0, background: scoutPair.some(x => x.id === comp.id) ? "#431407" : "#1e293b", color: scoutPair.some(x => x.id === comp.id) ? "#fbbf24" : "#cbd5e1", border:"1px solid #475569", borderRadius:"5px", padding:"4px 7px", fontSize:"0.7rem", cursor:"pointer", fontWeight:"bold" }}>{scoutPair.some(x => x.id === comp.id) ? "⚔️ #1" : "⚔️ Scout"}</button>
                           </div>
                         </td>
                         <td style={{ padding: '12px', color: '#ccc', width: '35%' }}>{comp.Academy}</td>
@@ -300,6 +303,8 @@ export default function App() {
   });
   const [showAthleteSearch, setShowAthleteSearch] = useState(false);
   const [showWatchedModal, setShowWatchedModal] = useState(false);
+  const [showWarRoom, setShowWarRoom] = useState(false);
+  useEffect(() => { if (new URLSearchParams(window.location.search).get("trophy")) setShowLeaderboard(true); }, []);
   const [livePushToast, setLivePushToast] = useState(null);
   useEffect(() => {
     const h = (e) => { setLivePushToast(e.detail); setTimeout(() => setLivePushToast(null), 12000); };
@@ -632,6 +637,7 @@ export default function App() {
           <div style={{ color:'#cbd5e1', fontSize:'0.83rem', marginTop:'4px' }}>{livePushToast.body}</div>
         </div>
       )}
+      {showWarRoom && <WeekendWarRoomModal events={events} watches={myWatches} onClose={() => setShowWarRoom(false)} onOpenEvent={(ev) => { setShowWarRoom(false); setSelectedCompetitorEvent(ev); }} />}
       {showWatchedModal && <WatchedAthletesModal watches={myWatches} onRemove={removeMyWatch} onClose={() => setShowWatchedModal(false)} onOpenAthlete={(w) => { const ev = events.find(x => x.id === w.eventId); setShowWatchedModal(false); if (ev) { setCalcResult(w.athleteName); setSelectedCompetitorEvent(ev); } else if (w.eventLink) { window.open(w.eventLink, '_blank'); } }} />}
       {showLeaderboard && <LeaderboardModal onClose={() => {
         try {
@@ -643,22 +649,7 @@ export default function App() {
         setShowLeaderboard(false);
       }} />}
       {showAthleteSearch && <AthleteSearchModal events={events} onClose={() => setShowAthleteSearch(false)} onOpenBracket={(ev, nm) => { setShowAthleteSearch(false); setCalcResult(nm); setSelectedCompetitorEvent(ev); }} />}
-      {showSubmitModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-          <div style={{ backgroundColor: '#111', padding: '20px', boxSizing: 'border-box', borderRadius: '12px', border: '1px solid #444', width: 'calc(100vw - 24px)', maxHeight: '88svh', overflowY: 'auto', maxWidth: '500px' }}>
-            <h2 style={{ margin: '0 0 20px 0', fontSize: '1.5rem', color: '#fff' }}>Submit an Event</h2>
-            <form onSubmit={handlePublicSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              <input type="text" placeholder="Event Name" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} style={{ padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }} required />
-              <input type="date" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} style={{ padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }} required />
-              <input type="text" placeholder="Venue Name (Optional)" value={formData.venue || ""} onChange={e => setFormData({...formData, venue: e.target.value})} style={{ padding: "12px", borderRadius: "6px", backgroundColor: "#222", color: "#fff", border: "1px solid #444", fontSize: "1rem" }} />
-              <input type="text" placeholder="Location (City, State)" value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} style={{ padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }} required />
-              <input type="url" placeholder="Registration Link" value={formData.link} onChange={e => setFormData({...formData, link: e.target.value})} style={{ padding: '12px', borderRadius: '6px', backgroundColor: '#222', color: '#fff', border: '1px solid #444', fontSize: '1rem' }} required />
-              <button type="submit" style={{ padding: '14px', backgroundColor: '#ff9f43', color: '#000', border: 'none', borderRadius: '6px', fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer' }}>Submit for Review</button>
-            </form>
-            <button onClick={() => setShowSubmitModal(false)} style={{ marginTop: '20px', padding: '12px', width: '100%', backgroundColor: 'transparent', color: '#aaa', border: '1px solid #444', borderRadius: '6px', cursor: 'pointer', fontSize: '1rem' }}>Cancel</button>
-          </div>
-        </div>
-      )}
+      {showSubmitModal && <SubmitEventModal onClose={() => setShowSubmitModal(false)} />}
 
       {showReminderModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
@@ -782,14 +773,14 @@ export default function App() {
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
   <div onClick={handleLogoClick} style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', userSelect: 'none' }}>
     <img src="/mat-icon.png" alt="MatDates" style={{ height: '58px', width: '58px', objectFit: 'contain' }} />
-    <div>
-      <h1 style={{ margin: 0, fontSize: '2.8rem', lineHeight: 1, fontWeight: '900', letterSpacing: '1px' }}>
+    <div style={{ textAlign: "left" }}>
+      <h1 style={{ margin: 0, fontSize: "2.8rem", lineHeight: 1, fontWeight: "900", letterSpacing: "1px", textAlign: "left" }}>
         <span style={{ color: '#fff' }}>Mat</span><span style={{ color: '#e31837' }}>Dates</span><span style={{ color: '#e31837', fontSize: '1rem' }}>.com</span>
       </h1>
-      <p style={{ color: '#9aa4b2', margin: '4px 0 0 0', fontSize: '0.82rem', letterSpacing: '3px', fontWeight: '600', textTransform: 'uppercase' }}>Every Bracket. Every Podium. Every Mat Alert.</p>
+      <p style={{ color: '#9aa4b2', margin: '4px 0 0 0', fontSize: '0.82rem', letterSpacing: '3px', fontWeight: '600', textTransform: 'uppercase' }}>Every Mat. Every Bracket. Every Podium.</p>
     </div>
   </div>
-  <div style={{ display:'flex', gap:'10px', flexWrap:'wrap' }}><button onClick={() => setShowAthleteSearch(true)} style={{ backgroundColor:'#141820', color:'#38bdf8', padding:'10px 15px', border:'1px solid #0284c7', borderRadius:'5px', fontWeight:'bold', cursor:'pointer' }}>🔍 Athlete Lookup</button><button onClick={() => setShowWatchedModal(true)} style={{ backgroundColor: myWatches.length > 0 ? '#132a1c' : '#141820', color: myWatches.length > 0 ? '#2ecc71' : '#94a3b8', padding:'10px 14px', border: myWatches.length > 0 ? '1px solid #2ecc71' : '1px solid #334155', borderRadius:'5px', fontWeight:'bold', cursor:'pointer' }}>{'\u{1F514}'} Watching ({myWatches.length})</button><button onClick={() => setShowLeaderboard(true)} style={{ backgroundColor:'#141820', color:'#e2e8f0', padding:'10px 16px', border:'1px solid #475569', borderRadius:'5px', fontWeight:'bold', cursor:'pointer' }}>🏆 Medal Standings</button><button onClick={() => user ? signOut(auth) : setShowAuthModal(true)} style={{ backgroundColor:'transparent', color:'#94a3b8', padding:'10px 12px', border:'1px solid #334155', borderRadius:'5px', cursor:'pointer', fontSize:'0.88rem' }}>{user ? 'Sign Out' : 'Sign In'}</button><button onClick={() => setShowSubmitModal(true)} style={{ backgroundColor: '#ff9f43', color: '#000', padding: '10px 20px', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer' }}>+ Submit Event</button></div>
+  <div style={{ display:'flex', gap:'10px', flexWrap:'wrap' }}><button onClick={() => setShowAthleteSearch(true)} style={{ backgroundColor:'#141820', color:'#38bdf8', padding:'10px 15px', border:'1px solid #0284c7', borderRadius:'5px', fontWeight:'bold', cursor:'pointer' }}>🔍 Athlete Lookup</button><button onClick={() => setShowWarRoom(true)} style={{ backgroundColor:"#2a1215", color:"#fca5a5", padding:"10px 14px", border:"1px solid #ef4444", borderRadius:"5px", fontWeight:"bold", cursor:"pointer" }}>🔥 War Room</button><button onClick={() => setShowWatchedModal(true)} style={{ backgroundColor: myWatches.length > 0 ? '#132a1c' : '#141820', color: myWatches.length > 0 ? '#2ecc71' : '#94a3b8', padding:'10px 14px', border: myWatches.length > 0 ? '1px solid #2ecc71' : '1px solid #334155', borderRadius:'5px', fontWeight:'bold', cursor:'pointer' }}>{'\u{1F514}'} Watching ({myWatches.length})</button><button onClick={() => setShowLeaderboard(true)} style={{ backgroundColor:'#141820', color:'#e2e8f0', padding:'10px 16px', border:'1px solid #475569', borderRadius:'5px', fontWeight:'bold', cursor:'pointer' }}>🏆 Medal Standings</button><button onClick={() => user ? signOut(auth) : setShowAuthModal(true)} style={{ backgroundColor:'transparent', color:'#94a3b8', padding:'10px 12px', border:'1px solid #334155', borderRadius:'5px', cursor:'pointer', fontSize:'0.88rem' }}>{user ? 'Sign Out' : 'Sign In'}</button><button onClick={() => setShowSubmitModal(true)} style={{ backgroundColor: '#ff9f43', color: '#000', padding: '10px 20px', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer' }}>+ Submit Event</button></div>
 </header>
         <SponsorBanner />
         <AnalyticsAndPwaManager />
