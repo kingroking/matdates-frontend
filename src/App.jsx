@@ -257,7 +257,7 @@ function CompetitorTable({ calcResult, event, onClose }) {
                         <td style={{ padding: '12px', textAlign: 'right', width: '35%' }}>
                           {(isKid(comp) && !comp.JitsProfile) || (!isKid(comp) && (!comp.Profile || comp.Profile === "#")) ? (
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>
-                              <a href={getProfileLink(comp)} target="_blank" rel="noreferrer" style={{ color: isKid(comp) ? '#3498db' : '#ff9f43', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                              <a href={getProfileLink(comp)} target="_blank" rel="noreferrer" onClick={() => { if (isKid(comp)) trackEvent('jitsGgOutclicks'); }} style={{ color: isKid(comp) ? '#3498db' : '#ff9f43', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.9rem' }}>
                                 🔍 Search {isKid(comp) ? 'Jits.gg' : 'Smoothcomp'}
                               </a>
                               {editingCompId === comp.id ? (
@@ -273,7 +273,7 @@ function CompetitorTable({ calcResult, event, onClose }) {
                               )}
                             </div>
                           ) : (
-                            <a href={getProfileLink(comp)} target="_blank" rel="noreferrer" style={{ color: isKid(comp) ? '#3498db' : '#ff9f43', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                            <a href={getProfileLink(comp)} target="_blank" rel="noreferrer" onClick={() => { if (isKid(comp)) trackEvent('jitsGgOutclicks'); }} style={{ color: isKid(comp) ? '#3498db' : '#ff9f43', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.9rem' }}>
                               {isKid(comp) ? 'Jits.gg Profile' : 'Smoothcomp Profile'}
                             </a>
                           )}

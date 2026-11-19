@@ -149,7 +149,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
   const [editBio, setEditBio] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedBanner, setSavedBanner] = useState(false);
-  const emptyForm = { handle: "", age: "", belt: "", coach: "", favMove: "", cheatMeal: "", funFact: "", avatarData: "", openSf: false, showWatchCount: false, coEmails: [] };
+  const emptyForm = { handle: "", age: "", belt: "", coach: "", favMove: "", cheatMeal: "", funFact: "", avatarData: "", openSf: false, showWatchCount: false, coEmails: [], jitsUrl: "" };
   const [coInput, setCoInput] = useState("");
   const [form, setForm] = useState(emptyForm);
 
@@ -285,6 +285,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
       ownerUid: bio?.ownerUid || curUser.uid,
       ownerEmail: bio?.ownerEmail || curUser.email || "",
       handle: (form.handle || "").replace(/^@+/, "").trim(),
+      jitsUrl: (form.jitsUrl || "").trim(),
       age: (form.age || "").trim(),
       belt: (form.belt || "").trim(),
       coach: (form.coach || "").trim(),
@@ -419,6 +420,20 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
           <button type="button" onClick={() => { onWatch(nm, cnt.acad || elite.pro?.academy || ""); setTimeout(() => setWatcherCount(c => isWatching ? c : Math.max(1, c + 1)), 250); }} style={{ background: isWatching ? "#132a1c" : "#162536", color: isWatching ? "#2ecc71" : "#38bdf8", border: isWatching ? "1px solid #2ecc71" : "1px solid #0284c7", borderRadius:"7px", padding:"6px 11px", fontWeight:"bold", fontSize:"0.77rem", cursor:"pointer" }}>
             {isWatching ? "✓ Watching" : "🔔 Watch"}
           </button>
+          <a
+            href={(bio?.jitsUrl && bio.jitsUrl.includes("jits.gg")) ? bio.jitsUrl : ("https://jits.gg/search?q=" + encodeURIComponent(nm))}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => trackEvent("jitsGgOutclicks")}
+            title={bio?.jitsUrl ? "View verified Jits.gg match record & ranking" : "Look up match history & rankings on Jits.gg"}
+            style={{
+              background:"#132033", color:"#38bdf8", border:"1px solid #0284c7",
+              borderRadius:"7px", padding:"6px 11px", fontWeight:"800", fontSize:"0.77rem",
+              textDecoration:"none", display:"inline-flex", alignItems:"center", gap:"4px"
+            }}
+          >
+            📊 {bio?.jitsUrl ? "Jits.gg Profile ↗" : "Jits.gg ↗"}
+          </a>
           {bio?.showWatchCount ? (
             <span style={{ background: hasNeonGoldRing ? "#292008" : "#18202f", color: hasNeonGoldRing ? "#fde047" : "#cbd5e1", border: hasNeonGoldRing ? "1px solid #facc15" : "1px solid #334155", borderRadius:"7px", padding:"6px 10px", fontSize:"0.76rem", fontWeight:"800" }}>
               🔥 {watcherCount} Watching
@@ -535,6 +550,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
                 <input placeholder="Go-To Submission or Guard (Optional)" value={form.favMove || ""} onChange={e => setForm({...form, favMove: e.target.value})} style={inp} />
                 <input placeholder="Favorite FULL CHEAT Meal / Snack 🍕🍪 (Optional)" value={form.cheatMeal || ""} onChange={e => setForm({...form, cheatMeal: e.target.value})} style={inp} />
               </div>
+              <input type="url" placeholder="Direct Jits.gg Profile URL (Optional — e.g. https://jits.gg/...)" value={form.jitsUrl || ""} onChange={e => setForm({...form, jitsUrl: e.target.value})} style={{ ...inp, width:"100%" }} />
               <input placeholder="Custom Fun Fact (Optional — pins to Insider Spotlight!)" value={form.funFact || ""} onChange={e => setForm({...form, funFact: e.target.value})} style={{ ...inp, width:"100%" }} />
               <label style={{ fontSize:"0.8rem", color:"#cbd5e1", display:"flex", alignItems:"center", gap:"6px", cursor:"pointer" }}>
                 <input type="checkbox" checked={Boolean(form.showWatchCount)} onChange={e => setForm({...form, showWatchCount: e.target.checked})} />

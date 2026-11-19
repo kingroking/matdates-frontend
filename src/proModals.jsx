@@ -140,6 +140,10 @@ export function SubmitEventModal({ onClose }) {
           <div><label style={{ fontSize:"0.74rem", color:"#94a3b8" }}>Early-Bird / Cutoff Date (Optional)</label><input type="date" value={f.earlyBirdDate} onChange={e => setF({...f, earlyBirdDate: e.target.value})} style={inp} /></div>
           <button type="submit" style={{ padding:"12px", background:"#ff9f43", color:"#000", border:"none", borderRadius:"7px", fontWeight:"800", cursor:"pointer" }}>Submit {f.type} for Review</button>
         </form>
+        <div style={{ marginTop:"12px", paddingTop:"10px", borderTop:"1px solid #1e293b", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:"8px", fontSize:"0.76rem", color:"#94a3b8" }}>
+          <span>Need deeper historical match-by-match W/L records?</span>
+          <a href="https://jits.gg" target="_blank" rel="noopener noreferrer" onClick={() => trackEvent("jitsGgOutclicks")} style={{ color:"#38bdf8", fontWeight:"800", textDecoration:"none" }}>📊 Scout Full Match Records on Jits.gg ↗</a>
+        </div>
       </div>
     </div>
   );
