@@ -148,15 +148,17 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
   const [editBio, setEditBio] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedBanner, setSavedBanner] = useState(false);
-  const emptyForm = { handle: "", age: "", belt: "", coach: "", favMove: "", cheatMeal: "", funFact: "", avatarData: "", openSf: false, showWatchCount: false };
+  const emptyForm = { handle: "", age: "", belt: "", coach: "", favMove: "", cheatMeal: "", funFact: "", avatarData: "", openSf: false, showWatchCount: false, coEmails: [] };
+  const [coInput, setCoInput] = useState("");
   const [form, setForm] = useState(emptyForm);
 
   const curUser = auth.currentUser;
 
   const refreshFamilyBios = () => {
     if (!curUser?.uid) { setMyFamilyBios([]); return; }
-    getDocs(query(collection(db, "mat_watches"), where("ownerUid", "==", curUser.uid))).then(sn => {
-      const mine = sn.docs.map(d => d.data()).filter(x => x.kind === "athlete_bio" && x.name);
+    const myEm = (curUser.email || "").toLowerCase();
+    getDocs(query(collection(db, "mat_watches"), where("kind", "==", "athlete_bio"))).then(sn => {
+      const mine = sn.docs.map(d => d.data()).filter(x => x.name && (x.ownerUid === curUser.uid || (myEm && (x.coEmails || []).includes(myEm))));
       setMyFamilyBios(mine);
     }).catch(() => {});
   };
@@ -225,7 +227,8 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
 
   const elite = computeEliteSpotlight({ name: nm, academy: cnt.acad, g: cnt.g, s: cnt.s, b: cnt.b, events: evs }, bio?.funFact);
   const isClaimed = Boolean(bio?.ownerUid);
-  const isOwner = Boolean(curUser && bio?.ownerUid && bio.ownerUid === curUser.uid);
+  const curEmailLow = (curUser?.email || "").toLowerCase();
+  const isOwner = Boolean(curUser && ((bio?.ownerUid && bio.ownerUid === curUser.uid) || (curEmailLow && (bio?.coEmails || []).includes(curEmailLow))));
   const hasNeonGoldRing = watcherCount >= WATCH_GLOW_MIN;
   const bioUrl = "https://matdates.com/?trophy=" + encodeURIComponent(nm).replace(/%20/g, "+");
 
@@ -272,7 +275,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
   const saveBio = async (e) => {
     e.preventDefault();
     if (!curUser) { alert("Please Sign In first to lock your Athlete Bio!"); return; }
-    if (bio?.ownerUid && bio.ownerUid !== curUser.uid) { alert("This bio is locked to its verified owner."); return; }
+    if (bio?.ownerUid && !isOwner) { alert("This bio is locked to its verified owner."); return; }
     setSaving(true);
     const clean = {
       kind: "athlete_bio",
@@ -289,6 +292,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
       avatarData: form.avatarData !== undefined ? form.avatarData : (bio?.avatarData || ""),
       openSf: Boolean(form.openSf),
       showWatchCount: Boolean(form.showWatchCount),
+      coEmails: Array.from(new Set((form.coEmails || bio?.coEmails || []).map(x => String(x).trim().toLowerCase()).filter(x => x.includes("@")))),
       name: nm,
       academy: cnt.acad || elite.pro?.academy || "",
       updatedAt: new Date().toISOString()
@@ -456,6 +460,24 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
                 <input type="checkbox" checked={confirmIdentity} onChange={e => setConfirmIdentity(e.target.checked)} style={{ marginTop:"2px", accentColor:"#2ecc71" }} />
                 <span>I confirm that I am <b>{nm}</b> or the <b>parent / legal guardian</b> of this youth athlete, and want to lock this profile to <b>{curUser?.email}</b> <i style={{ color:"#94a3b8" }}>(parents can claim &amp; manage multiple children under one login)</i>.</span>
               </label>
+              <div style={{ background:"#0f141e", border:"1px solid #2d3b52", borderRadius:"7px", padding:"8px 10px", display:"grid", gap:"6px" }}>
+                <div style={{ fontSize:"0.75rem", color:"#93c5fd", fontWeight:"bold" }}>👨‍👩‍👧‍👦 Co-Manage with Athlete / Parent Account (Optional)</div>
+                <div style={{ fontSize:"0.72rem", color:"#94a3b8" }}>Add your youth athlete&apos;s own email (or parent&apos;s email) so both separate MatDates accounts can edit this Trophy Room!</div>
+                {((form.coEmails || []).length > 0) && (
+                  <div style={{ display:"flex", gap:"6px", flexWrap:"wrap" }}>
+                    {(form.coEmails || []).map((em, i) => (
+                      <span key={i} style={{ background:"#182234", border:"1px solid #38bdf8", borderRadius:"12px", padding:"2px 8px", fontSize:"0.72rem", color:"#e2e8f0", display:"inline-flex", alignItems:"center", gap:"5px" }}>
+                        ✓ {em}
+                        <b onClick={() => setForm(p => ({ ...p, coEmails: (p.coEmails || []).filter(x => x !== em) }))} style={{ color:"#fca5a5", cursor:"pointer" }}>×</b>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <div style={{ display:"flex", gap:"6px" }}>
+                  <input type="email" placeholder="Add athlete or parent email..." value={coInput} onChange={e => setCoInput(e.target.value)} style={{ ...inp, flex:1 }} />
+                  <button type="button" onClick={() => { const v = coInput.trim().toLowerCase(); if (v.includes("@")) { setForm(p => ({ ...p, coEmails: Array.from(new Set([...(p.coEmails || []), v])) })); setCoInput(""); } }} style={{ background:"#38bdf8", color:"#000", border:"none", borderRadius:"6px", padding:"6px 11px", fontWeight:"800", fontSize:"0.75rem", cursor:"pointer" }}>+ Link Account</button>
+                </div>
+              </div>
               <div style={{ display:"flex", gap:"8px" }}>
                 <button type="button" disabled={!confirmIdentity} onClick={unlockClaimEditor} style={{ background: confirmIdentity ? "#2ecc71" : "#1e293b", color: confirmIdentity ? "#000" : "#64748b", border:"none", borderRadius:"6px", padding:"7px 13px", fontWeight:"800", fontSize:"0.78rem", cursor: confirmIdentity ? "pointer" : "not-allowed" }}>
                   🔓 Continue to Profile Editor
