@@ -214,6 +214,10 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, user
   const [photos, setPhotos] = useState([]);
   const [roster, setRoster] = useState([]);
   const [staffInput, setStaffInput] = useState("");
+  const [mmQuery, setMmQuery] = useState("");
+  const [mmBelt, setMmBelt] = useState("ALL");
+  const [offerTarget, setOfferTarget] = useState(null);
+  const [offerForm, setOfferForm] = useState({ eventDetails: "", terms: "" });
   const [showTour, setShowTour] = useState(false);
   const [upForm, setUpForm] = useState({ athlete: "", eventName: "", medal: "🥇 Gold", insta: "", fileData: "" });
   const [uploading, setUploading] = useState(false);
@@ -427,7 +431,21 @@ export function PromoterHomeDashboard({ events, user }) {
       const hit = sn.docs.map(d => ({ id: d.id, ...d.data() })).find(w => w.ownerUid === user.uid || (w.staffEmails || []).includes(em));
       if (hit) setWs(hit);
     }).catch(() => {});
-    getDocs(query(collection(db, "mat_watches"), where("kind", "==", "athlete_bio"))).then(sn => setPool(sn.docs.map(d => d.data()).filter(x => x.openSf && x.name))).catch(() => {});
+    getDocs(query(collection(db, "mat_watches"), where("kind", "==", "athlete_bio"))).then(sn => {
+      const safePool = sn.docs.map(d => {
+        const x = d.data() || {};
+        if (!x.openSf || !x.name) return null;
+        return {
+          slug: d.id.replace(/^bio_/, ""),
+          name: x.name,
+          nickname: x.nickname || "",
+          academy: x.academy || "",
+          belt: x.belt || "",
+          age: x.age || ""
+        };
+      }).filter(Boolean);
+      setPool(safePool);
+    }).catch(() => {});
     getDocs(query(collection(db, "mat_watches"), where("kind", "==", "fighter_checkin"))).then(sn => setCheckins(sn.docs.map(d => d.data()))).catch(() => {});
     getDocs(query(collection(db, "mat_watches"), where("kind", "==", "ticket_referral"))).then(sn => setSales(sn.docs.map(d => d.data()))).catch(() => {});
   }, [user]);
@@ -533,7 +551,7 @@ export function PromoterHomeDashboard({ events, user }) {
             <button type="button" onClick={() => setTab("ROSTER")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: tab==="ROSTER" ? "#38bdf8" : "#182430", color: tab==="ROSTER" ? "#000" : "#cbd5e1", border:"none" }}>📧 Booked Fighters &amp; Auto-Invite ({(cfg.bookedRoster || []).length})</button>
             <button data-tour="prom-checkins" type="button" onClick={() => setTab("CHECKINS")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: tab==="CHECKINS" ? "#14b8a6" : "#182430", color: tab==="CHECKINS" ? "#000" : "#cbd5e1", border:"none" }}>🥋 Submitted Check-Ins ({checkins.length})</button>
             <button data-tour="prom-tickets" type="button" onClick={() => setTab("TICKETS")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: tab==="TICKETS" ? "#ff9f43" : "#182430", color: tab==="TICKETS" ? "#000" : "#cbd5e1", border:"none" }}>🎟️ Tickets &amp; Event Info ({sales.length})</button>
-            <button data-tour="prom-matchmaker" type="button" onClick={() => setTab("MATCHMAKER")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: tab==="MATCHMAKER" ? "#f59e0b" : "#182430", color: tab==="MATCHMAKER" ? "#000" : "#cbd5e1", border:"none" }}>⚡ Matchmaker DB ({pool.length})</button>
+            <button data-tour="prom-matchmaker" type="button" onClick={() => setTab("MATCHMAKER")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: tab==="MATCHMAKER" ? "#f59e0b" : "#182430", color: tab==="MATCHMAKER" ? "#000" : "#cbd5e1", border:"none" }}>⚡ Protected Matchmaker DB</button>
             <button data-tour="prom-team" type="button" onClick={() => setTab("TEAM")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: tab==="TEAM" ? "#2ecc71" : "#182430", color: tab==="TEAM" ? "#000" : "#cbd5e1", border:"none" }}>👥 Staff</button>
           </div>
         </div>
@@ -610,13 +628,82 @@ export function PromoterHomeDashboard({ events, user }) {
       )}
 
       {tab === "MATCHMAKER" && (
-        <div style={{ display:"grid", gap:"6px" }}>
-          {pool.length === 0 ? <div style={{ color:"#94a3b8", fontSize:"0.8rem" }}>Athletes who check &quot;Open for SuperFights&quot; in their Trophy Room Bio appear here automatically!</div> : pool.map((a, i) => (
-            <div key={i} style={{ background:"#16202c", padding:"8px 10px", borderRadius:"6px", display:"flex", justifyContent:"space-between", alignItems:"center", fontSize:"0.8rem" }}>
-              <span><b>{a.name}</b> {a.belt ? "• " + a.belt : ""} {a.age ? "• Age " + a.age : ""}</span>
-              {a.handle && <a href={"https://instagram.com/" + a.handle} target="_blank" rel="noreferrer" style={{ background:"#38bdf8", color:"#000", padding:"4px 9px", borderRadius:"5px", fontWeight:"800", textDecoration:"none", fontSize:"0.74rem" }}>DM @{a.handle}</a>}
-            </div>
-          ))}
+        <div style={{ display:"grid", gap:"8px", userSelect:"none", WebkitUserSelect:"none" }} onCopy={e => e.preventDefault()}>
+          <div style={{ background:"#15202e", border:"1px solid #2d3b52", borderRadius:"7px", padding:"8px 10px", fontSize:"0.76rem", color:"#cbd5e1" }}>
+            🔒 <b>Privacy-Protected Matchmaking:</b> Search by belt, academy, or division below (capped to 10 results per query; bulk export disabled). Click <b>🥊 Send Bout Offer</b> to relay official bout terms straight to the athlete/parent without exposing private contact data.
+          </div>
+          <div style={{ display:"flex", gap:"7px", flexWrap:"wrap" }}>
+            <input placeholder="Search athlete name, academy, or weight/belt..." value={mmQuery} onChange={e => setMmQuery(e.target.value)} style={{ ...inp, flex:"1 1 220px" }} />
+            <select value={mmBelt} onChange={e => setMmBelt(e.target.value)} style={{ ...inp, flex:"0 1 150px" }}>
+              <option value="ALL">All Belts</option>
+              <option value="grey">Youth / Grey-Green</option>
+              <option value="blue">Blue Belt</option>
+              <option value="purple">Purple Belt</option>
+              <option value="brown">Brown Belt</option>
+              <option value="black">Black Belt</option>
+            </select>
+          </div>
+
+          {offerTarget && (
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const dayKey = "md_offers_" + new Date().toISOString().slice(0, 10);
+              const used = Number(localStorage.getItem(dayKey) || "0");
+              if (used >= 15) { alert("Daily matchmaking inquiry limit (15/day) reached to protect athletes from spam."); return; }
+              const offerId = "offer_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+              await setDoc(doc(db, "mat_watches", offerId), {
+                kind: "bout_offer",
+                workspaceId: ws.id,
+                orgName: ws.orgName,
+                promoterReplyEmail: user.email,
+                athleteSlug: offerTarget.slug,
+                athleteName: offerTarget.name,
+                eventDetails: offerForm.eventDetails.trim(),
+                terms: offerForm.terms.trim(),
+                relayed: false,
+                createdAt: new Date().toISOString()
+              });
+              try { localStorage.setItem(dayKey, String(used + 1)); } catch {}
+              setOfferTarget(null);
+              setOfferForm({ eventDetails: "", terms: "" });
+              setMsg("✅ Official Bout Offer relayed privately to " + offerTarget.name + "! If interested, they will reply directly to " + user.email + ".");
+            }} style={{ background:"#172334", border:"1.5px solid #f59e0b", borderRadius:"8px", padding:"10px", display:"grid", gap:"7px" }}>
+              <div style={{ fontSize:"0.8rem", fontWeight:"800", color:"#fbbf24" }}>🥊 Send Official SuperFight Offer to {offerTarget.name}</div>
+              <input required placeholder="Event Name, Date, City & Target Weight (e.g. Lone Star Invitational • Feb 14 • 135 lbs)" value={offerForm.eventDetails} onChange={e => setOfferForm({...offerForm, eventDetails: e.target.value})} style={inp} />
+              <input required placeholder="Ruleset, Bout Length & Purse / Ticket Split Terms" value={offerForm.terms} onChange={e => setOfferForm({...offerForm, terms: e.target.value})} style={inp} />
+              <div style={{ display:"flex", gap:"7px" }}>
+                <button type="submit" style={{ background:"#2ecc71", color:"#000", border:"none", borderRadius:"6px", padding:"7px 13px", fontWeight:"800", cursor:"pointer", fontSize:"0.78rem" }}>✉️ Relay Protected Bout Offer</button>
+                <button type="button" onClick={() => setOfferTarget(null)} style={{ background:"transparent", color:"#94a3b8", border:"1px solid #334155", borderRadius:"6px", padding:"7px 11px", cursor:"pointer", fontSize:"0.76rem" }}>Cancel</button>
+              </div>
+            </form>
+          )}
+
+          {(() => {
+            const q = foldStr(mmQuery);
+            const filtered = pool.filter(a => {
+              if (mmBelt !== "ALL") {
+                const bLow = (a.belt || "").toLowerCase();
+                if (mmBelt === "grey" && !/grey|gray|yellow|orange|green|youth|kid/.test(bLow)) return false;
+                if (mmBelt !== "grey" && !bLow.includes(mmBelt)) return false;
+              }
+              if (!q) return true;
+              return foldStr(a.name + " " + a.academy + " " + a.belt).includes(q);
+            }).slice(0, 10);
+
+            if (pool.length === 0) return <div style={{ color:"#94a3b8", fontSize:"0.8rem" }}>Athletes who opt into &quot;Open for SuperFights&quot; appear here for protected bout offers.</div>;
+            if (filtered.length === 0) return <div style={{ color:"#94a3b8", fontSize:"0.8rem" }}>No opted-in fighters matched that filter — try another belt or search term.</div>;
+            return filtered.map((a, i) => (
+              <div key={i} style={{ background:"#16202c", padding:"8px 10px", borderRadius:"6px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap", fontSize:"0.8rem" }}>
+                <span>
+                  <b>{a.name}</b> {a.nickname ? <i style={{ color:"#fbbf24" }}>&quot;{a.nickname}&quot;</i> : null}
+                  {a.academy ? " • " + a.academy : ""} {a.belt ? " • " + a.belt : ""} {a.age ? " • Age " + a.age : ""}
+                </span>
+                <button type="button" onClick={() => setOfferTarget(a)} style={{ background:"#f59e0b", color:"#000", border:"none", padding:"5px 10px", borderRadius:"5px", fontWeight:"800", fontSize:"0.74rem", cursor:"pointer" }}>
+                  🥊 Send Bout Offer
+                </button>
+              </div>
+            ));
+          })()}
         </div>
       )}
 

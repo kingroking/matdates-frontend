@@ -142,7 +142,7 @@ export function SubmitEventModal({ onClose }) {
         </form>
         <div style={{ marginTop:"12px", paddingTop:"10px", borderTop:"1px solid #1e293b", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:"8px", fontSize:"0.76rem", color:"#94a3b8" }}>
           <span>Need deeper historical match-by-match W/L records?</span>
-          <a href="https://jits.gg" target="_blank" rel="noopener noreferrer" onClick={() => trackEvent("jitsGgOutclicks")} style={{ color:"#38bdf8", fontWeight:"800", textDecoration:"none" }}>📊 Scout Full Match Records on Jits.gg ↗</a>
+          <a href="https://jits.gg" target="_blank" rel="noopener noreferrer" onClick={() => trackEvent("jitsGgOutclicks")} style={{ color:"#38bdf8", fontWeight:"800", textDecoration:"none" }}>📊 Scout Youth Records on Jits ↗</a>
         </div>
       </div>
     </div>

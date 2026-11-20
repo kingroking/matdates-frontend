@@ -128,6 +128,21 @@ const IG_ICON = (
 const WATCH_GLOW_MIN = 100;
 const NEON_GOLD_KEYFRAMES = "@keyframes mdNeonGoldPulse { 0%, 100% { box-shadow: 0 0 10px #fde047, 0 0 24px rgba(250, 204, 21, 0.9), inset 0 0 6px #fef08a; border-color: #fef08a; } 50% { box-shadow: 0 0 18px #facc15, 0 0 36px rgba(234, 179, 8, 1), inset 0 0 10px #fde047; border-color: #ffffff; } }";
 
+function limitSpiritEmojis(raw) {
+  const segs = (typeof Intl !== "undefined" && Intl.Segmenter)
+    ? Array.from(new Intl.Segmenter("en", { granularity: "grapheme" }).segment(raw || ""), s => s.segment)
+    : Array.from(raw || "");
+  return segs.filter(g => /\p{Extended_Pictographic}/u.test(g)).slice(0, 3).join("");
+}
+
+function buildMusicSearchUrl(service, songQuery, directUrl) {
+  if (directUrl && /^https?:\/\//i.test(directUrl.trim())) return directUrl.trim();
+  const q = encodeURIComponent(songQuery || "");
+  if (service === "apple") return "https://music.apple.com/us/search?term=" + q;
+  if (service === "ytmusic") return "https://music.youtube.com/search?q=" + q;
+  return "https://open.spotify.com/search/" + q;
+}
+
 export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, onShareCard }) {
   const [activeAth, setActiveAth] = useState(athlete);
   useEffect(() => { setActiveAth(athlete); }, [athlete]);
@@ -149,8 +164,18 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
   const [editBio, setEditBio] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savedBanner, setSavedBanner] = useState(false);
-  const emptyForm = { handle: "", age: "", belt: "", coach: "", favMove: "", cheatMeal: "", funFact: "", avatarData: "", openSf: false, showWatchCount: false, coEmails: [], jitsUrl: "" };
   const [coInput, setCoInput] = useState("");
+  const [musicPref, setMusicPref] = useState(() => {
+    try { return localStorage.getItem("md_music_pref") || ""; } catch { return ""; }
+  });
+  const [showMusicPicker, setShowMusicPicker] = useState(false);
+
+  const emptyForm = {
+    handle: "", nickname: "", spiritEmoji: "", songRepeat: "", songUrl: "",
+    quote: "", currentRead: "", age: "", belt: "", coach: "", favMove: "",
+    cheatMeal: "", funFact: "", avatarData: "", openSf: false,
+    showWatchCount: false, coEmails: [], jitsUrl: ""
+  };
   const [form, setForm] = useState(emptyForm);
 
   const curUser = auth.currentUser;
@@ -168,7 +193,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
 
   useEffect(() => {
     if (!slug) return;
-    trackEvent('trophyViews');
+    trackEvent("trophyViews");
     const passedEvs = activeAth?.events || [];
     setEvs(passedEvs);
     setCnt({ g: activeAth?.g || 0, s: activeAth?.s || 0, b: activeAth?.b || 0, acad: activeAth?.academy || activeAth?.a || "" });
@@ -176,6 +201,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
     setClaimStep(false);
     setConfirmIdentity(false);
     setIgPrompt(false);
+    setShowMusicPicker(false);
     setWatcherCount(0);
 
     let cached = null;
@@ -183,7 +209,6 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
     setBio(cached);
     setForm(cached ? { ...emptyForm, ...cached, handle: cached.handle ? "@" + cached.handle.replace(/^@+/, "") : "" } : emptyForm);
 
-    // 1. Load locked bio doc from Firestore
     getDoc(doc(db, "mat_watches", docKey)).then(d => {
       if (d.exists() && d.data()?.kind === "athlete_bio") {
         const bd = d.data();
@@ -193,7 +218,6 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
       }
     }).catch(() => {});
 
-    // 2. Count unique active watchers for this athlete (privacy-safe: count only, never exposes identities)
     const targetFold = foldStr(nm);
     getDocs(collection(db, "mat_watches")).then(sn => {
       const uniqueWatchers = new Set();
@@ -209,13 +233,22 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
       setWatcherCount(uniqueWatchers.size);
     }).catch(() => {});
 
-    // 3. Load verified tournament podiums if not already passed
     if (passedEvs.length > 0) return;
     getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__a2_" + athBucket(nm) + "__"))).then(sn => {
-      const tgt = foldStr(nm), seen = new Set(), out = [];
+      const tgt = foldStr(nm);
+      const qWords = tgt.split(/\s+/).filter(Boolean);
+      const seen = new Set(), out = [];
       let g = 0, s = 0, b = 0, acad = activeAth?.academy || activeAth?.a || "";
       sn.forEach(d => ((d.data() || {}).items || []).forEach(it => {
-        if (!foldStr(it.n).includes(tgt) && !tgt.includes(foldStr(it.n))) return;
+        const cFold = foldStr(it.n);
+        let isMatch = cFold.includes(tgt) || tgt.includes(cFold);
+        if (!isMatch && qWords.length >= 2) {
+          const cWords = cFold.split(/\s+/).filter(Boolean);
+          if (cWords.length >= 2 && cWords[0] === qWords[0] && cWords[cWords.length - 1] === qWords[qWords.length - 1]) {
+            isMatch = true;
+          }
+        }
+        if (!isMatch) return;
         const dk = foldStr(it.ev) + "|" + foldStr(it.d) + "|" + it.p;
         if (seen.has(dk)) return;
         seen.add(dk); out.push(it);
@@ -228,11 +261,62 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
   }, [nm]);
 
   const elite = computeEliteSpotlight({ name: nm, academy: cnt.acad, g: cnt.g, s: cnt.s, b: cnt.b, events: evs }, bio?.funFact);
-  const isClaimed = Boolean(bio?.ownerUid);
   const curEmailLow = (curUser?.email || "").toLowerCase();
+  const isClaimed = Boolean(bio?.ownerUid);
   const isOwner = Boolean(curUser && ((bio?.ownerUid && bio.ownerUid === curUser.uid) || (curEmailLow && (bio?.coEmails || []).includes(curEmailLow))));
   const hasNeonGoldRing = watcherCount >= WATCH_GLOW_MIN;
   const bioUrl = "https://matdates.com/?trophy=" + encodeURIComponent(nm).replace(/%20/g, "+");
+
+  // Smart Youth (Jits) vs Adult (Smoothcomp) detection — Jits is strictly for Youth competitors!
+  const isYouthCompetitor = (() => {
+    const savedLink = (bio?.jitsUrl || "").toLowerCase();
+    if (savedLink.includes("jits.gg")) return true;
+    if (savedLink.includes("smoothcomp.com")) return false;
+    const numAge = parseInt(bio?.age || "", 10);
+    if (!isNaN(numAge) && numAge > 0) return numAge < 18;
+    const beltStr = ((bio?.belt || "") + " " + (elite.pro?.belt || "")).toLowerCase();
+    if (/\b(grey|gray|yellow|orange|green|pee[\s-]?wee|mighty|kids?|youth|teen|juvenile)\b/.test(beltStr)) return true;
+    if (/\b(blue|purple|brown|black)\b/.test(beltStr) && !/juvenile|teen/.test(beltStr)) return false;
+    if (elite.pro) return false;
+    const divBlob = evs.map(e => (e.d || "") + " " + (e.ev || "")).join(" ").toLowerCase();
+    if (/\b(kids?|youth|boys?|girls?|pee[\s-]?wee|mighty[\s-]?mite|junior|teen|juvenile|tots?|6\s*&\s*under)\b/.test(divBlob)) return true;
+    if (/\b(adult|master|veteran|mens|womens)\b/.test(divBlob)) return false;
+    return false;
+  })();
+
+  const externalRecordHref = (() => {
+    const u = (bio?.jitsUrl || "").trim();
+    if (isYouthCompetitor) {
+      return u.includes("jits.gg") ? u : ("https://jits.gg/search?q=" + encodeURIComponent(nm));
+    }
+    return u.includes("smoothcomp.com") ? u : ("https://www.google.com/search?q=site:smoothcomp.com/profile+" + encodeURIComponent(nm));
+  })();
+
+  const externalRecordLabel = isYouthCompetitor
+    ? ((bio?.jitsUrl || "").includes("jits.gg") ? "📊 Jits Profile ↗" : "📊 Jits ↗")
+    : ((bio?.jitsUrl || "").includes("smoothcomp.com") ? "🌐 Smoothcomp Profile ↗" : "🌐 Smoothcomp ↗");
+
+  const handleSongClick = () => {
+    if (!bio?.songRepeat) return;
+    if (bio?.songUrl && /^https?:\/\//i.test(bio.songUrl)) {
+      window.open(bio.songUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+    if (musicPref) {
+      window.open(buildMusicSearchUrl(musicPref, bio.songRepeat, ""), "_blank", "noopener,noreferrer");
+    } else {
+      setShowMusicPicker(p => !p);
+    }
+  };
+
+  const chooseMusicService = (svc) => {
+    setMusicPref(svc);
+    try { localStorage.setItem("md_music_pref", svc); } catch {}
+    setShowMusicPicker(false);
+    if (bio?.songRepeat) {
+      window.open(buildMusicSearchUrl(svc, bio.songRepeat, bio?.songUrl || ""), "_blank", "noopener,noreferrer");
+    }
+  };
 
   const handleRequestOrOpenEdit = () => {
     if (!curUser) {
@@ -240,7 +324,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
       return;
     }
     if (isClaimed && !isOwner) {
-      addDoc(collection(db, "pending_events"), {
+      addDoc(collection(db, "mat_watches"), {
         kind: "bio_dispute", name: "Bio Verification Request: " + nm, requesterEmail: curUser.email || "", athleteSlug: slug, adminNotified: false, createdAt: new Date().toISOString()
       }).catch(() => {});
       alert("This profile is claimed & locked. An ownership verification request has been sent to MatDates Admin!");
@@ -266,7 +350,8 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
 
   const handleInstagramClick = () => {
     if (bio?.handle) {
-      trackEvent("igOutclicks"); window.open("https://instagram.com/" + bio.handle.replace(/^@+/, ""), "_blank", "noopener,noreferrer");
+      trackEvent("igOutclicks");
+      window.open("https://instagram.com/" + bio.handle.replace(/^@+/, ""), "_blank", "noopener,noreferrer");
     } else if (isOwner) {
       handleRequestOrOpenEdit();
     } else {
@@ -285,6 +370,12 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
       ownerUid: bio?.ownerUid || curUser.uid,
       ownerEmail: bio?.ownerEmail || curUser.email || "",
       handle: (form.handle || "").replace(/^@+/, "").trim(),
+      nickname: (form.nickname || "").replace(/^["']+|["']+$/g, "").trim(),
+      spiritEmoji: limitSpiritEmojis(form.spiritEmoji || ""),
+      songRepeat: (form.songRepeat || "").trim(),
+      songUrl: (form.songUrl || "").trim(),
+      quote: (form.quote || "").replace(/^["“”]+|["“”]+$/g, "").trim(),
+      currentRead: (form.currentRead || "").trim(),
       jitsUrl: (form.jitsUrl || "").trim(),
       age: (form.age || "").trim(),
       belt: (form.belt || "").trim(),
@@ -311,15 +402,20 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
     setTimeout(() => setSavedBanner(false), 3000);
   };
 
-  const hasBioDetails = Boolean(bio && (bio.age || bio.belt || bio.coach || bio.favMove || bio.cheatMeal));
+  const hasBioDetails = Boolean(bio && (bio.quote || bio.age || bio.belt || bio.coach || bio.favMove || bio.cheatMeal || bio.currentRead));
   const inp = { padding:"8px 10px", borderRadius:"6px", background:"#0f141e", color:"#fff", border:"1px solid #334155", fontSize:"0.83rem", boxSizing:"border-box" };
+
+  // Format display name with optional Fight Nickname in gold quotes
+  const nameParts = nm.trim().split(/\s+/);
+  const firstName = nameParts[0] || nm;
+  const restName = nameParts.slice(1).join(" ");
 
   return (
     <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", zIndex:10070, display:"flex", alignItems:"center", justifyContent:"center", padding:"12px" }}>
       <style>{NEON_GOLD_KEYFRAMES}</style>
-      <div onClick={e => e.stopPropagation()} style={{ background:"#0f141e", border:"1.5px solid #f59e0b", borderRadius:"14px", maxWidth:"650px", width:"100%", maxHeight:"90svh", overflowY:"auto", padding:"18px", textAlign:"left", color:"#fff" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:"#0f141e", border:"1.5px solid #f59e0b", borderRadius:"14px", maxWidth:"660px", width:"100%", maxHeight:"90svh", overflowY:"auto", padding:"18px", textAlign:"left", color:"#fff" }}>
 
-        {/* MULTI-ATHLETE PARENT / FAMILY QUICK-SWITCHER (Shows automatically when a parent claims 2+ kids!) */}
+        {/* MULTI-ATHLETE FAMILY QUICK-SWITCHER */}
         {myFamilyBios.length > 1 && (
           <div style={{ display:"flex", alignItems:"center", gap:"6px", flexWrap:"wrap", marginBottom:"12px", paddingBottom:"9px", borderBottom:"1px solid #1e293b" }}>
             <span style={{ fontSize:"0.71rem", color:"#94a3b8", fontWeight:"800" }}>👨‍👩‍👧‍👦 MY ATHLETES:</span>
@@ -344,14 +440,14 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
           </div>
         )}
 
-        {/* 1. PROFILE HEADER + AVATAR (NEON GOLD AT 100+ WATCHERS) + PINK CLAIMED INSTAGRAM */}
+        {/* 1. PROFILE HEADER + AVATAR + NICKNAME + SPIRIT EMOJI + PINK IG + SONG ON REPEAT */}
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:"10px" }}>
-          <div style={{ display:"flex", alignItems:"center", gap:"13px" }}>
+          <div style={{ display:"flex", alignItems:"flex-start", gap:"13px", flex:1, minWidth:0 }}>
             <div
               onClick={() => { if (isOwner) handleRequestOrOpenEdit(); }}
               title={hasNeonGoldRing ? "⚡ 100+ Watchers Club — Neon Gold Status!" : (isOwner ? "Click to change profile photo" : nm)}
               style={{
-                width:"66px", height:"66px", borderRadius:"50%", flexShrink:0,
+                width:"68px", height:"68px", borderRadius:"50%", flexShrink:0, marginTop:"2px",
                 border: hasNeonGoldRing ? "3px solid #fde047" : "2px solid #475569",
                 animation: hasNeonGoldRing ? "mdNeonGoldPulse 2.2s ease-in-out infinite" : "none",
                 background:"linear-gradient(135deg,#1e293b,#0f172a)",
@@ -365,10 +461,20 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
                 <span style={{ color: hasNeonGoldRing ? "#fde047" : "#fbbf24", fontWeight:"900", fontSize:"1.25rem" }}>{initials}</span>
               )}
             </div>
-            <div>
-              <div style={{ color:"#fbbf24", fontSize:"0.73rem", fontWeight:"800", letterSpacing:"1.4px" }}>🏆 MATDATES OFFICIAL TROPHY ROOM</div>
-              <div style={{ display:"flex", alignItems:"center", gap:"9px", flexWrap:"wrap", margin:"4px 0" }}>
-                <h2 style={{ margin:0, fontSize:"1.48rem", color:"#ffffff", fontWeight:"900" }}>{nm}</h2>
+
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ color:"#fbbf24", fontSize:"0.72rem", fontWeight:"800", letterSpacing:"1.4px" }}>🏆 MATDATES OFFICIAL TROPHY ROOM</div>
+              <div style={{ display:"flex", alignItems:"center", gap:"8px", flexWrap:"wrap", margin:"3px 0" }}>
+                <h2 style={{ margin:0, fontSize:"1.42rem", color:"#ffffff", fontWeight:"900", lineHeight:1.2 }}>
+                  {bio?.nickname ? (
+                    <>{firstName} <span style={{ color:"#fbbf24", fontStyle:"italic" }}>&ldquo;{bio.nickname}&rdquo;</span> {restName}</>
+                  ) : nm}
+                </h2>
+                {bio?.spiritEmoji && (
+                  <span title="Current Spirit Vibe" style={{ fontSize:"1.22rem", background:"#182030", border:"1px solid #2d3b52", borderRadius:"8px", padding:"1px 6px", lineHeight:1.3 }}>
+                    {bio.spiritEmoji}
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={handleInstagramClick}
@@ -379,18 +485,58 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
                     color: bio?.handle ? "#ffffff" : "#94a3b8",
                     border: bio?.handle ? "1px solid #f472b6" : "1px solid #475569",
                     boxShadow: bio?.handle ? "0 2px 10px rgba(225,48,108,0.45)" : "none",
-                    borderRadius:"7px", padding:"5px 9px", cursor:"pointer", fontWeight:"800", fontSize:"0.75rem"
+                    borderRadius:"7px", padding:"4px 9px", cursor:"pointer", fontWeight:"800", fontSize:"0.74rem"
                   }}
                 >
                   {IG_ICON}
                   {bio?.handle ? "@" + bio.handle : "IG"}
                 </button>
-                {bio?.openSf && <span style={{ background:"#132a1c", color:"#4ade80", border:"1px solid #22c55e", padding:"3px 8px", borderRadius:"5px", fontSize:"0.72rem", fontWeight:"bold" }}>🥊 Open for SuperFights</span>}
+                {bio?.openSf && <span style={{ background:"#132a1c", color:"#4ade80", border:"1px solid #22c55e", padding:"3px 7px", borderRadius:"5px", fontSize:"0.71rem", fontWeight:"bold" }}>🥊 Open for SuperFights</span>}
               </div>
-              <div style={{ color:"#ff9f43", fontSize:"0.85rem", fontWeight:"bold" }}>
-                {cnt.acad || elite.pro?.academy || "Independent"}
-                {(bio?.belt || elite.pro?.belt) ? " • " + (bio?.belt || elite.pro?.belt) : ""}
+
+              <div style={{ color:"#ff9f43", fontSize:"0.84rem", fontWeight:"bold", display:"flex", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
+                <span>{cnt.acad || elite.pro?.academy || "Independent"}{(bio?.belt || elite.pro?.belt) ? " • " + (bio?.belt || elite.pro?.belt) : ""}</span>
+                <span style={{ background:"#18202f", border:"1px solid #2d3748", borderRadius:"6px", padding:"2px 8px", fontSize:"0.76rem", color:"#e2e8f0" }}>
+                  🥇<b>{cnt.g}</b> 🥈<b>{cnt.s}</b> 🥉<b>{cnt.b}</b> • <b style={{ color:"#34d399" }}>{elite.pts} Pts</b>
+                </span>
               </div>
+
+              {/* CURRENT SONG ON REPEAT (Right under Athlete Name & Academy!) */}
+              {bio?.songRepeat && (
+                <div style={{ marginTop:"6px", display:"flex", alignItems:"center", gap:"6px", flexWrap:"wrap" }}>
+                  <button
+                    type="button"
+                    onClick={handleSongClick}
+                    title="Listen on your preferred music app"
+                    style={{
+                      background:"linear-gradient(90deg,#162436,#1d1836)", color:"#e2e8f0",
+                      border:"1px solid #38bdf8", borderRadius:"16px", padding:"3px 10px",
+                      fontSize:"0.74rem", fontWeight:"700", cursor:"pointer", display:"inline-flex", alignItems:"center", gap:"5px"
+                    }}
+                  >
+                    <span style={{ color:"#38bdf8" }}>🎵 On Repeat:</span> <b>{bio.songRepeat}</b> <span style={{ color:"#93c5fd" }}>▶</span>
+                  </button>
+                  {!bio?.songUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setShowMusicPicker(p => !p)}
+                      title="Choose preferred music service (Spotify, Apple Music, or YouTube Music)"
+                      style={{ background:"#182030", color:"#94a3b8", border:"1px solid #334155", borderRadius:"12px", padding:"2px 7px", fontSize:"0.68rem", cursor:"pointer" }}
+                    >
+                      {musicPref === "apple" ? "Apple Music ⚙️" : musicPref === "ytmusic" ? "YT Music ⚙️" : musicPref === "spotify" ? "Spotify ⚙️" : "Pick App 🎧"}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {showMusicPicker && bio?.songRepeat && (
+                <div style={{ marginTop:"5px", background:"#141c2c", border:"1px solid #38bdf8", borderRadius:"8px", padding:"6px 9px", display:"inline-flex", gap:"6px", alignItems:"center", flexWrap:"wrap", fontSize:"0.72rem" }}>
+                  <span style={{ color:"#cbd5e1", fontWeight:"bold" }}>Listen on:</span>
+                  <button type="button" onClick={() => chooseMusicService("spotify")} style={{ background:"#1DB954", color:"#000", border:"none", borderRadius:"5px", padding:"3px 8px", fontWeight:"800", cursor:"pointer", fontSize:"0.71rem" }}>Spotify</button>
+                  <button type="button" onClick={() => chooseMusicService("apple")} style={{ background:"#fa243c", color:"#fff", border:"none", borderRadius:"5px", padding:"3px 8px", fontWeight:"800", cursor:"pointer", fontSize:"0.71rem" }}>Apple Music</button>
+                  <button type="button" onClick={() => chooseMusicService("ytmusic")} style={{ background:"#ff0033", color:"#fff", border:"none", borderRadius:"5px", padding:"3px 8px", fontWeight:"800", cursor:"pointer", fontSize:"0.71rem" }}>YouTube Music</button>
+                </div>
+              )}
             </div>
           </div>
           <button onClick={onClose} style={{ background:"#1e293b", color:"#fff", border:"1px solid #334155", borderRadius:"6px", padding:"4px 10px", height:"32px", cursor:"pointer" }}>✕</button>
@@ -408,49 +554,55 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
 
         {savedBanner && (
           <div style={{ marginTop:"10px", background:"#132a1c", border:"1px solid #2ecc71", color:"#4ade80", padding:"8px 12px", borderRadius:"7px", fontSize:"0.82rem", fontWeight:"bold" }}>
-            ✅ Verified Athlete Profile, Photo &amp; Privacy Settings Locked!
+            ✅ Verified Athlete Profile, Photo &amp; Bio Settings Locked!
           </div>
         )}
 
-        {/* Action Strip */}
-        <div style={{ display:"flex", gap:"8px", flexWrap:"wrap", alignItems:"center", margin:"12px 0" }}>
-          <div style={{ background:"#18202f", border:"1px solid #2d3748", borderRadius:"8px", padding:"6px 11px", fontSize:"0.84rem" }}>
-            🥇<b>{cnt.g}</b> 🥈<b>{cnt.s}</b> 🥉<b>{cnt.b}</b> • <b style={{ color:"#34d399" }}>{elite.pts} Pts</b>
-          </div>
-          <button type="button" onClick={() => { onWatch(nm, cnt.acad || elite.pro?.academy || ""); setTimeout(() => setWatcherCount(c => isWatching ? c : Math.max(1, c + 1)), 250); }} style={{ background: isWatching ? "#132a1c" : "#162536", color: isWatching ? "#2ecc71" : "#38bdf8", border: isWatching ? "1px solid #2ecc71" : "1px solid #0284c7", borderRadius:"7px", padding:"6px 11px", fontWeight:"bold", fontSize:"0.77rem", cursor:"pointer" }}>
-            {isWatching ? "✓ Watching" : "🔔 Watch"}
-          </button>
-          <a
-            href={(bio?.jitsUrl && bio.jitsUrl.includes("jits.gg")) ? bio.jitsUrl : ("https://jits.gg/search?q=" + encodeURIComponent(nm))}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={() => trackEvent("jitsGgOutclicks")}
-            title={bio?.jitsUrl ? "View verified Jits.gg match record & ranking" : "Look up match history & rankings on Jits.gg"}
+        {/* CLEAN SINGLE-LINE ACTION BAR: Watch (+ Count) • Jits (Youth) / Smoothcomp (Adult) • Share Stats */}
+        <div style={{ display:"flex", gap:"8px", alignItems:"center", flexWrap:"wrap", margin:"12px 0" }}>
+          <button
+            type="button"
+            onClick={() => { onWatch(nm, cnt.acad || elite.pro?.academy || ""); setTimeout(() => setWatcherCount(c => isWatching ? c : Math.max(1, c + 1)), 250); }}
             style={{
-              background:"#132033", color:"#38bdf8", border:"1px solid #0284c7",
-              borderRadius:"7px", padding:"6px 11px", fontWeight:"800", fontSize:"0.77rem",
-              textDecoration:"none", display:"inline-flex", alignItems:"center", gap:"4px"
+              background: isWatching ? "#132a1c" : "#162536",
+              color: isWatching ? "#2ecc71" : "#38bdf8",
+              border: isWatching ? "1px solid #2ecc71" : "1px solid #0284c7",
+              borderRadius:"7px", padding:"7px 12px", fontWeight:"800", fontSize:"0.78rem", cursor:"pointer", whiteSpace:"nowrap"
             }}
           >
-            📊 {bio?.jitsUrl ? "Jits.gg Profile ↗" : "Jits.gg ↗"}
+            {isWatching ? "✓ Watching" : "🔔 Watch"}
+            {bio?.showWatchCount ? ` • 🔥 ${watcherCount}` : (isOwner ? ` • 👁️ ${watcherCount}` : "")}
+          </button>
+
+          <a
+            href={externalRecordHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => { if (isYouthCompetitor) trackEvent("jitsGgOutclicks"); }}
+            title={isYouthCompetitor ? "View youth match records & rankings on Jits" : "View adult match history & profile on Smoothcomp"}
+            style={{
+              background: isYouthCompetitor ? "#132033" : "#241b12",
+              color: isYouthCompetitor ? "#38bdf8" : "#ff9f43",
+              border: isYouthCompetitor ? "1px solid #0284c7" : "1px solid #d97706",
+              borderRadius:"7px", padding:"7px 12px", fontWeight:"800", fontSize:"0.78rem",
+              textDecoration:"none", display:"inline-flex", alignItems:"center", gap:"4px", whiteSpace:"nowrap"
+            }}
+          >
+            {externalRecordLabel}
           </a>
-          {bio?.showWatchCount ? (
-            <span style={{ background: hasNeonGoldRing ? "#292008" : "#18202f", color: hasNeonGoldRing ? "#fde047" : "#cbd5e1", border: hasNeonGoldRing ? "1px solid #facc15" : "1px solid #334155", borderRadius:"7px", padding:"6px 10px", fontSize:"0.76rem", fontWeight:"800" }}>
-              🔥 {watcherCount} Watching
-            </span>
-          ) : isOwner ? (
-            <span title="Private to you — check 'Show Watching count publicly' inside Edit Profile if you want visitors to see this number" style={{ background:"#151c28", color:"#64748b", border:"1px dashed #334155", borderRadius:"7px", padding:"5px 9px", fontSize:"0.73rem" }}>
-              👁️ {watcherCount} Watching (Private)
-            </span>
-          ) : null}
+
           {onShareCard && (
-            <button type="button" onClick={() => (trackEvent('shareStatsClicks'), onShareCard({ badge: elite.isElite ? elite.tierLabel : "2026 OFFICIAL TROPHY ROOM", title: nm, subtitle: cnt.acad || elite.pro?.academy || "", gold: cnt.g, silver: cnt.s, bronze: cnt.b, deepLink: bioUrl, lines: [...(elite.pro?.titles || []), ...(elite.isElite ? elite.facts.map(x => "★ " + x) : []), ...evs.slice(0, 5).map(m => (Number(m.p)===1?"🥇":Number(m.p)===2?"🥈":"🥉") + " " + m.ev)] }))} style={{ background:"#ff9f43", color:"#000", border:"none", borderRadius:"7px", padding:"6px 11px", fontWeight:"800", fontSize:"0.77rem", cursor:"pointer" }}>
+            <button
+              type="button"
+              onClick={() => (trackEvent("shareStatsClicks"), onShareCard({ badge: elite.isElite ? elite.tierLabel : "2026 OFFICIAL TROPHY ROOM", title: nm, subtitle: cnt.acad || elite.pro?.academy || "", gold: cnt.g, silver: cnt.s, bronze: cnt.b, deepLink: bioUrl, lines: [...(elite.pro?.titles || []), ...(elite.isElite ? elite.facts.map(x => "★ " + x) : []), ...evs.slice(0, 5).map(m => (Number(m.p)===1?"🥇":Number(m.p)===2?"🥈":"🥉") + " " + m.ev)] }))}
+              style={{ background:"#ff9f43", color:"#000", border:"none", borderRadius:"7px", padding:"7px 12px", fontWeight:"800", fontSize:"0.78rem", cursor:"pointer", whiteSpace:"nowrap" }}
+            >
               📲 Share Stats
             </button>
           )}
         </div>
 
-        {/* 2. ATHLETE BIO SECTION (Strictly View-Only Until Verified Claim!) */}
+        {/* 2. ATHLETE BIO SECTION */}
         <div style={{ background:"#141b28", border:"1px solid #283548", borderRadius:"10px", padding:"12px 13px", marginBottom:"12px" }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap", marginBottom: (hasBioDetails || claimStep || editBio) ? "8px" : 0 }}>
             <span style={{ color:"#93c5fd", fontWeight:"800", fontSize:"0.76rem", letterSpacing:"0.8px" }}>🪪 ATHLETE BIO</span>
@@ -469,14 +621,117 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
             )}
           </div>
 
-          {/* Step A: Identity / Multi-Athlete Parent Confirmation Gate BEFORE showing editable fields */}
           {claimStep && !editBio && (
             <div style={{ background:"#0f1624", border:"1px solid #38bdf8", borderRadius:"8px", padding:"11px 12px", display:"grid", gap:"9px" }}>
               <div style={{ fontSize:"0.81rem", color:"#e2e8f0", fontWeight:"bold" }}>🔒 Claim &amp; Lock {nm}&apos;s Official MatDates Profile</div>
               <label style={{ fontSize:"0.78rem", color:"#cbd5e1", display:"flex", alignItems:"flex-start", gap:"8px", cursor:"pointer", lineHeight:1.45 }}>
                 <input type="checkbox" checked={confirmIdentity} onChange={e => setConfirmIdentity(e.target.checked)} style={{ marginTop:"2px", accentColor:"#2ecc71" }} />
-                <span>I confirm that I am <b>{nm}</b> or the <b>parent / legal guardian</b> of this youth athlete, and want to lock this profile to <b>{curUser?.email}</b> <i style={{ color:"#94a3b8" }}>(parents can claim &amp; manage multiple children under one login)</i>.</span>
+                <span>I confirm that I am <b>{nm}</b> or the <b>parent / legal guardian</b> of this youth athlete, and want to lock this profile to <b>{curUser?.email}</b> <i style={{ color:"#94a3b8" }}>(parents &amp; youth athletes can link both accounts inside!)</i>.</span>
               </label>
+              <div style={{ display:"flex", gap:"8px" }}>
+                <button type="button" disabled={!confirmIdentity} onClick={unlockClaimEditor} style={{ background: confirmIdentity ? "#2ecc71" : "#1e293b", color: confirmIdentity ? "#000" : "#64748b", border:"none", borderRadius:"6px", padding:"7px 13px", fontWeight:"800", fontSize:"0.78rem", cursor: confirmIdentity ? "pointer" : "not-allowed" }}>
+                  🔓 Continue to Profile Editor
+                </button>
+                <button type="button" onClick={() => { setClaimStep(false); setConfirmIdentity(false); }} style={{ background:"transparent", color:"#94a3b8", border:"1px solid #334155", borderRadius:"6px", padding:"7px 11px", fontSize:"0.76rem", cursor:"pointer" }}>Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {!editBio && !claimStep && (
+            hasBioDetails ? (
+              <div style={{ display:"grid", gap:"7px" }}>
+                {bio.quote && (
+                  <div style={{ background:"#0f1624", borderLeft:"3px solid #f59e0b", padding:"7px 10px", borderRadius:"6px", fontSize:"0.82rem", color:"#fef3c7", fontStyle:"italic" }}>
+                    &ldquo;{bio.quote}&rdquo;
+                  </div>
+                )}
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(185px, 1fr))", gap:"7px", fontSize:"0.81rem" }}>
+                  {bio.age && <div style={{ background:"#0f141e", padding:"6px 9px", borderRadius:"6px" }}><span style={{ color:"#94a3b8" }}>🎂 Age:</span> <b>{bio.age}</b></div>}
+                  {bio.belt && <div style={{ background:"#0f141e", padding:"6px 9px", borderRadius:"6px" }}><span style={{ color:"#94a3b8" }}>🥋 Belt Rank:</span> <b>{bio.belt}</b></div>}
+                  {bio.coach && <div style={{ background:"#0f141e", padding:"6px 9px", borderRadius:"6px" }}><span style={{ color:"#94a3b8" }}>🏛️ Head Professor:</span> <b>{bio.coach}</b></div>}
+                  {bio.favMove && <div style={{ background:"#0f141e", padding:"6px 9px", borderRadius:"6px" }}><span style={{ color:"#94a3b8" }}>⚡ Go-To Move:</span> <b>{bio.favMove}</b></div>}
+                  {bio.cheatMeal && <div style={{ background:"#0f141e", padding:"6px 9px", borderRadius:"6px", gridColumn:"1 / -1" }}><span style={{ color:"#fbbf24" }}>🍕 Favorite Full Cheat Meal / Snack:</span> <b>{bio.cheatMeal}</b></div>}
+                  {bio.currentRead && (
+                    <div style={{ background:"#0f141e", padding:"6px 9px", borderRadius:"6px", gridColumn:"1 / -1", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
+                      <span><span style={{ color:"#93c5fd" }}>📖 Current Read:</span> <b>{bio.currentRead}</b></span>
+                      <a
+                        href={"https://www.amazon.com/s?k=" + encodeURIComponent(bio.currentRead + " book")}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ background:"#ff9900", color:"#000", padding:"3px 8px", borderRadius:"5px", fontWeight:"800", fontSize:"0.72rem", textDecoration:"none", whiteSpace:"nowrap" }}
+                      >
+                        Buy on Amazon ↗
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div style={{ color:"#64748b", fontSize:"0.78rem", marginTop:"4px" }}>
+                {isClaimed ? "Verified profile claimed — tap Edit Profile & Pic to add fight nickname, spirit emoji, song on repeat, motto & cheat meal!" : "Unclaimed profile — athletes (or parents) can lock their photo, @Instagram, nickname, song on repeat, motto & favorite cheat meal!"}
+              </div>
+            )
+          )}
+
+          {editBio && (
+            <form onSubmit={saveBio} style={{ marginTop:"4px", display:"grid", gap:"8px" }}>
+              <div style={{ background:"#171f30", border:"1px solid #f59e0b", borderRadius:"7px", padding:"7px 10px", fontSize:"0.75rem", color:"#fde68a", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:"6px" }}>
+                <span>✨ <b>Neon Gold Ring Goal:</b> {watcherCount} / {WATCH_GLOW_MIN} Active Watchers</span>
+                <span style={{ color:"#cbd5e1", fontSize:"0.72rem" }}>Share your Trophy Room on IG so fans tap 🔔 Watch!</span>
+              </div>
+
+              <div style={{ background:"#0f141e", border:"1px solid #334155", borderRadius:"7px", padding:"8px 10px", display:"flex", alignItems:"center", gap:"10px", flexWrap:"wrap" }}>
+                {(form.avatarData || bio?.avatarData) && (
+                  <img src={form.avatarData !== undefined ? form.avatarData : bio?.avatarData} alt="Preview" style={{ width:"44px", height:"44px", borderRadius:"50%", objectFit:"cover", border:"1.5px solid #fbbf24" }} />
+                )}
+                <div style={{ flex:1, minWidth:"180px" }}>
+                  <div style={{ fontSize:"0.75rem", color:"#fbbf24", fontWeight:"bold", marginBottom:"3px" }}>📸 Athlete Profile Photo (Glows Neon Gold at {WATCH_GLOW_MIN}+ Watchers!)</div>
+                  <input type="file" accept="image/*" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { const d = await resizeAvatarFile(f); setForm(p => ({ ...p, avatarData: d })); } }} style={{ fontSize:"0.75rem", color:"#cbd5e1", width:"100%" }} />
+                </div>
+                {(form.avatarData || bio?.avatarData) && (
+                  <button type="button" onClick={() => setForm(p => ({ ...p, avatarData: "" }))} style={{ background:"#2a1215", color:"#fca5a5", border:"1px solid #ef4444", borderRadius:"5px", padding:"4px 8px", fontSize:"0.72rem", cursor:"pointer" }}>Remove Pic</button>
+                )}
+              </div>
+
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(150px, 1fr))", gap:"7px" }}>
+                <input placeholder="Instagram @handle" value={form.handle || ""} onFocus={() => { if (!form.handle) setForm(f => ({...f, handle: "@"})); }} onChange={e => { const v = e.target.value; setForm({...form, handle: v ? ("@" + v.replace(/^@+/, "")) : ""}); }} style={inp} />
+                <input placeholder="Fight Name / Nickname (Optional)" value={form.nickname || ""} onChange={e => setForm({...form, nickname: e.target.value})} style={inp} />
+                <input placeholder="Spirit Emoji — Max 3 (e.g. 🦁🔥👑)" value={form.spiritEmoji || ""} onChange={e => setForm({...form, spiritEmoji: limitSpiritEmojis(e.target.value)})} style={inp} />
+              </div>
+
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(195px, 1fr))", gap:"7px" }}>
+                <input placeholder="🎵 Current Song on Repeat (Song — Artist)" value={form.songRepeat || ""} onChange={e => setForm({...form, songRepeat: e.target.value})} style={inp} />
+                <input type="url" placeholder="Optional Direct Song Link (blank = auto Spotify/Apple/YT)" value={form.songUrl || ""} onChange={e => setForm({...form, songUrl: e.target.value})} style={inp} />
+              </div>
+
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(145px, 1fr))", gap:"7px" }}>
+                <input placeholder="Age (Optional)" value={form.age || ""} onChange={e => setForm({...form, age: e.target.value})} style={inp} />
+                <input placeholder="Belt Rank (Optional)" value={form.belt || ""} onChange={e => setForm({...form, belt: e.target.value})} style={inp} />
+                <input placeholder="Head Professor / Coach" value={form.coach || ""} onChange={e => setForm({...form, coach: e.target.value})} style={inp} />
+                <input placeholder="Go-To Submission or Guard" value={form.favMove || ""} onChange={e => setForm({...form, favMove: e.target.value})} style={inp} />
+              </div>
+
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(195px, 1fr))", gap:"7px" }}>
+                <input placeholder="💬 Favorite Quote, Motto, Saying or Verse (Optional)" value={form.quote || ""} onChange={e => setForm({...form, quote: e.target.value})} style={inp} />
+                <input placeholder="📖 Current Read / Book Title (Links to Amazon!)" value={form.currentRead || ""} onChange={e => setForm({...form, currentRead: e.target.value})} style={inp} />
+              </div>
+
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(195px, 1fr))", gap:"7px" }}>
+                <input placeholder="🍕 Favorite FULL CHEAT Meal / Snack (Optional)" value={form.cheatMeal || ""} onChange={e => setForm({...form, cheatMeal: e.target.value})} style={inp} />
+                <input type="url" placeholder="Direct Jits (Youth) or Smoothcomp (Adult) Profile URL" value={form.jitsUrl || ""} onChange={e => setForm({...form, jitsUrl: e.target.value})} style={inp} />
+              </div>
+
+              <input placeholder="Custom Fun Fact (Optional — pins to Insider Spotlight!)" value={form.funFact || ""} onChange={e => setForm({...form, funFact: e.target.value})} style={{ ...inp, width:"100%" }} />
+
+              <label style={{ fontSize:"0.8rem", color:"#cbd5e1", display:"flex", alignItems:"center", gap:"6px", cursor:"pointer" }}>
+                <input type="checkbox" checked={Boolean(form.showWatchCount)} onChange={e => setForm({...form, showWatchCount: e.target.checked})} />
+                <span>🔥 Show total <b>&quot;Watching&quot; count ({watcherCount})</b> publicly on Watch button <i style={{ color:"#94a3b8" }}>(never shows who is watching)</i></span>
+              </label>
+              <label style={{ fontSize:"0.8rem", color:"#cbd5e1", display:"flex", alignItems:"center", gap:"6px", cursor:"pointer" }}>
+                <input type="checkbox" checked={Boolean(form.openSf)} onChange={e => setForm({...form, openSf: e.target.checked})} />
+                <span>🥊 List in the <b>Protected SuperFight Matchmaking Pool</b> <i style={{ color:"#94a3b8" }}>(email stays 100% hidden)</i></span>
+              </label>
+
               <div style={{ background:"#0f141e", border:"1px solid #2d3b52", borderRadius:"7px", padding:"8px 10px", display:"grid", gap:"6px" }}>
                 <div style={{ fontSize:"0.75rem", color:"#93c5fd", fontWeight:"bold" }}>👨‍👩‍👧‍👦 Co-Manage with Athlete / Parent Account (Optional)</div>
                 <div style={{ fontSize:"0.72rem", color:"#94a3b8" }}>Add your youth athlete&apos;s own email (or parent&apos;s email) so both separate MatDates accounts can edit this Trophy Room!</div>
@@ -495,71 +750,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
                   <button type="button" onClick={() => { const v = coInput.trim().toLowerCase(); if (v.includes("@")) { setForm(p => ({ ...p, coEmails: Array.from(new Set([...(p.coEmails || []), v])) })); setCoInput(""); } }} style={{ background:"#38bdf8", color:"#000", border:"none", borderRadius:"6px", padding:"6px 11px", fontWeight:"800", fontSize:"0.75rem", cursor:"pointer" }}>+ Link Account</button>
                 </div>
               </div>
-              <div style={{ display:"flex", gap:"8px" }}>
-                <button type="button" disabled={!confirmIdentity} onClick={unlockClaimEditor} style={{ background: confirmIdentity ? "#2ecc71" : "#1e293b", color: confirmIdentity ? "#000" : "#64748b", border:"none", borderRadius:"6px", padding:"7px 13px", fontWeight:"800", fontSize:"0.78rem", cursor: confirmIdentity ? "pointer" : "not-allowed" }}>
-                  🔓 Continue to Profile Editor
-                </button>
-                <button type="button" onClick={() => { setClaimStep(false); setConfirmIdentity(false); }} style={{ background:"transparent", color:"#94a3b8", border:"1px solid #334155", borderRadius:"6px", padding:"7px 11px", fontSize:"0.76rem", cursor:"pointer" }}>Cancel</button>
-              </div>
-            </div>
-          )}
 
-          {/* Read-Only Bio View */}
-          {!editBio && !claimStep && (
-            hasBioDetails ? (
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(185px, 1fr))", gap:"7px", fontSize:"0.81rem" }}>
-                {bio.age && <div style={{ background:"#0f141e", padding:"6px 9px", borderRadius:"6px" }}><span style={{ color:"#94a3b8" }}>🎂 Age:</span> <b>{bio.age}</b></div>}
-                {bio.belt && <div style={{ background:"#0f141e", padding:"6px 9px", borderRadius:"6px" }}><span style={{ color:"#94a3b8" }}>🥋 Belt Rank:</span> <b>{bio.belt}</b></div>}
-                {bio.coach && <div style={{ background:"#0f141e", padding:"6px 9px", borderRadius:"6px" }}><span style={{ color:"#94a3b8" }}>🏛️ Head Professor:</span> <b>{bio.coach}</b></div>}
-                {bio.favMove && <div style={{ background:"#0f141e", padding:"6px 9px", borderRadius:"6px" }}><span style={{ color:"#94a3b8" }}>⚡ Go-To Move:</span> <b>{bio.favMove}</b></div>}
-                {bio.cheatMeal && <div style={{ background:"#0f141e", padding:"6px 9px", borderRadius:"6px", gridColumn:"1 / -1" }}><span style={{ color:"#fbbf24" }}>🍕 Favorite Full Cheat Meal / Snack:</span> <b>{bio.cheatMeal}</b></div>}
-              </div>
-            ) : (
-              <div style={{ color:"#64748b", fontSize:"0.78rem", marginTop:"4px" }}>
-                {isClaimed ? "Verified profile claimed — tap Edit Profile & Pic to add optional bio details." : "Unclaimed profile — athletes (or parents of youth competitors) can lock their photo, @Instagram, belt rank & favorite cheat meal!"}
-              </div>
-            )
-          )}
-
-          {/* Step B: Verified Owner Editor */}
-          {editBio && (
-            <form onSubmit={saveBio} style={{ marginTop:"4px", display:"grid", gap:"8px" }}>
-              <div style={{ background:"#171f30", border:"1px solid #f59e0b", borderRadius:"7px", padding:"7px 10px", fontSize:"0.75rem", color:"#fde68a", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:"6px" }}>
-                <span>✨ <b>Neon Gold Ring Goal:</b> {watcherCount} / {WATCH_GLOW_MIN} Active Watchers</span>
-                <span style={{ color:"#cbd5e1", fontSize:"0.72rem" }}>Share your Trophy Room on IG so fans tap 🔔 Watch!</span>
-              </div>
-              <div style={{ background:"#0f141e", border:"1px solid #334155", borderRadius:"7px", padding:"8px 10px", display:"flex", alignItems:"center", gap:"10px", flexWrap:"wrap" }}>
-                {(form.avatarData || bio?.avatarData) && (
-                  <img src={form.avatarData !== undefined ? form.avatarData : bio?.avatarData} alt="Preview" style={{ width:"44px", height:"44px", borderRadius:"50%", objectFit:"cover", border:"1.5px solid #fbbf24" }} />
-                )}
-                <div style={{ flex:1, minWidth:"180px" }}>
-                  <div style={{ fontSize:"0.75rem", color:"#fbbf24", fontWeight:"bold", marginBottom:"3px" }}>📸 Athlete Profile Photo (Glows Neon Gold at {WATCH_GLOW_MIN}+ Watchers!)</div>
-                  <input type="file" accept="image/*" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { const d = await resizeAvatarFile(f); setForm(p => ({ ...p, avatarData: d })); } }} style={{ fontSize:"0.75rem", color:"#cbd5e1", width:"100%" }} />
-                </div>
-                {(form.avatarData || bio?.avatarData) && (
-                  <button type="button" onClick={() => setForm(p => ({ ...p, avatarData: "" }))} style={{ background:"#2a1215", color:"#fca5a5", border:"1px solid #ef4444", borderRadius:"5px", padding:"4px 8px", fontSize:"0.72rem", cursor:"pointer" }}>Remove Pic</button>
-                )}
-              </div>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(145px, 1fr))", gap:"7px" }}>
-                <input placeholder="Instagram @handle" value={form.handle || ""} onFocus={() => { if (!form.handle) setForm(f => ({...f, handle: "@"})); }} onChange={e => { const v = e.target.value; setForm({...form, handle: v ? ("@" + v.replace(/^@+/, "")) : ""}); }} style={inp} />
-                <input placeholder="Age (Optional)" value={form.age || ""} onChange={e => setForm({...form, age: e.target.value})} style={inp} />
-                <input placeholder="Belt Rank (Optional)" value={form.belt || ""} onChange={e => setForm({...form, belt: e.target.value})} style={inp} />
-                <input placeholder="Head Professor / Coach" value={form.coach || ""} onChange={e => setForm({...form, coach: e.target.value})} style={inp} />
-              </div>
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(200px, 1fr))", gap:"7px" }}>
-                <input placeholder="Go-To Submission or Guard (Optional)" value={form.favMove || ""} onChange={e => setForm({...form, favMove: e.target.value})} style={inp} />
-                <input placeholder="Favorite FULL CHEAT Meal / Snack 🍕🍪 (Optional)" value={form.cheatMeal || ""} onChange={e => setForm({...form, cheatMeal: e.target.value})} style={inp} />
-              </div>
-              <input type="url" placeholder="Direct Jits.gg Profile URL (Optional — e.g. https://jits.gg/...)" value={form.jitsUrl || ""} onChange={e => setForm({...form, jitsUrl: e.target.value})} style={{ ...inp, width:"100%" }} />
-              <input placeholder="Custom Fun Fact (Optional — pins to Insider Spotlight!)" value={form.funFact || ""} onChange={e => setForm({...form, funFact: e.target.value})} style={{ ...inp, width:"100%" }} />
-              <label style={{ fontSize:"0.8rem", color:"#cbd5e1", display:"flex", alignItems:"center", gap:"6px", cursor:"pointer" }}>
-                <input type="checkbox" checked={Boolean(form.showWatchCount)} onChange={e => setForm({...form, showWatchCount: e.target.checked})} />
-                <span>🔥 Show total <b>&quot;Watching&quot; count ({watcherCount})</b> publicly in Trophy Room <i style={{ color:"#94a3b8" }}>(never shows who is watching)</i></span>
-              </label>
-              <label style={{ fontSize:"0.8rem", color:"#cbd5e1", display:"flex", alignItems:"center", gap:"6px", cursor:"pointer" }}>
-                <input type="checkbox" checked={Boolean(form.openSf)} onChange={e => setForm({...form, openSf: e.target.checked})} />
-                <span>🥊 List in the <b>Open SuperFight Matchmaking Pool</b></span>
-              </label>
               <div style={{ display:"flex", gap:"8px" }}>
                 <button type="submit" disabled={saving} style={{ flex:1, background:"#2ecc71", color:"#000", border:"none", borderRadius:"6px", padding:"9px", fontWeight:"800", cursor:"pointer" }}>
                   {saving ? "Locking Profile..." : "🔒 Save & Lock Verified Profile"}
@@ -578,7 +769,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
           </div>
         )}
 
-        {/* 4. EVENTS & PODIUMS FOLLOWING */}
+        {/* 4. EVENTS & PODIUMS */}
         {elite.pro && (
           <div style={{ marginBottom:"12px" }}>
             <div style={{ color:"#fbbf24", fontWeight:"bold", fontSize:"0.8rem", marginBottom:"5px" }}>👑 PRO TITLES &amp; SUPERFIGHT VICTORIES</div>
@@ -589,7 +780,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
 
         <div style={{ color:"#93c5fd", fontWeight:"bold", fontSize:"0.8rem", marginBottom:"5px" }}>🏅 VERIFIED TOURNAMENT EVENTS &amp; PODIUMS ({evs.length})</div>
         <div style={{ display:"grid", gap:"5px" }}>
-          {evs.length === 0 ? <div style={{ color:"#94a3b8", fontSize:"0.8rem" }}>Pro / Invitational profile active — bracket podiums sync automatically.</div> : evs.map((m, i) => (
+          {evs.length === 0 ? <div style={{ color:"#94a3b8", fontSize:"0.8rem" }}>Tournament podiums sync automatically as official results post.</div> : evs.map((m, i) => (
             <div key={i} style={{ background:"#151b26", padding:"6px 9px", borderRadius:"6px", fontSize:"0.76rem", display:"flex", justifyContent:"space-between", gap:"8px" }}>
               <span>{Number(m.p)===1?"🥇":Number(m.p)===2?"🥈":"🥉"} <b>{m.ev}</b> — {m.d}</span>
               <b style={{ color:"#38bdf8", fontSize:"0.7rem", flexShrink:0 }}>{/ufc/i.test((m.ev||"")+" "+(m.f||"")) ? "UFC" : m.f}</b>
