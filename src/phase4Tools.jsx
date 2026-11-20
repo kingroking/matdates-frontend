@@ -1,4 +1,4 @@
-import { athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, findProAthlete, PRO_SUPERFIGHTS } from "./proHubData";
+import { athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, sameCompetitorCluster, findProAthlete, PRO_SUPERFIGHTS } from "./proHubData";
 import { AcademyProSuite } from "./proWorkspaces";
 import { auth } from "./firebase";
 import { computeEliteSpotlight } from "./proHubData";
@@ -340,7 +340,7 @@ function canonicalizeHits(hits) {
   const parsed = hits.map(m => ({ m, np: parseN(m.n), ak: normGymKey(m.a) }));
   const clusters = [];
   parsed.filter(x => !x.np.isInit).forEach(({ m, np, ak }) => {
-    let c = clusters.find(x => !x.np.isInit && x.np.first === np.first && x.np.last === np.last && gymsCompat(x.ak, ak));
+    let c = clusters.find(x => !x.np.isInit && ((x.np.first === np.first && x.np.last === np.last && gymsCompat(x.ak, ak)) || sameCompetitorCluster(x.bestN, x.bestA, m.n, m.a)));
     if (!c) { c = { bestN: m.n, bestA: m.a, ak, np, rows: [], seen: new Set() }; clusters.push(c); }
     else {
       if ((m.n || "").length > (c.bestN || "").length) c.bestN = m.n;
@@ -701,6 +701,8 @@ export function LeaderboardModal({ onClose }) {
       <div onClick={onClose} style={box}>
         <div onClick={e => e.stopPropagation()} style={card}>
           {trophyCard && <TrophyCardModal cardData={trophyCard} onClose={() => setTrophyCard(null)} />}
+          {podiumWatchPick && <div onClick={e=>e.stopPropagation()}><MatAlertModal event={podiumWatchPick.event} comp={podiumWatchPick.comp} division={podiumWatchPick.division} onClose={() => setPodiumWatchPick(null)} /></div>}
+          {openAthTrophy && <div onClick={e=>e.stopPropagation()}><AthleteTrophyRoomModal athlete={openAthTrophy} onClose={() => setOpenAthTrophy(null)} isWatching={Boolean(getPodiumWatch(openAthTrophy.name))} onShareCard={setTrophyCard} onWatch={(nm, ac) => setPodiumWatchPick({ event: { id: "", name: "All Upcoming Tournaments", link: "https://matdates.com/?athlete=" + encodeURIComponent(nm).replace(/%20/g, "+"), sort_date: "" }, comp: { Name: nm, Academy: ac || "", Division: "" }, division: "" })} /></div>}
           {copiedToast && <div style={{ background:'#064e3b', color:'#6ee7b7', border:'1px solid #10b981', borderRadius:'6px', padding:'6px 10px', fontSize:'0.76rem', fontWeight:'bold', marginBottom:'8px', textAlign:'center' }}>{copiedToast}</div>}
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:'6px', flexWrap:'wrap', marginBottom:'10px', flexShrink:0 }}>
             <button
@@ -794,7 +796,7 @@ export function LeaderboardModal({ onClose }) {
               <div style={{ padding:'24px', textAlign:'center', color:'#38bdf8' }}>Loading {activeGym.Academy} trophy room...</div>
             ) : (
               <>
-                <AcademyProSuite gymName={activeGym.Academy} gymKey={activeGym.key} user={auth.currentUser} isAdmin={false} onRequireAuth={() => alert("Please Sign In at the top right of MatDates first!")} />
+                <AcademyProSuite gymName={activeGym.Academy} gymKey={activeGym.key} medalists={indivList} onOpenAthlete={setOpenAthTrophy} user={auth.currentUser} isAdmin={false} onRequireAuth={() => alert("Please Sign In at the top right of MatDates first!")} />
                 {indivList.length > 0 && (
                   <div>
                     <div style={{ color:'#38bdf8', fontSize:'0.8rem', fontWeight:'bold', marginBottom:'6px' }}>

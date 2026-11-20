@@ -105,15 +105,18 @@ export function GuidedTourModal({ mode = "SITE", onClose }) {
     };
   }, [idx, cur.sel]);
 
-  const vw = typeof window !== "undefined" ? window.innerWidth : 900;
-  const vh = typeof window !== "undefined" ? window.innerHeight : 700;
-  const popWidth = Math.min(330, vw - 24);
-  const placeAbove = rect && (rect.top + rect.height + 195 > vh) && rect.top > 190;
-  const popTop = rect ? (placeAbove ? Math.max(12, rect.top - 175) : Math.min(vh - 185, rect.top + rect.height + 14)) : Math.max(80, vh / 2 - 90);
-  const popLeft = rect ? Math.min(vw - popWidth - 12, Math.max(12, rect.left + rect.width / 2 - popWidth / 2)) : Math.max(12, vw / 2 - popWidth / 2);
+  const vw = typeof window !== "undefined" ? (window.visualViewport?.width || window.innerWidth) : 900;
+  const vh = typeof window !== "undefined" ? (window.visualViewport?.height || window.innerHeight) : 700;
+  const isMobileScreen = vw < 600;
+  const popWidth = Math.min(340, vw - 20);
+  const estCardH = isMobileScreen ? 215 : 195;
+  const placeAbove = rect && (rect.top + rect.height + estCardH > vh - 12) && rect.top > estCardH;
+  const rawTop = rect ? (placeAbove ? (rect.top - estCardH - 10) : (rect.top + rect.height + 12)) : (vh / 2 - 95);
+  const popTop = Math.max(10, Math.min(vh - estCardH - 12, rawTop));
+  const popLeft = Math.max(10, Math.min(vw - popWidth - 10, rect ? (rect.left + rect.width / 2 - popWidth / 2) : (vw / 2 - popWidth / 2)));
 
   return (
-    <div onClick={onClose} style={{ position:"fixed", inset:0, zIndex:10120, touchAction:"none", overscrollBehavior:"none", background: rect ? "transparent" : "rgba(0,0,0,0.65)" }}>
+    <div onClick={onClose} style={{ position:"fixed", inset:0, zIndex:10120, overscrollBehavior:"contain", background: rect ? "transparent" : "rgba(0,0,0,0.68)" }}>
       {rect && (
         <div style={{
           position:"fixed",
@@ -130,9 +133,10 @@ export function GuidedTourModal({ mode = "SITE", onClose }) {
       )}
       <div onClick={e => e.stopPropagation()} style={{
         position:"fixed", top: popTop, left: popLeft, width: popWidth,
+        maxHeight: (vh - 24) + "px", overflowY:"auto", WebkitOverflowScrolling:"touch", boxSizing:"border-box",
         background:"#0f172a", border:"1.5px solid #38bdf8", borderRadius:"12px",
-        padding:"14px 15px", color:"#fff", textAlign:"left",
-        boxShadow:"0 14px 34px rgba(0,0,0,0.88)", transition:"all 0.22s ease"
+        padding:"13px 14px", color:"#fff", textAlign:"left",
+        boxShadow:"0 14px 34px rgba(0,0,0,0.92)", transition:"top 0.2s ease, left 0.2s ease", zIndex:10125
       }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"5px" }}>
           <span style={{ color:"#38bdf8", fontSize:"0.7rem", fontWeight:"800", letterSpacing:"1px" }}>SPOTLIGHT GUIDE • {idx + 1} OF {steps.length}</span>
@@ -203,25 +207,44 @@ export function MultiCategoryDropdown({ selected, onChange }) {
 }
 
 // 📸 Team Podium Photo Drop Album + Coach Clipboard (used inside both Academy Homepage AND Academy Trophy Room!)
-export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, user, isAdmin, onRequireAuth, isHomepage = false }) {
+const exactGymKey = (raw) => {
+  const k = foldStr(raw || "").replace(/[^a-z0-9]/g, "");
+  if (k.startsWith("aoj") || k.startsWith("artofjiujitsu")) return "artofjiujitsu";
+  if (k.startsWith("atoshq") || k === "atosjiujitsuhq" || k === "atosjiujitsu") return "atos";
+  if (k === "tmcombat" || k === "tmcombatacademy" || k === "thiagomendescombatacademy" || k === "carlsongraciejiujitsusanantonio" || k === "carlsongraciesanantoniotx") return "carlsongraciesanantonio";
+  if (k === "carlsongracieteam") return "carlsongracie";
+  if (k === "gb") return "graciebarra";
+  if (k === "braziliantopteam") return "btt";
+  if (k === "checkmatbjj") return "checkmat";
+  if (k === "alliancebjj") return "alliance";
+  return k;
+};
+
+export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, medalists = [], onOpenAthlete, user, isAdmin, onRequireAuth, isHomepage = false }) {
   const [ws, setWs] = useState(null);
+  const [userRole, setUserRole] = useState("");
   const [newGymName, setNewGymName] = useState("");
   const activeName = propGymName || ws?.gymName || "";
+  const canonicalTargetKey = exactGymKey(propGymKey || activeName);
   const activeKey = propGymKey || ws?.gymKey || (activeName ? foldStr(activeName).replace(/[^a-z0-9]+/g, "_") : "");
-  const wsId = "acad_ws_" + (activeKey || "unlinked");
 
-  const [sub, setSub] = useState(isHomepage ? "CLIPBOARD" : "ALBUM");
   const [photos, setPhotos] = useState([]);
-  const [roster, setRoster] = useState([]);
+  const [upcomingSquad, setUpcomingSquad] = useState([]);
+  const [publicBios, setPublicBios] = useState([]);
   const [staffInput, setStaffInput] = useState("");
-  const [mmQuery, setMmQuery] = useState("");
-  const [mmBelt, setMmBelt] = useState("ALL");
-  const [offerTarget, setOfferTarget] = useState(null);
-  const [offerForm, setOfferForm] = useState({ eventDetails: "", terms: "" });
+  const [coachNameInput, setCoachNameInput] = useState("");
   const [showTour, setShowTour] = useState(false);
   const [upForm, setUpForm] = useState({ athlete: "", eventName: "", medal: "🥇 Gold", insta: "", fileData: "" });
   const [uploading, setUploading] = useState(false);
   const [msg, setMsg] = useState("");
+
+  // Check if current logged-in user is an Academy account / verified Coach Staff for THIS gym
+  useEffect(() => {
+    if (!user?.uid) { setUserRole(""); return; }
+    getDoc(doc(db, "mat_watches", "role_" + user.uid)).then(d => {
+      if (d.exists()) setUserRole(d.data()?.role || "user");
+    }).catch(() => {});
+  }, [user?.uid]);
 
   useEffect(() => {
     if (propGymKey) {
@@ -235,11 +258,24 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, user
     }
   }, [propGymKey, user]);
 
+  const userEmLow = (user?.email || "").toLowerCase();
+  const isGymStaff = Boolean(
+    isAdmin ||
+    isHomepage ||
+    (user && ws && (ws.ownerUid === user.uid || (userEmLow && (ws.staffEmails || []).includes(userEmLow)))) ||
+    (user && userRole === "academy" && !ws)
+  );
+
+  const [sub, setSub] = useState(isHomepage ? "CLIPBOARD" : "ROSTER");
+  useEffect(() => {
+    if (isHomepage) setSub("CLIPBOARD");
+  }, [isHomepage]);
+
   const loadAlbum = () => {
-    if (!activeKey) return;
+    if (!activeKey && !canonicalTargetKey) return;
     getDocs(query(collection(db, "mat_watches"), where("kind", "==", "academy_photo"))).then(sn => {
       const list = sn.docs.map(d => ({ id: d.id, ...d.data() }))
-        .filter(x => x.gymKey === activeKey || foldStr(x.gymName || "") === foldStr(activeName))
+        .filter(x => exactGymKey(x.gymKey || x.gymName || "") === canonicalTargetKey)
         .sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
       setPhotos(list);
     }).catch(() => {});
@@ -248,15 +284,68 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, user
   useEffect(() => {
     if (!activeName) return;
     loadAlbum();
+
+    // Load public bios for this gym (gives us claimed athletes + their named Professors/Coaches!)
+    getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__public_bios__"))).then(sn => {
+      setPublicBios(sn.docs.map(d => d.data()).filter(b => b && b.name && exactGymKey(b.academy || "") === canonicalTargetKey));
+    }).catch(() => {});
+
+    // STRICT exact-gym matching on __athlete_index__ (NO MORE outside "Carlson Gracie" or "San Antonio" gyms bleeding in!)
     getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__athlete_index__"))).then(sn => {
-      const gFold = foldStr(activeName);
+      const seen = new Set();
       const hits = [];
       sn.forEach(d => ((d.data() || {}).items || []).forEach(it => {
-        if ((it.a || "").length >= 3 && (foldStr(it.a).includes(gFold) || gFold.includes(foldStr(it.a)))) hits.push(it);
+        if (!it.a || exactGymKey(it.a) !== canonicalTargetKey) return;
+        const rk = foldStr(it.n) + "|" + foldStr(it.e || "") + "|" + foldStr(it.d || "");
+        if (seen.has(rk)) return;
+        seen.add(rk);
+        hits.push(it);
       }));
-      setRoster(hits.slice(0, 80));
+      setUpcomingSquad(hits.slice(0, 80));
     }).catch(() => {});
-  }, [activeName, activeKey]);
+  }, [activeName, canonicalTargetKey]);
+
+  // Build unified, deduplicated Team Roster (Claimed Athletes + 2026 Medalists + Upcoming Squad)
+  const teamRoster = React.useMemo(() => {
+    const map = new Map();
+    const addMember = (nm, badge) => {
+      if (!nm || nm.trim().length < 2) return;
+      const k = foldStr(nm.trim());
+      if (!map.has(k)) map.set(k, { name: nm.trim(), g: 0, s: 0, b: 0, belt: "", upcoming: 0, claimed: false });
+      const rec = map.get(k);
+      if (badge?.belt && !rec.belt) rec.belt = badge.belt;
+      if (badge?.claimed) rec.claimed = true;
+      if (badge?.p === 1) rec.g++; else if (badge?.p === 2) rec.s++; else if (badge?.p === 3) rec.b++;
+      if (badge?.upcoming) rec.upcoming++;
+    };
+    publicBios.forEach(b => addMember(b.name, { belt: b.belt, claimed: Boolean(b.isClaimed || b.ownerUid) }));
+    (medalists || []).forEach(m => addMember(m.n, { p: Number(m.p || 3) }));
+    upcomingSquad.forEach(u => addMember(u.n, { upcoming: 1 }));
+    return Array.from(map.values()).sort((a, b) => (b.claimed ? 3 : 0) + (b.g * 5 + b.s * 2 + b.b) - ((a.claimed ? 3 : 0) + (a.g * 5 + a.s * 2 + a.b)));
+  }, [publicBios, medalists, upcomingSquad]);
+
+  // Build clickable Professors & Coaches directory for this Academy!
+  const gymCoaches = React.useMemo(() => {
+    const map = new Map();
+    const addCoach = (raw, roleLabel) => {
+      const clean = (raw || "").replace(/^(head\s+professor|professor|prof\.?|coach)\s+/i, "").trim();
+      if (clean.length < 3 || clean.includes("@")) return;
+      const k = foldStr(clean);
+      if (!map.has(k)) map.set(k, { name: clean, displayTitle: /^(prof)/i.test(raw || "") ? "Head Professor" : (roleLabel || "Professor / Coach") });
+    };
+    if (canonicalTargetKey === "carlsongraciesanantonio") addCoach("Professor Thiago Mendes", "Head Professor • 3rd Degree Black Belt");
+    (ws?.coachNames || []).forEach(cn => addCoach(cn, "Academy Professor / Coach"));
+    publicBios.forEach(b => { if (b.coach) addCoach(b.coach, "Professor / Coach"); });
+    return Array.from(map.values());
+  }, [ws, publicBios, canonicalTargetKey]);
+
+  const openPersonTrophy = (personName) => {
+    if (onOpenAthlete) {
+      onOpenAthlete({ name: personName, academy: activeName, g: 0, s: 0, b: 0, events: [] });
+    } else {
+      window.location.href = "/?trophy=" + encodeURIComponent(personName).replace(/%20/g, "+");
+    }
+  };
 
   const claimAcademy = async (e) => {
     if (e) e.preventDefault();
@@ -264,22 +353,24 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, user
     const targetName = activeName || newGymName.trim();
     if (!targetName) return;
     const gKey = propGymKey || foldStr(targetName).replace(/[^a-z0-9]+/g, "_");
-    const payload = { kind: "academy_workspace", gymKey: gKey, gymName: targetName, ownerUid: user.uid, ownerEmail: (user.email || "").toLowerCase(), staffEmails: [(user.email || "").toLowerCase()], createdAt: new Date().toISOString() };
+    const payload = { kind: "academy_workspace", gymKey: gKey, gymName: targetName, ownerUid: user.uid, ownerEmail: (user.email || "").toLowerCase(), staffEmails: [(user.email || "").toLowerCase()], coachNames: ws?.coachNames || [], createdAt: new Date().toISOString() };
     await setDoc(doc(db, "mat_watches", "acad_ws_" + gKey), payload, { merge: true });
-    await addDoc(collection(db, "pending_events"), { kind: "workspace_claim", roleType: "Academy Pro", orgName: targetName, ownerEmail: user.email, adminNotified: false, createdAt: new Date().toISOString() }).catch(() => {});
     setWs(payload);
     setShowTour(true);
   };
 
   const addCoachStaff = async (e) => {
     e.preventDefault();
+    if (!ws) return;
     const em = staffInput.trim().toLowerCase();
-    if (!em.includes("@") || !ws) return;
-    const next = Array.from(new Set([...(ws.staffEmails || []), em]));
-    await setDoc(doc(db, "mat_watches", "acad_ws_" + ws.gymKey), { staffEmails: next }, { merge: true });
-    setWs({ ...ws, staffEmails: next });
+    const cn = coachNameInput.trim();
+    const nextEmails = em.includes("@") ? Array.from(new Set([...(ws.staffEmails || []), em])) : (ws.staffEmails || []);
+    const nextNames = cn ? Array.from(new Set([...(ws.coachNames || []), cn])) : (ws.coachNames || []);
+    await setDoc(doc(db, "mat_watches", "acad_ws_" + ws.gymKey), { staffEmails: nextEmails, coachNames: nextNames }, { merge: true });
+    setWs({ ...ws, staffEmails: nextEmails, coachNames: nextNames });
     setStaffInput("");
-    setMsg("✅ Linked Professor / Coach " + em + " — they now get this Academy Homepage on login!");
+    setCoachNameInput("");
+    setMsg("✅ Updated Professors & Coaching Staff for " + activeName + "!");
   };
 
   const onPickPhoto = async (e) => {
@@ -295,7 +386,7 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, user
     if (!upForm.fileData) { alert("Select a tournament or podium photo first."); return; }
     setUploading(true);
     await addDoc(collection(db, "mat_watches"), {
-      kind: "academy_photo", gymKey: activeKey, gymName: activeName,
+      kind: "academy_photo", gymKey: canonicalTargetKey, gymName: activeName,
       athlete: upForm.athlete.trim(), eventName: upForm.eventName.trim(), medal: upForm.medal,
       insta: upForm.insta.replace(/^@+/, "").trim(), photoData: upForm.fileData,
       uploaderEmail: user.email || "", uid: user.uid, createdAt: new Date().toISOString()
@@ -322,46 +413,89 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, user
   }
 
   return (
-    <div style={{ background:"#131924", border: isHomepage ? "1.5px solid #38bdf8" : "1px solid #2d3b52", borderRadius:"10px", padding:"14px", marginBottom:"16px", textAlign:"left" }}>
+    <div style={{ background:"#131924", border: isHomepage ? "1.5px solid #38bdf8" : "1px solid #2d3b52", borderRadius:"10px", padding:"14px", marginBottom:"12px", textAlign:"left" }}>
       {showTour && <GuidedTourModal mode="ACADEMY" onClose={() => setShowTour(false)} />}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap", marginBottom:"10px" }}>
         <div>
           {isHomepage && <div style={{ color:"#38bdf8", fontSize:"0.72rem", fontWeight:"800", letterSpacing:"1px" }}>🥋 ACADEMY PRO HOMEPAGE • {activeName.toUpperCase()}</div>}
           <div style={{ display:"flex", gap:"6px", flexWrap:"wrap", marginTop: isHomepage ? "6px" : 0 }}>
-            <button data-tour="acad-clipboard" type="button" onClick={() => setSub("CLIPBOARD")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: sub==="CLIPBOARD" ? "#38bdf8" : "#1c2434", color: sub==="CLIPBOARD" ? "#000" : "#cbd5e1", border:"none" }}>📋 Coach Mat Clipboard ({roster.length})</button>
+            {isGymStaff ? (
+              <button data-tour="acad-clipboard" type="button" onClick={() => setSub("CLIPBOARD")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: sub==="CLIPBOARD" ? "#38bdf8" : "#1c2434", color: sub==="CLIPBOARD" ? "#000" : "#cbd5e1", border:"none" }}>📋 Coach Mat Clipboard ({upcomingSquad.length})</button>
+            ) : null}
+            <button type="button" onClick={() => setSub("ROSTER")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: sub==="ROSTER" ? "#38bdf8" : "#1c2434", color: sub==="ROSTER" ? "#000" : "#cbd5e1", border:"none" }}>🥋 Team Roster ({teamRoster.length})</button>
             <button data-tour="acad-album" type="button" onClick={() => setSub("ALBUM")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: sub==="ALBUM" ? "#ff9f43" : "#1c2434", color: sub==="ALBUM" ? "#000" : "#cbd5e1", border:"none" }}>📸 Team Podium Album ({photos.length})</button>
-            <button data-tour="acad-staff" type="button" onClick={() => setSub("STAFF")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: sub==="STAFF" ? "#2ecc71" : "#1c2434", color: sub==="STAFF" ? "#000" : "#cbd5e1", border:"none" }}>👥 Coaches &amp; Staff</button>
+            <button data-tour="acad-staff" type="button" onClick={() => setSub("STAFF")} style={{ padding:"6px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", background: sub==="STAFF" ? "#2ecc71" : "#1c2434", color: sub==="STAFF" ? "#000" : "#cbd5e1", border:"none" }}>🥋 Professors &amp; Coaches ({gymCoaches.length})</button>
           </div>
         </div>
-        <button type="button" onClick={() => setShowTour(true)} style={{ padding:"5px 9px", borderRadius:"6px", background:"#1e293b", color:"#93c5fd", border:"1px solid #334155", fontSize:"0.73rem", fontWeight:"bold", cursor:"pointer" }}>❓ Spotlight Guide</button>
+        {isGymStaff && (
+          <button type="button" onClick={() => setShowTour(true)} style={{ padding:"5px 9px", borderRadius:"6px", background:"#1e293b", color:"#93c5fd", border:"1px solid #334155", fontSize:"0.73rem", fontWeight:"bold", cursor:"pointer" }}>❓ Coach Guide</button>
+        )}
       </div>
 
       {msg && <div style={{ background:"#132a1c", border:"1px solid #2ecc71", color:"#4ade80", padding:"6px 10px", borderRadius:"6px", fontSize:"0.78rem", fontWeight:"bold", marginBottom:"8px" }}>{msg}</div>}
 
+      {/* TEAM ROSTER (Default for Regular Users — every name opens their Trophy Room!) */}
+      {sub === "ROSTER" && (
+        <div style={{ display:"grid", gap:"6px" }}>
+          <div style={{ fontSize:"0.78rem", color:"#93c5fd", fontWeight:"bold" }}>🥋 Verified {activeName} Competitors ({teamRoster.length}) — tap any teammate to open their Trophy Room:</div>
+          {teamRoster.length === 0 ? (
+            <div style={{ color:"#94a3b8", fontSize:"0.78rem" }}>Athletes appear here automatically as they claim profiles, register for upcoming events, or earn verified podiums!</div>
+          ) : (
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(225px, 1fr))", gap:"6px", maxHeight:"240px", overflowY:"auto" }}>
+              {teamRoster.map((m, i) => (
+                <div key={i} onClick={() => openPersonTrophy(m.name)} style={{ background:"#182030", border:"1px solid #283548", padding:"7px 10px", borderRadius:"7px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"6px", fontSize:"0.79rem", cursor:"pointer" }}>
+                  <span style={{ minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                    <b style={{ color:"#fff", textDecoration:"underline", textDecorationColor:"rgba(56,189,248,0.5)" }}>{m.name}</b>
+                    {m.belt ? <span style={{ color:"#94a3b8", fontSize:"0.71rem" }}> • {m.belt}</span> : null}
+                  </span>
+                  <span style={{ fontSize:"0.73rem", color:"#fbbf24", fontWeight:"bold", flexShrink:0 }}>
+                    {(m.g + m.s + m.b) > 0 ? `🥇${m.g} 🥈${m.s} 🥉${m.b}` : "🏆 View →"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* COACH MAT CLIPBOARD (Strictly visible ONLY to Academy / Coach Staff accounts!) */}
+      {sub === "CLIPBOARD" && isGymStaff && (
+        <div style={{ display:"grid", gap:"6px" }}>
+          <div style={{ fontSize:"0.78rem", color:"#93c5fd", fontWeight:"bold" }}>📋 Verified {activeName} Upcoming Registered Squad ({upcomingSquad.length}):</div>
+          {upcomingSquad.length === 0 ? <div style={{ color:"#94a3b8", fontSize:"0.78rem" }}>No upcoming bracket registrations indexed for {activeName} right now — populates automatically when students register!</div> : upcomingSquad.map((r, i) => (
+            <div key={i} onClick={() => openPersonTrophy(r.n)} style={{ background:"#182030", padding:"7px 10px", borderRadius:"6px", display:"flex", justifyContent:"space-between", gap:"8px", fontSize:"0.78rem", cursor:"pointer" }}>
+              <span><b style={{ color:"#fff", textDecoration:"underline" }}>{r.n}</b> — <span style={{ color:"#cbd5e1" }}>{r.d}</span></span>
+              <span style={{ color:"#4ade80", fontWeight:"bold", flexShrink:0 }}>Trophy Room →</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* TEAM PODIUM PHOTO ALBUM */}
       {sub === "ALBUM" && (
         <div>
           <form onSubmit={submitPhoto} style={{ background:"#182030", border:"1px solid #2d3748", borderRadius:"8px", padding:"10px", marginBottom:"10px", display:"grid", gap:"7px" }}>
-            <div style={{ fontSize:"0.78rem", color:"#fcd34d", fontWeight:"bold" }}>📸 Drop a Podium / Tournament Photo for {activeName}&apos;s Coaches:</div>
+            <div style={{ fontSize:"0.78rem", color:"#fcd34d", fontWeight:"bold" }}>📸 Drop a Podium / Tournament Photo for {activeName}:</div>
             <div style={{ display:"flex", gap:"6px", flexWrap:"wrap" }}>
               <input required placeholder="Athlete Name(s)" value={upForm.athlete} onChange={e => setUpForm({...upForm, athlete: e.target.value})} style={{ ...inp, flex:"1 1 130px" }} />
               <input required placeholder="Tournament Name" value={upForm.eventName} onChange={e => setUpForm({...upForm, eventName: e.target.value})} style={{ ...inp, flex:"1 1 140px" }} />
               <select value={upForm.medal} onChange={e => setUpForm({...upForm, medal: e.target.value})} style={inp}>
                 {["🥇 Gold","🥈 Silver","🥉 Bronze","🥋 Team / Action"].map(m => <option key={m} value={m}>{m}</option>)}
               </select>
-              <input placeholder="@instagram" value={upForm.insta} onFocus={() => { if (!upForm.insta) setUpForm(f => ({...f, insta: "@"})); }} onChange={e => { const v = e.target.value; setUpForm({...upForm, insta: v ? ("@" + v.replace(/^@+/, "")) : ""}); }} style={{ ...inp, flex:"1 1 115px" }} />
+              <input placeholder="@instagram (Optional)" value={upForm.insta} onFocus={() => { if (!upForm.insta) setUpForm(f => ({...f, insta: "@"})); }} onChange={e => { const v = e.target.value; setUpForm({...upForm, insta: v ? ("@" + v.replace(/^@+/, "")) : ""}); }} style={{ ...inp, flex:"1 1 115px" }} />
             </div>
             <div style={{ display:"flex", gap:"8px", alignItems:"center", flexWrap:"wrap" }}>
               <input type="file" accept="image/*" onChange={onPickPhoto} style={{ fontSize:"0.76rem", color:"#cbd5e1", flex:1 }} />
               <button type="submit" disabled={uploading} style={{ background:"#ff9f43", color:"#000", border:"none", borderRadius:"6px", padding:"7px 12px", fontWeight:"800", fontSize:"0.78rem", cursor:"pointer" }}>{uploading ? "Uploading..." : "➕ Add Photo"}</button>
             </div>
           </form>
-          {photos.length === 0 ? <div style={{ color:"#94a3b8", fontSize:"0.78rem" }}>No podium photos dropped yet — athletes &amp; parents can upload photos right here so Professors never have to text for pictures!</div> : (
+          {photos.length === 0 ? <div style={{ color:"#94a3b8", fontSize:"0.78rem" }}>No podium photos dropped yet — athletes &amp; parents can upload tournament photos right here!</div> : (
             <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(150px, 1fr))", gap:"8px" }}>
               {photos.map(ph => (
                 <div key={ph.id} style={{ background:"#182030", border:"1px solid #334155", borderRadius:"8px", overflow:"hidden" }}>
                   <img src={ph.photoData} alt={ph.athlete} style={{ width:"100%", height:"130px", objectFit:"cover", display:"block" }} />
                   <div style={{ padding:"7px" }}>
-                    <div style={{ fontWeight:"bold", fontSize:"0.77rem", color:"#fff" }}>{ph.medal.split(" ")[0]} {ph.athlete}</div>
+                    <div onClick={() => ph.athlete && openPersonTrophy(ph.athlete)} style={{ fontWeight:"bold", fontSize:"0.77rem", color:"#fff", cursor:"pointer", textDecoration:"underline" }}>{ph.medal.split(" ")[0]} {ph.athlete}</div>
                     <div style={{ fontSize:"0.7rem", color:"#94a3b8" }}>{ph.eventName}</div>
                     <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginTop:"4px" }}>
                       {ph.insta ? <span style={{ color:"#38bdf8", fontSize:"0.7rem", fontWeight:"bold" }}>@{ph.insta}</span> : <span />}
@@ -375,33 +509,36 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, user
         </div>
       )}
 
-      {sub === "CLIPBOARD" && (
-        <div style={{ display:"grid", gap:"6px" }}>
-          <div style={{ fontSize:"0.78rem", color:"#93c5fd", fontWeight:"bold" }}>📋 Upcoming Registered Squad ({roster.length} entries):</div>
-          {roster.length === 0 ? <div style={{ color:"#94a3b8", fontSize:"0.78rem" }}>No upcoming bracket registrations indexed right now — populates automatically as your students register!</div> : roster.slice(0, 25).map((r, i) => (
-            <div key={i} style={{ background:"#182030", padding:"7px 10px", borderRadius:"6px", display:"flex", justifyContent:"space-between", gap:"8px", fontSize:"0.78rem" }}>
-              <span><b style={{ color:"#fff" }}>{r.n}</b> — <span style={{ color:"#cbd5e1" }}>{r.d}</span></span>
-              <span style={{ color:"#4ade80", fontWeight:"bold", flexShrink:0 }}>Mat Watch Ready</span>
-            </div>
-          ))}
-        </div>
-      )}
-
+      {/* PROFESSORS & COACHES DIRECTORY (Clickable to Trophy Rooms for all users; Staff Editor ONLY for Academy Accounts!) */}
       {sub === "STAFF" && (
-        <div>
-          {!ws ? (
-            <button type="button" onClick={claimAcademy} style={{ background:"#2ecc71", color:"#000", border:"none", borderRadius:"6px", padding:"8px 14px", fontWeight:"800", fontSize:"0.78rem", cursor:"pointer" }}>🥋 Claim {activeName} &amp; Add Coaches</button>
+        <div style={{ display:"grid", gap:"8px" }}>
+          <div style={{ fontSize:"0.78rem", color:"#4ade80", fontWeight:"bold" }}>🥋 {activeName} Professors &amp; Coaching Staff:</div>
+          {gymCoaches.length === 0 ? (
+            <div style={{ color:"#94a3b8", fontSize:"0.78rem" }}>No Professors or Coaches listed yet — populates as Academy owners add coaches or athletes list their Head Professor!</div>
           ) : (
-            <div style={{ display:"grid", gap:"8px" }}>
-              <div style={{ fontSize:"0.79rem", color:"#4ade80", fontWeight:"bold" }}>✓ Linked Professors &amp; Coaches ({(ws.staffEmails || []).length}):</div>
-              <div style={{ display:"flex", gap:"6px", flexWrap:"wrap" }}>
-                {(ws.staffEmails || []).map((em, i) => <span key={i} style={{ background:"#111622", border:"1px solid #334155", borderRadius:"5px", padding:"3px 8px", fontSize:"0.74rem", color:"#cbd5e1" }}>🥋 {em}</span>)}
-              </div>
-              <form onSubmit={addCoachStaff} style={{ display:"flex", gap:"6px", flexWrap:"wrap" }}>
-                <input required type="email" placeholder="Add Co-Professor / Coach email..." value={staffInput} onChange={e => setStaffInput(e.target.value)} style={{ ...inp, flex:1 }} />
-                <button type="submit" style={{ background:"#38bdf8", color:"#000", border:"none", borderRadius:"6px", padding:"7px 12px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer" }}>+ Add Coach</button>
-              </form>
+            <div style={{ display:"grid", gap:"6px" }}>
+              {gymCoaches.map((c, idx) => (
+                <div key={idx} onClick={() => openPersonTrophy(c.name)} style={{ background:"#182030", border:"1px solid #2d3b52", borderRadius:"7px", padding:"8px 11px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
+                  <div>
+                    <b style={{ color:"#fff", fontSize:"0.84rem", textDecoration:"underline", textDecorationColor:"rgba(74,222,128,0.5)" }}>{c.name}</b>
+                    <div style={{ color:"#94a3b8", fontSize:"0.73rem" }}>{c.displayTitle}</div>
+                  </div>
+                  <span style={{ background:"#f59e0b", color:"#000", borderRadius:"6px", padding:"4px 9px", fontSize:"0.73rem", fontWeight:"800" }}>🏆 Trophy Room →</span>
+                </div>
+              ))}
             </div>
+          )}
+
+          {isGymStaff && (
+            !ws ? (
+              <button type="button" onClick={claimAcademy} style={{ background:"#2ecc71", color:"#000", border:"none", borderRadius:"6px", padding:"8px 14px", fontWeight:"800", fontSize:"0.78rem", cursor:"pointer", justifySelf:"start" }}>🏛️ Activate Academy Staff Controls for {activeName}</button>
+            ) : (
+              <form onSubmit={addCoachStaff} style={{ marginTop:"6px", paddingTop:"8px", borderTop:"1px solid #263145", display:"flex", gap:"6px", flexWrap:"wrap" }}>
+                <input placeholder="Professor / Coach Full Name (e.g. Prof. Thiago Mendes)" value={coachNameInput} onChange={e => setCoachNameInput(e.target.value)} style={{ ...inp, flex:"1 1 180px" }} />
+                <input type="email" placeholder="Coach Login Email (Optional)" value={staffInput} onChange={e => setStaffInput(e.target.value)} style={{ ...inp, flex:"1 1 170px" }} />
+                <button type="submit" style={{ background:"#2ecc71", color:"#000", border:"none", borderRadius:"6px", padding:"7px 12px", fontWeight:"800", fontSize:"0.78rem", cursor:"pointer" }}>+ Add Coach</button>
+              </form>
+            )
           )}
         </div>
       )}
@@ -409,7 +546,6 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, user
   );
 }
 
-// 🏟️ Logged-In Promoter Homepage Command Bar (Matchmakers, Athlete Pre-Fight Check-Ins, Tickets/VIP Tables, Official Info & Staff!)
 export function PromoterHomeDashboard({ events, user }) {
   const [ws, setWs] = useState(null);
   const [orgName, setOrgName] = useState("");

@@ -26,6 +26,24 @@ export const UPCOMING_UFC_SUPERFIGHTS = [
 
 export const PRO_SUPERFIGHTS = [
   {
+    name: "Thiago Mendes", aliases: ["professor thiago mendes", "thiago mendes barros"], shards: ["me", "ba"], academy: "Carlson Gracie San Antonio / TM Combat Academy", belt: "3rd Degree Black Belt", rec: "Head Professor • Carlson Gracie Lineage", feds: ["IBJJF", "ADCC", "JJWL"],
+    titles: ["🥋 3rd-Degree Carlson Gracie Black Belt", "🏛️ Head Professor — Carlson Gracie San Antonio & TM Combat Academy"],
+    bouts: [{ ev: "Championship Coaching Corner", org: "IBJJF", res: "🏆 Multi-Federation Youth & Adult Medalists", sub: "Rio de Janeiro Old-School Pressure + Modern Competition Prep" }],
+    facts: ["3rd-degree black belt with deep Rio de Janeiro Carlson Gracie roots leading San Antonio's championship youth and adult squad"]
+  },
+  {
+    name: "Cali Grounds", aliases: ["cali grounds"], shards: ["gr"], academy: "360 Jiu Jitsu / All American MMA", belt: "Youth Grey/Yellow", rec: "ADCC Youth Worlds Absolute Finalist", feds: ["ADCC", "SMOOTHCOMP"],
+    titles: ["🥈 ADCC Youth Worlds Absolute Finalist", "⚡ Top National Girls 11–12 Advanced Competitor"],
+    bouts: [{ ev: "ADCC Youth Worlds & ADCC US Open Austin", org: "ADCC", res: "🔥 Girls 11–12 yrs Advanced Division Standout", sub: "No-Gi Submission Specialist" }],
+    facts: ["Featured in the ADCC Youth Worlds Absolute Final against Bailey Heinsohn"]
+  },
+  {
+    name: "Bailey Heinsohn", aliases: ["bailey henson", "bailey heinsohn"], shards: ["he"], academy: "Art of Jiu Jitsu (AOJ)", belt: "Youth Grey/Orange", rec: "ADCC Austin Open Gold Medalist", feds: ["ADCC", "IBJJF"],
+    titles: ["🥇 2026 ADCC US Open Austin Champion", "👑 ADCC Youth Worlds Standout"],
+    bouts: [{ ev: "ADCC US Open - Austin, TX", org: "ADCC", res: "🥇 Gold Medalist", sub: "Art of Jiu Jitsu Youth Phenom" }],
+    facts: ["Represents Art of Jiu Jitsu (AOJ) on the national ADCC and IBJJF youth circuit"]
+  },
+  {
     name: "Cassia Moura", aliases: ["cassia remesar moura"], shards: ["mo"], academy: "LEAD BJJ", belt: "Black Belt", rec: "Champ-Champ • 6-0 at Meta APEX", feds: ["UFC", "IBJJF"],
     titles: ["👑 UFC BJJ Bantamweight World Champion", "👑 UFC BJJ Flyweight World Champion", "🥇 2026 IBJJF European Champion"],
     bouts: [
@@ -301,80 +319,120 @@ export const PRO_SUPERFIGHTS = [
   }
 ];
 
+// Phonetic + edit-distance tolerance so misspellings like "Henson" match "Heinsohn"!
+const phoneticFold = (w) => foldStr(w)
+  .replace(/[^a-z0-9]/g, "")
+  .replace(/sohn$/g, "son")
+  .replace(/sen$/g, "son")
+  .replace(/ph/g, "f")
+  .replace(/([a-z])\1+/g, "$1")
+  .replace(/[aeiouy]+/g, "a");
+
+const editDistMax2 = (a, b) => {
+  if (a === b) return 0;
+  if (Math.abs(a.length - b.length) > 2) return 9;
+  const dp = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 0; j <= b.length; j++) dp[0][j] = j;
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] : 1 + Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+  return dp[a.length][b.length];
+};
+
+const nameStopWords = new Set(["de", "da", "do", "dos", "das", "del", "jr", "sr", "ii", "iii", "iv", "filho", "neto", "professor", "prof", "coach"]);
+const sigNameTokens = (nm) => foldStr(nm).split(/[\s-]+/).map(t => t.replace(/[^a-z0-9]/g, "")).filter(t => t.length >= 2 && !nameStopWords.has(t));
+
 export const findProAthlete = (nm) => {
-  const f = foldStr(nm).replace(/\b(jr\.?|sr\.?|ii|iii|iv)\b/g, " ").trim();
+  const f = foldStr(nm).replace(/\b(jr\.?|sr\.?|ii|iii|iv|professor|prof\.?|coach)\b/g, " ").replace(/\s+/g, " ").trim();
   if (!f) return null;
-  const fWords = f.split(/\s+/).filter(Boolean);
+  const fToks = sigNameTokens(nm);
   return PRO_SUPERFIGHTS.find(p => {
     const pf = foldStr(p.name);
     if (pf === f) return true;
     if ((p.aliases || []).some(al => foldStr(al) === f)) return true;
-    const pWords = pf.split(/\s+/).filter(Boolean);
-    if (fWords.length >= 2 && pWords.length >= 2 && fWords[0] === pWords[0] && fWords[fWords.length - 1] === pWords[pWords.length - 1]) {
-      return true;
+    const pToks = sigNameTokens(p.name);
+    // Match First Name + ANY shared Surname token (unifies "Cassia Moura Remesar" AND "Cassia Remesar Moura" -> "Cassia Moura"!)
+    if (fToks.length >= 2 && pToks.length >= 2 && fToks[0] === pToks[0]) {
+      const pSurnames = new Set(pToks.slice(1));
+      if (fToks.slice(1).some(st => pSurnames.has(st))) return true;
     }
     return false;
   }) || null;
 };
 
 const COMPOUND_SHARD_HINTS = {
-  dalpra: ["co", "da"],
-  pessanha: ["ma", "pe"],
-  pato: ["ba", "ol"],
-  hokage: ["ba", "an"],
-  andrey: ["ba", "an"],
-  munis: ["sa", "mu"],
-  andrew: ["si", "an"],
-  hugo: ["ma", "hu"],
-  bastos: ["ba"],
-  moura: ["mo"],
-  galvao: ["ga"],
-  babyshark: ["re"]
+  dalpra: ["co", "da"], pessanha: ["ma", "pe"], pato: ["ba", "ol"],
+  hokage: ["ba", "an"], andrey: ["ba", "an"], munis: ["sa", "mu"],
+  andrew: ["si", "an"], hugo: ["ma", "hu"], bastos: ["ba"],
+  moura: ["mo", "re"], galvao: ["ga"], babyshark: ["re"],
+  mendes: ["me", "ba", "pa"], henson: ["he"], heinsohn: ["he"], grounds: ["gr"]
 };
 
 export const athBucketsForQuery = (q) => {
-  const clean = foldStr(q).replace(/\b(jr\.?|sr\.?|ii|iii|iv)\b/g, " ").trim();
+  const clean = foldStr(q).replace(/\b(jr\.?|sr\.?|ii|iii|iv|professor|prof\.?|coach)\b/g, " ").trim();
   if (clean.length < 2) return [];
   const words = clean.split(/[\s-]+/).map(w => w.replace(/[^a-z]/g, "")).filter(w => w.length >= 2);
   const set = new Set();
-  if (words.length > 0) {
-    set.add(words[words.length - 1].slice(0, 2));
-    if (words.length >= 2) set.add(words[1].slice(0, 2));
-    if (words.length >= 3) set.add(words[words.length - 2].slice(0, 2));
-  }
+  words.forEach(w => set.add(w.slice(0, 2)));
   words.forEach(w => {
     if (COMPOUND_SHARD_HINTS[w]) COMPOUND_SHARD_HINTS[w].forEach(s => set.add(s));
   });
   PRO_SUPERFIGHTS.forEach(p => {
     const blob = foldStr(p.name + " " + (p.aliases || []).join(" ") + " " + p.academy);
-    if (words.every(w => blob.includes(w))) {
+    if (words.some(w => w.length >= 4 && blob.includes(w))) {
       (p.shards || [athBucket(p.name)]).forEach(s => { if (s && s !== "__") set.add(s); });
     }
   });
-  return Array.from(set).filter(s => s && s.length === 2 && s !== "__").slice(0, 5);
+  return Array.from(set).filter(s => s && s.length === 2 && s !== "__").slice(0, 6);
 };
 
-export const smartAthleteMatch = (candName, candAcad, queryStr) => {
-  const qClean = foldStr(queryStr).trim();
+export const smartAthleteMatch = (candName, candAcad, queryStr, extraNick = "") => {
+  const qClean = foldStr(queryStr).replace(/\b(professor|prof\.?|coach)\b/g, " ").replace(/\s+/g, " ").trim();
   if (qClean.length < 2) return false;
   const qTerms = qClean.split(/\s+/).filter(Boolean);
   const pro = findProAthlete(candName);
   const blob = foldStr(
     (candName || "") + " " +
+    (extraNick || "") + " " +
     (candAcad || "") + " " +
     (pro ? (pro.name + " " + (pro.aliases || []).join(" ") + " " + pro.academy) : "")
   );
-  const blobWords = blob.split(/[\s/-]+/).filter(Boolean);
-  return qTerms.every(qt => blob.includes(qt) || blobWords.some(bw => bw.startsWith(qt) || (qt.length >= 4 && qt.startsWith(bw) && bw.length >= 4)));
+  const blobWords = blob.split(/[\s/"'()-]+/).filter(Boolean);
+  return qTerms.every(qt => {
+    if (blob.includes(qt)) return true;
+    if (blobWords.some(bw => bw.startsWith(qt) || (qt.length >= 4 && qt.startsWith(bw) && bw.length >= 4))) return true;
+    // Fuzzy/phonetic surname match (e.g. "henson" -> "heinsohn")
+    if (qt.length >= 4) {
+      const pQt = phoneticFold(qt);
+      return blobWords.some(bw => bw.length >= 4 && bw[0] === qt[0] && (phoneticFold(bw) === pQt || editDistMax2(bw, qt) <= (qt.length >= 6 ? 2 : 1)));
+    }
+    return false;
+  });
 };
 
 export const canonicalPersonKey = (nm, acad) => {
   const pro = findProAthlete(nm);
   if (pro) return "pro:" + foldStr(pro.name);
-  const clean = foldStr(nm).replace(/\b(jr\.?|sr\.?|ii|iii|iv)\b/g, " ").trim();
-  const toks = clean.split(/\s+/).map(t => t.replace(/[^a-z0-9]/g, "")).filter(Boolean);
+  const toks = sigNameTokens(nm);
   if (toks.length >= 2) return toks[0] + "|" + toks[toks.length - 1];
-  return clean + "|" + foldStr(acad || "").slice(0, 10);
+  return foldStr(nm) + "|" + foldStr(acad || "").slice(0, 10);
+};
+
+// Merge helper for lists: collapses compound-surname variants like "John Silva" + "John Silva Santos" on the same/compatible team!
+export const sameCompetitorCluster = (nameA, acadA, nameB, acadB) => {
+  const proA = findProAthlete(nameA), proB = findProAthlete(nameB);
+  if (proA && proB) return proA.name === proB.name;
+  const tA = sigNameTokens(nameA), tB = sigNameTokens(nameB);
+  if (tA.length >= 2 && tB.length >= 2 && tA[0] === tB[0]) {
+    const sA = new Set(tA.slice(1));
+    if (tB.slice(1).some(s => sA.has(s))) {
+      const gA = foldStr(acadA || "").replace(/[^a-z0-9]/g, ""), gB = foldStr(acadB || "").replace(/[^a-z0-9]/g, "");
+      if (!gA || !gB || gA.includes(gB.slice(0, 6)) || gB.includes(gA.slice(0, 6))) return true;
+    }
+  }
+  return false;
 };
 
 export function computeEliteSpotlight(a, customFact) {

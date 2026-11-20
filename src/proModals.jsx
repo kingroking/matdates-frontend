@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "./firebase";
 import { MatAlertModal, useWatchedAthletes } from "./MatAlertModal";
-import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, findProAthlete, PRO_SUPERFIGHTS, UPCOMING_UFC_SUPERFIGHTS } from "./proHubData";
+import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, sameCompetitorCluster, findProAthlete, PRO_SUPERFIGHTS, UPCOMING_UFC_SUPERFIGHTS } from "./proHubData";
 import { AthleteTrophyRoomModal } from "./proTrophyModal";
 
 const MODAL_BG = { position:"fixed", inset:0, background:"rgba(0,0,0,0.86)", zIndex:10060, display:"flex", alignItems:"center", justifyContent:"center", padding:"12px", boxSizing:"border-box" };
@@ -179,7 +179,7 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
       const a = []; sn.forEach(d => a.push(...((d.data() || {}).items || []))); setRegItems(a);
     }).catch(() => {});
 
-    getDocs(query(collection(db, "mat_watches"), where("kind", "==", "athlete_bio"))).then(sn => {
+    getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__public_bios__"))).then(sn => {
       setClaimedBios(sn.docs.map(d => d.data()).filter(x => x && x.name));
     }).catch(() => {});
 
@@ -201,8 +201,13 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
     bkts.forEach(bkt => {
       if (podShards[bkt]) return;
       setPodShards(p => ({ ...p, [bkt]: [] }));
-      getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__a2_" + bkt + "__"))).then(sn => {
-        const a = []; sn.forEach(d => a.push(...((d.data() || {}).items || [])));
+      Promise.all([
+        getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__a2_" + bkt + "__"))),
+        getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__c2_" + bkt + "__")))
+      ]).then(([snPod, snComp]) => {
+        const a = [];
+        snPod.forEach(d => a.push(...((d.data() || {}).items || [])));
+        snComp.forEach(d => ((d.data() || {}).items || []).forEach(c => a.push({ ...c, isRosterEntry: true })));
         setPodShards(p => ({ ...p, [bkt]: a }));
       }).catch(() => {});
     });
@@ -278,8 +283,13 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
 
     // A. Seed matching Claimed Athlete Bios (so claimed teammates ALWAYS show up!)
     claimedBios.forEach(b => {
-      if (smartAthleteMatch(b.name + " " + (b.nickname || ""), b.academy, qStr)) {
-        ensureProfile(b.name, b.academy || "", { claimed: true });
+      if (smartAthleteMatch(b.name, b.academy, qStr, b.nickname || "")) {
+        const r = ensureProfile(b.name, b.academy || "", { claimed: true });
+        if (b.nickname) r.nickname = b.nickname;
+      }
+      if (b.coach && smartAthleteMatch(b.coach, b.academy, qStr)) {
+        const cleanCoach = b.coach.replace(/^(head\s+professor|professor|prof\.?|coach)\s+/i, "").trim();
+        if (cleanCoach.length >= 3) ensureProfile(cleanCoach, b.academy || "");
       }
     });
 
@@ -308,6 +318,7 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
       const dk = foldStr(m.ev) + "|" + foldStr(m.d) + "|" + m.p;
       if (rec.seen.has(dk)) return;
       rec.seen.add(dk);
+      if (m.isRosterEntry) return;
       if (m.mg !== undefined || m.ms !== undefined || m.mb !== undefined) {
         rec.g += Number(m.mg || 0); rec.s += Number(m.ms || 0); rec.b += Number(m.mb || 0);
       } else {
@@ -372,7 +383,7 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
               <div key={"p"+i} onClick={() => { document.activeElement?.blur?.(); setTrophyPick(p); }} style={{ background:"#182030", border:"1px solid #334155", borderRadius:"8px", padding:"9px 11px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap", cursor:"pointer" }}>
                 <div style={{ minWidth:0, flex:"1 1 200px" }}>
                   <div>
-                    <b style={{ textDecoration:"underline", textDecorationColor:"rgba(251,191,36,0.5)" }}>{p.name}</b>
+                    <b style={{ textDecoration:"underline", textDecorationColor:"rgba(251,191,36,0.5)" }}>{p.name}{p.nickname ? ` "${p.nickname}"` : ""}</b>
                     {p.academy && <span style={{ color:"#ff9f43", fontSize:"0.78rem" }}> • {p.academy}</span>}
                   </div>
                   <div style={{ fontSize:"0.76rem", color:"#cbd5e1" }}>

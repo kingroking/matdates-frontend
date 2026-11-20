@@ -99,7 +99,7 @@ function resizeAvatarFile(file) {
     reader.onload = (ev) => {
       const img = new Image();
       img.onload = () => {
-        const size = 280;
+        const size = 240;
         const c = document.createElement("canvas");
         c.width = size; c.height = size;
         const ctx = c.getContext("2d");
@@ -107,7 +107,7 @@ function resizeAvatarFile(file) {
         const sx = Math.floor((img.width - minSide) / 2);
         const sy = Math.floor((img.height - minSide) / 2);
         ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, size, size);
-        resolve(c.toDataURL("image/jpeg", 0.78));
+        resolve(c.toDataURL("image/jpeg", 0.74));
       };
       img.onerror = reject;
       img.src = ev.target.result;
@@ -226,9 +226,24 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
     setBio(cached);
     setForm(cached ? { ...emptyForm, ...cached, handle: cached.handle ? "@" + cached.handle.replace(/^@+/, "") : "" } : emptyForm);
 
+    const pubKey = "pubbio_" + slug;
+    getDoc(doc(db, "event_competitors", pubKey)).then(pd => {
+      if (pd.exists() && pd.data()?.event_id === "__public_bios__") {
+        const pbd = pd.data();
+        setBio(prev => ({ ...(prev || {}), ...pbd }));
+        setForm(prev => ({ ...emptyForm, ...prev, ...pbd, handle: pbd.handle ? "@" + pbd.handle.replace(/^@+/, "") : "" }));
+      }
+    }).catch(() => {});
+
     getDoc(doc(db, "mat_watches", docKey)).then(d => {
       if (d.exists() && d.data()?.kind === "athlete_bio") {
         const bd = d.data();
+        // Auto-rescue: if this browser has a locally saved avatar photo that didn't reach Firestore earlier, push it up automatically!
+        if (!bd.avatarData && cached?.avatarData && curUser && (bd.ownerUid === curUser.uid || (bd.coEmails || []).includes((curUser.email || "").toLowerCase()))) {
+          bd.avatarData = cached.avatarData;
+          setDoc(doc(db, "mat_watches", docKey), { avatarData: cached.avatarData }, { merge: true }).catch(() => {});
+          setDoc(doc(db, "event_competitors", pubKey), { event_id: "__public_bios__", slug, avatarData: cached.avatarData }, { merge: true }).catch(() => {});
+        }
         setBio(bd);
         setForm({ ...emptyForm, ...bd, handle: bd.handle ? "@" + bd.handle.replace(/^@+/, "") : "" });
         try { localStorage.setItem(lsKey, JSON.stringify(bd)); } catch {}
@@ -412,8 +427,19 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
       academy: cnt.acad || elite.pro?.academy || "",
       updatedAt: new Date().toISOString()
     };
+    if (foldStr(clean.nickname) === foldStr(nm)) clean.nickname = "";
+    const { ownerEmail, coEmails, ...publicSafeBio } = clean;
     try { localStorage.setItem(lsKey, JSON.stringify(clean)); } catch {}
-    try { await setDoc(doc(db, "mat_watches", docKey), clean, { merge: true }); } catch {}
+    try {
+      await Promise.all([
+        setDoc(doc(db, "mat_watches", docKey), clean, { merge: true }),
+        setDoc(doc(db, "event_competitors", "pubbio_" + slug), { ...publicSafeBio, event_id: "__public_bios__", slug, isClaimed: true }, { merge: true })
+      ]);
+    } catch (err) {
+      setSaving(false);
+      alert("Cloud sync error: " + (err?.message || "Please check your connection and try saving again."));
+      return;
+    }
     setBio(clean);
     refreshFamilyBios();
     setSaving(false);
@@ -487,7 +513,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
               <div style={{ color:"#fbbf24", fontSize:"0.72rem", fontWeight:"800", letterSpacing:"1.4px" }}>🏆 MATDATES OFFICIAL TROPHY ROOM</div>
               <div style={{ display:"flex", alignItems:"center", gap:"8px", flexWrap:"wrap", margin:"3px 0" }}>
                 <h2 style={{ margin:0, fontSize:"1.42rem", color:"#ffffff", fontWeight:"900", lineHeight:1.2 }}>
-                  {bio?.nickname ? (
+                  {(bio?.nickname && foldStr(bio.nickname) !== foldStr(nm)) ? (
                     <>{firstName} <span style={{ color:"#fbbf24", fontStyle:"italic" }}>&ldquo;{bio.nickname}&rdquo;</span> {restName}</>
                   ) : nm}
                 </h2>
