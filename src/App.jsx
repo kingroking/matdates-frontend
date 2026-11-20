@@ -329,6 +329,7 @@ function App() {
   const { watches: myWatches, removeWatch: removeMyWatch } = useWatchedAthletes();
   
   const [searchTerm, setSearchTerm] = useState('');
+  const deferredHomeSearch = React.useDeferredValue(searchTerm);
   const [federationFilter, setFederationFilter] = useState('All');
   const [selectedFeds, setSelectedFeds] = useState([]);
   const [userRole, setUserRole] = useState('user');
@@ -666,13 +667,13 @@ function App() {
     const extras = UPCOMING_UFC_SUPERFIGHTS.filter(u => !ids.has(u.id) && !events.some(e => (e.name || "").toLowerCase().includes("ufc bjj 14")));
     return [...events, ...extras].sort((a, b) => (a.sort_date || "2099").localeCompare(b.sort_date || "2099"));
   }, [events]);
-  const filteredEvents = mergedWithUfcCards.filter(ev => {
+  const filteredEvents = useMemo(() => mergedWithUfcCards.filter(ev => {
     const evNameLow = ev.name ? ev.name.toLowerCase() : '';
     const evId = ev.id ? ev.id.toLowerCase() : "";
     if (/\b(judo|wrestling|karate|antarctica|taekwondo|kickboxing|muay thai|ping pong|table tennis|sumo)\b/.test(evNameLow)) return false; 
 
     const searchTarget = `${evNameLow} ${(ev.venue || '').toLowerCase()} ${(ev.address || '').toLowerCase()} ${(ev.location || '').toLowerCase()} ${(ev.date || '').toLowerCase()}`;
-    const searchKeywords = searchTerm.toLowerCase().split(/\s+/).filter(kw => kw.length > 0);
+    const searchKeywords = deferredHomeSearch.toLowerCase().split(/\s+/).filter(kw => kw.length > 0);
     const matchesSearch = searchKeywords.every(kw => searchTarget.includes(kw));
 
     const matchesAge = ageFilter === 'All' ? true : ageFilter === 'Kids' ? ev.isKidsEvent : ageFilter === 'Adults' ? ev.isAdultEvent : false;
@@ -690,7 +691,7 @@ function App() {
     const matchesMonth = monthFilter === 'All' ? true : (ev.sort_date && ev.sort_date.startsWith(monthFilter));
       
     return matchesSearch && matchesFed && matchesAge && matchesMonth && (!showSavedOnly || savedIds.includes(ev.id));
-  });
+  }), [mergedWithUfcCards, deferredHomeSearch, ageFilter, selectedFeds, federationFilter, monthFilter, showSavedOnly, savedIds]);
 
   const calendarEvents = filteredEvents.map(ev => {
     let startDate = new Date();
