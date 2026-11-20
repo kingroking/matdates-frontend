@@ -667,7 +667,7 @@ function App() {
     const extras = UPCOMING_UFC_SUPERFIGHTS.filter(u => !ids.has(u.id) && !events.some(e => (e.name || "").toLowerCase().includes("ufc bjj 14")));
     return [...events, ...extras].sort((a, b) => (a.sort_date || "2099").localeCompare(b.sort_date || "2099"));
   }, [events]);
-  const filteredEvents = useMemo(() => mergedWithUfcCards.filter(ev => {
+  const filteredEvents = React.useMemo(() => mergedWithUfcCards.filter(ev => {
     const evNameLow = ev.name ? ev.name.toLowerCase() : '';
     const evId = ev.id ? ev.id.toLowerCase() : "";
     if (/\b(judo|wrestling|karate|antarctica|taekwondo|kickboxing|muay thai|ping pong|table tennis|sumo)\b/.test(evNameLow)) return false; 
