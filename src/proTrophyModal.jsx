@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import { collection, doc, getDoc, getDocs, setDoc, query, where } from "firebase/firestore";
 import { db, auth } from "./firebase";
 import { addDoc } from "firebase/firestore";
-import { PRO_SUPERFIGHTS, computeEliteSpotlight, foldStr, athBucket } from "./proHubData";
+import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, computeEliteSpotlight, PRO_SUPERFIGHTS } from "./proHubData";
 
 export function SuperFightsPanel({ fed, qStr, onOpenTrophy, onWatch, getWatch }) {
   const [subTab, setSubTab] = useState("PROS");
@@ -143,6 +143,23 @@ function buildMusicSearchUrl(service, songQuery, directUrl) {
   return "https://open.spotify.com/search/" + q;
 }
 
+function parseBookField(rawBook) {
+  const s = (rawBook || "").trim();
+  if (!s) return { title: "", url: "" };
+  const urlMatch = s.match(/https?:\/\/[^\s]+/i);
+  if (urlMatch) {
+    const cleanUrl = urlMatch[0];
+    const cleanTitle = s.replace(cleanUrl, "").replace(/^[-–—:|\s]+|[-–—:|\s]+$/g, "").trim() || "View Current Book";
+    return { title: cleanTitle, url: cleanUrl };
+  }
+  const searchTerms = s.replace(/["“”'‘’]/g, " ").replace(/[^\p{L}\p{N}\s.&'-]/gu, " ").replace(/\s+/g, " ").trim();
+  const encoded = encodeURIComponent(searchTerms || s).replace(/%20/g, "+");
+  return {
+    title: s,
+    url: "https://www.amazon.com/gp/search?ie=UTF8&index=books&keywords=" + encoded
+  };
+}
+
 export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, onShareCard }) {
   const [activeAth, setActiveAth] = useState(athlete);
   useEffect(() => { setActiveAth(athlete); }, [athlete]);
@@ -234,7 +251,11 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
     }).catch(() => {});
 
     if (passedEvs.length > 0) return;
-    getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__a2_" + athBucket(nm) + "__"))).then(sn => {
+    const bkts = athBucketsForQuery(nm);
+    if (!bkts.length && athBucket(nm) !== "__") bkts.push(athBucket(nm));
+    Promise.all(bkts.map(b => getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__a2_" + b + "__"))))).then(snaps => {
+      const allDocs = []; snaps.forEach(s => s.forEach(d => allDocs.push(d)));
+      const sn = allDocs;
       const tgt = foldStr(nm);
       const qWords = tgt.split(/\s+/).filter(Boolean);
       const seen = new Set(), out = [];
@@ -651,19 +672,22 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
                   {bio.coach && <div style={{ background:"#0f141e", padding:"6px 9px", borderRadius:"6px" }}><span style={{ color:"#94a3b8" }}>🏛️ Head Professor:</span> <b>{bio.coach}</b></div>}
                   {bio.favMove && <div style={{ background:"#0f141e", padding:"6px 9px", borderRadius:"6px" }}><span style={{ color:"#94a3b8" }}>⚡ Go-To Move:</span> <b>{bio.favMove}</b></div>}
                   {bio.cheatMeal && <div style={{ background:"#0f141e", padding:"6px 9px", borderRadius:"6px", gridColumn:"1 / -1" }}><span style={{ color:"#fbbf24" }}>🍕 Favorite Full Cheat Meal / Snack:</span> <b>{bio.cheatMeal}</b></div>}
-                  {bio.currentRead && (
-                    <div style={{ background:"#0f141e", padding:"6px 9px", borderRadius:"6px", gridColumn:"1 / -1", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
-                      <span><span style={{ color:"#93c5fd" }}>📖 Current Read:</span> <b>{bio.currentRead}</b></span>
-                      <a
-                        href={"https://www.amazon.com/s?k=" + encodeURIComponent(bio.currentRead + " book")}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{ background:"#ff9900", color:"#000", padding:"3px 8px", borderRadius:"5px", fontWeight:"800", fontSize:"0.72rem", textDecoration:"none", whiteSpace:"nowrap" }}
-                      >
-                        Buy on Amazon ↗
-                      </a>
-                    </div>
-                  )}
+                  {bio.currentRead && (() => {
+                    const bk = parseBookField(bio.currentRead);
+                    return (
+                      <div style={{ background:"#0f141e", padding:"6px 9px", borderRadius:"6px", gridColumn:"1 / -1", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
+                        <span><span style={{ color:"#93c5fd" }}>📖 Current Read:</span> <b>{bk.title}</b></span>
+                        <a
+                          href={bk.url}
+                          target="_blank"
+                          rel="noopener"
+                          style={{ background:"#ff9900", color:"#000", padding:"4px 9px", borderRadius:"5px", fontWeight:"800", fontSize:"0.72rem", textDecoration:"none", whiteSpace:"nowrap" }}
+                        >
+                          Buy on Amazon ↗
+                        </a>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
             ) : (
@@ -675,6 +699,9 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
 
           {editBio && (
             <form onSubmit={saveBio} style={{ marginTop:"4px", display:"grid", gap:"8px" }}>
+              <div style={{ background:"#112233", border:"1px solid #38bdf8", borderRadius:"7px", padding:"7px 10px", fontSize:"0.76rem", color:"#e0f2fe" }}>
+                ✨ <b>Every question below is 100% optional!</b> Answer just 1 or 2 favorites (or all of them) — anything left blank stays hidden on your profile.
+              </div>
               <div style={{ background:"#171f30", border:"1px solid #f59e0b", borderRadius:"7px", padding:"7px 10px", fontSize:"0.75rem", color:"#fde68a", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:"6px" }}>
                 <span>✨ <b>Neon Gold Ring Goal:</b> {watcherCount} / {WATCH_GLOW_MIN} Active Watchers</span>
                 <span style={{ color:"#cbd5e1", fontSize:"0.72rem" }}>Share your Trophy Room on IG so fans tap 🔔 Watch!</span>
@@ -694,31 +721,31 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
               </div>
 
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(150px, 1fr))", gap:"7px" }}>
-                <input placeholder="Instagram @handle" value={form.handle || ""} onFocus={() => { if (!form.handle) setForm(f => ({...f, handle: "@"})); }} onChange={e => { const v = e.target.value; setForm({...form, handle: v ? ("@" + v.replace(/^@+/, "")) : ""}); }} style={inp} />
+                <input placeholder="Instagram @handle (Optional)" value={form.handle || ""} onFocus={() => { if (!form.handle) setForm(f => ({...f, handle: "@"})); }} onChange={e => { const v = e.target.value; setForm({...form, handle: v ? ("@" + v.replace(/^@+/, "")) : ""}); }} style={inp} />
                 <input placeholder="Fight Name / Nickname (Optional)" value={form.nickname || ""} onChange={e => setForm({...form, nickname: e.target.value})} style={inp} />
-                <input placeholder="Spirit Emoji — Max 3 (e.g. 🦁🔥👑)" value={form.spiritEmoji || ""} onChange={e => setForm({...form, spiritEmoji: limitSpiritEmojis(e.target.value)})} style={inp} />
+                <input placeholder="Spirit Emoji — Max 3 (Optional, e.g. 🦁🔥👑)" value={form.spiritEmoji || ""} onChange={e => setForm({...form, spiritEmoji: limitSpiritEmojis(e.target.value)})} style={inp} />
               </div>
 
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(195px, 1fr))", gap:"7px" }}>
-                <input placeholder="🎵 Current Song on Repeat (Song — Artist)" value={form.songRepeat || ""} onChange={e => setForm({...form, songRepeat: e.target.value})} style={inp} />
+                <input placeholder="🎵 Song on Repeat (Optional — Song & Artist)" value={form.songRepeat || ""} onChange={e => setForm({...form, songRepeat: e.target.value})} style={inp} />
                 <input type="url" placeholder="Optional Direct Song Link (blank = auto Spotify/Apple/YT)" value={form.songUrl || ""} onChange={e => setForm({...form, songUrl: e.target.value})} style={inp} />
               </div>
 
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(145px, 1fr))", gap:"7px" }}>
                 <input placeholder="Age (Optional)" value={form.age || ""} onChange={e => setForm({...form, age: e.target.value})} style={inp} />
                 <input placeholder="Belt Rank (Optional)" value={form.belt || ""} onChange={e => setForm({...form, belt: e.target.value})} style={inp} />
-                <input placeholder="Head Professor / Coach" value={form.coach || ""} onChange={e => setForm({...form, coach: e.target.value})} style={inp} />
-                <input placeholder="Go-To Submission or Guard" value={form.favMove || ""} onChange={e => setForm({...form, favMove: e.target.value})} style={inp} />
+                <input placeholder="Head Professor / Coach (Optional)" value={form.coach || ""} onChange={e => setForm({...form, coach: e.target.value})} style={inp} />
+                <input placeholder="Go-To Submission / Guard (Optional)" value={form.favMove || ""} onChange={e => setForm({...form, favMove: e.target.value})} style={inp} />
               </div>
 
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(195px, 1fr))", gap:"7px" }}>
                 <input placeholder="💬 Favorite Quote, Motto, Saying or Verse (Optional)" value={form.quote || ""} onChange={e => setForm({...form, quote: e.target.value})} style={inp} />
-                <input placeholder="📖 Current Read / Book Title (Links to Amazon!)" value={form.currentRead || ""} onChange={e => setForm({...form, currentRead: e.target.value})} style={inp} />
+                <input placeholder="📖 Current Read — Book Title or Amazon Link (Optional)" value={form.currentRead || ""} onChange={e => setForm({...form, currentRead: e.target.value})} style={inp} />
               </div>
 
               <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(195px, 1fr))", gap:"7px" }}>
                 <input placeholder="🍕 Favorite FULL CHEAT Meal / Snack (Optional)" value={form.cheatMeal || ""} onChange={e => setForm({...form, cheatMeal: e.target.value})} style={inp} />
-                <input type="url" placeholder="Direct Jits (Youth) or Smoothcomp (Adult) Profile URL" value={form.jitsUrl || ""} onChange={e => setForm({...form, jitsUrl: e.target.value})} style={inp} />
+                <input type="url" placeholder="Jits (Youth) or Smoothcomp (Adult) URL (Optional)" value={form.jitsUrl || ""} onChange={e => setForm({...form, jitsUrl: e.target.value})} style={inp} />
               </div>
 
               <input placeholder="Custom Fun Fact (Optional — pins to Insider Spotlight!)" value={form.funFact || ""} onChange={e => setForm({...form, funFact: e.target.value})} style={{ ...inp, width:"100%" }} />

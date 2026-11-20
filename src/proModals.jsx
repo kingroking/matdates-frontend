@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "./firebase";
 import { MatAlertModal, useWatchedAthletes } from "./MatAlertModal";
-import { PRO_SUPERFIGHTS, computeEliteSpotlight, foldStr, athBucket, getDeadlineBadge } from "./proHubData";
+import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, findProAthlete, PRO_SUPERFIGHTS, UPCOMING_UFC_SUPERFIGHTS } from "./proHubData";
 import { AthleteTrophyRoomModal } from "./proTrophyModal";
 
 const MODAL_BG = { position:"fixed", inset:0, background:"rgba(0,0,0,0.86)", zIndex:10060, display:"flex", alignItems:"center", justifyContent:"center", padding:"12px", boxSizing:"border-box" };
@@ -149,115 +149,280 @@ export function SubmitEventModal({ onClose }) {
   );
 }
 
+const lookupNormGym = (raw) => {
+  const k = foldStr(raw || "").replace(/[^a-z0-9]/g, "");
+  if (k.startsWith("aoj") || k.startsWith("artofjiujitsu")) return "artofjiujitsu";
+  if (k.startsWith("atoshq") || k === "atosjiujitsuhq" || k === "atosjiujitsu") return "atos";
+  if (k === "tmcombat" || k === "thiagomendescombatacademy" || k === "carlsongraciejiujitsusanantonio" || k === "carlsongraciesanantoniotx") return "carlsongraciesanantonio";
+  return k;
+};
+const lookupGymBucket = (gk) => {
+  const c = (gk || "").replace(/[^a-z0-9]/g, "");
+  return (c.slice(0, 2) || "00").padEnd(2, "0");
+};
+
 export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) {
-  useEffect(() => { trackEvent('athleteSearches'); }, []);
+  useEffect(() => { trackEvent("athleteSearches"); }, []);
   const [qStr, setQStr] = useState("");
   const [regItems, setRegItems] = useState([]);
+  const [claimedBios, setClaimedBios] = useState([]);
+  const [gymRows, setGymRows] = useState([]);
   const [podShards, setPodShards] = useState({});
+  const [gymShards, setGymShards] = useState({});
   const [watchPick, setWatchPick] = useState(null);
   const [trophyPick, setTrophyPick] = useState(null);
-  const { getWatch, removeWatch } = useWatchedAthletes();
+  const { getWatch } = useWatchedAthletes();
   const evMap = useMemo(() => Object.fromEntries((events || []).map(e => [e.id, e])), [events]);
 
   useEffect(() => {
     getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__athlete_index__"))).then(sn => {
-      const a = []; sn.forEach(d => a.push(...((d.data()||{}).items||[]))); setRegItems(a);
+      const a = []; sn.forEach(d => a.push(...((d.data() || {}).items || []))); setRegItems(a);
+    }).catch(() => {});
+
+    getDocs(query(collection(db, "mat_watches"), where("kind", "==", "athlete_bio"))).then(sn => {
+      setClaimedBios(sn.docs.map(d => d.data()).filter(x => x && x.name));
+    }).catch(() => {});
+
+    getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__global_leaderboard__"))).then(sn => {
+      const g = [];
+      sn.forEach(d => {
+        const dt = d.data() || {};
+        if (Array.isArray(dt.items)) g.push(...dt.items);
+        else if (dt.Academy) g.push(dt);
+      });
+      setGymRows(g);
     }).catch(() => {});
   }, []);
 
+  // 1. Fetch ALL candidate 2-letter athlete shards (handles compound Brazilian surnames & aliases!)
   useEffect(() => {
-    const bkt = athBucket(qStr);
-    if (qStr.trim().length < 2 || bkt === "__" || podShards[bkt]) return;
-    getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__a2_" + bkt + "__"))).then(sn => {
-      const a = []; sn.forEach(d => a.push(...((d.data()||{}).items||[]))); setPodShards(p => ({ ...p, [bkt]: a }));
-    }).catch(() => {});
-  }, [qStr, podShards]);
+    if (qStr.trim().length < 2) return;
+    const bkts = athBucketsForQuery(qStr);
+    bkts.forEach(bkt => {
+      if (podShards[bkt]) return;
+      setPodShards(p => ({ ...p, [bkt]: [] }));
+      getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__a2_" + bkt + "__"))).then(sn => {
+        const a = []; sn.forEach(d => a.push(...((d.data() || {}).items || [])));
+        setPodShards(p => ({ ...p, [bkt]: a }));
+      }).catch(() => {});
+    });
+  }, [qStr]);
 
-  const terms = foldStr(qStr).trim().split(/\s+/).filter(Boolean);
-  const regHits = useMemo(() => !terms.length || qStr.trim().length < 2 ? [] : regItems.filter(x => {
-    const b = foldStr((x.n||"") + " " + (x.a||"")); return terms.every(t => b.includes(t));
-  }).slice(0, 40), [regItems, qStr]);
+  // 2. Also detect matching Academies (e.g. "Carlson Gracie San Antonio", "Northern Tribe", "AOJ") and fetch their __m2_XX__ team medal shard!
+  const matchingGyms = useMemo(() => {
+    const q = foldStr(qStr).trim();
+    if (q.length < 3 || !gymRows.length) return [];
+    const terms = q.split(/\s+/).filter(Boolean);
+    const byK = new Map();
+    gymRows.forEach(r => {
+      const ac = r.Academy || "";
+      const low = foldStr(ac);
+      if (!low.includes(q) && !terms.every(t => low.includes(t))) return;
+      const gk = lookupNormGym(ac);
+      if (!byK.has(gk)) byK.set(gk, { key: gk, Academy: ac, Gold: 0, Silver: 0, Bronze: 0 });
+      const cur = byK.get(gk);
+      if (ac.length > cur.Academy.length) cur.Academy = ac;
+      cur.Gold += Number(r.Gold || 0);
+      cur.Silver += Number(r.Silver || 0);
+      cur.Bronze += Number(r.Bronze || 0);
+    });
+    return Array.from(byK.values()).sort((a, b) => (b.Gold * 9 + b.Silver * 3 + b.Bronze) - (a.Gold * 9 + a.Silver * 3 + a.Bronze)).slice(0, 4);
+  }, [qStr, gymRows]);
+
+  useEffect(() => {
+    matchingGyms.forEach(g => {
+      const gb = lookupGymBucket(g.key);
+      if (gymShards[gb]) return;
+      setGymShards(p => ({ ...p, [gb]: [] }));
+      getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__m2_" + gb + "__"))).then(sn => {
+        const a = []; sn.forEach(d => a.push(...((d.data() || {}).items || [])));
+        setGymShards(p => ({ ...p, [gb]: a }));
+      }).catch(() => {});
+    });
+  }, [matchingGyms]);
+
+  const regHits = useMemo(() => {
+    if (qStr.trim().length < 2) return [];
+    return regItems.filter(x => smartAthleteMatch(x.n, x.a, qStr)).slice(0, 40);
+  }, [regItems, qStr]);
 
   const podProfiles = useMemo(() => {
     if (qStr.trim().length < 2) return [];
-    const pool = podShards[athBucket(qStr)] || [], map = new Map();
-    PRO_SUPERFIGHTS.forEach(p => {
-      if (terms.every(t => foldStr(p.name + " " + p.academy).includes(t))) map.set(foldStr(p.name), { name: p.name, academy: p.academy, g: 0, s: 0, b: 0, events: [], proTitles: p.titles });
+    const map = new Map();
+
+    const ensureProfile = (nm, ac, extra = {}) => {
+      const pro = findProAthlete(nm);
+      const displayNm = pro ? pro.name : nm;
+      const displayAc = (pro && pro.academy) ? pro.academy : (ac || "");
+      const pk = canonicalPersonKey(displayNm, displayAc);
+      if (!map.has(pk)) {
+        map.set(pk, {
+          name: displayNm,
+          academy: displayAc,
+          g: 0, s: 0, b: 0,
+          events: [],
+          proTitles: pro ? pro.titles : extra.proTitles || null,
+          claimed: Boolean(extra.claimed),
+          seen: new Set()
+        });
+      }
+      const rec = map.get(pk);
+      if (extra.claimed) rec.claimed = true;
+      if (!pro && (ac || "").length > (rec.academy || "").length && !/^(carlson gracie team|gracie barra|alliance|checkmat|atos)$/i.test((ac || "").trim())) {
+        rec.academy = ac;
+      } else if (!rec.academy && ac) {
+        rec.academy = ac;
+      }
+      return rec;
+    };
+
+    // A. Seed matching Claimed Athlete Bios (so claimed teammates ALWAYS show up!)
+    claimedBios.forEach(b => {
+      if (smartAthleteMatch(b.name + " " + (b.nickname || ""), b.academy, qStr)) {
+        ensureProfile(b.name, b.academy || "", { claimed: true });
+      }
     });
-    pool.forEach(m => {
-      if (!terms.every(t => foldStr((m.n||"") + " " + (m.a||"")).includes(t))) return;
-      const k = foldStr(m.n);
-      if (!map.has(k)) map.set(k, { name: m.n, academy: m.a, g: 0, s: 0, b: 0, events: [], seen: new Set() });
-      const rec = map.get(k); rec.seen = rec.seen || new Set();
+
+    // B. Seed matching Pro / Invitational Stars
+    PRO_SUPERFIGHTS.forEach(p => {
+      if (smartAthleteMatch(p.name, p.academy, qStr)) {
+        ensureProfile(p.name, p.academy, { proTitles: p.titles });
+      }
+    });
+
+    // C. Merge multi-shard Athlete podium rows + matching Academy team shard rows (deduplicated!)
+    const combinedRows = [];
+    athBucketsForQuery(qStr).forEach(b => { if (podShards[b]) combinedRows.push(...podShards[b]); });
+    const matchedGymKeys = new Set(matchingGyms.map(g => g.key));
+    matchingGyms.forEach(g => {
+      const gb = lookupGymBucket(g.key);
+      (gymShards[gb] || []).forEach(m => {
+        if (matchedGymKeys.has(lookupNormGym(m.a))) combinedRows.push(m);
+      });
+    });
+
+    combinedRows.forEach(m => {
+      const fromMatchedGym = matchedGymKeys.has(lookupNormGym(m.a));
+      if (!fromMatchedGym && !smartAthleteMatch(m.n, m.a, qStr)) return;
+      const rec = ensureProfile(m.n, m.a);
       const dk = foldStr(m.ev) + "|" + foldStr(m.d) + "|" + m.p;
-      if (rec.seen.has(dk)) return; rec.seen.add(dk);
-      if ((m.a||"").length > (rec.academy||"").length) rec.academy = m.a;
-      const p = Number(m.p||3); if (p===1) rec.g++; else if (p===2) rec.s++; else rec.b++;
+      if (rec.seen.has(dk)) return;
+      rec.seen.add(dk);
+      if (m.mg !== undefined || m.ms !== undefined || m.mb !== undefined) {
+        rec.g += Number(m.mg || 0); rec.s += Number(m.ms || 0); rec.b += Number(m.mb || 0);
+      } else {
+        const p = Number(m.p || 3);
+        if (p === 1) rec.g++; else if (p === 2) rec.s++; else rec.b++;
+      }
       rec.events.push(m);
     });
-    return Array.from(map.values()).slice(0, 25);
-  }, [qStr, podShards]);
+
+    return Array.from(map.values())
+      .sort((a, b) => (b.claimed ? 4 : 0) + (b.g * 9 + b.s * 3 + b.b) + (b.proTitles ? 15 : 0) - ((a.claimed ? 4 : 0) + (a.g * 9 + a.s * 3 + a.b) + (a.proTitles ? 15 : 0)))
+      .slice(0, 45);
+  }, [qStr, podShards, gymShards, matchingGyms, claimedBios]);
 
   const openFollow = (nm, ac, ev, div) => setWatchPick({
     ev: ev || { id: "", name: "All Upcoming Tournaments", link: "https://matdates.com/?athlete=" + encodeURIComponent(nm).replace(/%20/g, "+"), sort_date: "" },
     comp: { Name: nm, Academy: ac || "", Division: div || "" }, div: div || ""
   });
 
+  const trimmedQ = qStr.trim();
+  const alreadyWatched = Boolean(
+    trimmedQ.length >= 2 && (
+      getWatch(trimmedQ) ||
+      podProfiles.some(p => foldStr(p.name) === foldStr(trimmedQ) && getWatch(p.name)) ||
+      regHits.some(r => foldStr(r.n) === foldStr(trimmedQ) && getWatch(r.n))
+    )
+  );
+
   return (
-    <div onClick={onClose} style={MODAL_BG}>
-      <div onClick={e => e.stopPropagation()} style={{ background:"#111622", border:"1px solid #334155", borderRadius:"12px", maxWidth:"620px", width:"100%", maxHeight:"88svh", overflowY:"auto", padding:"16px", color:"#fff", textAlign:"left" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:"8px" }}>
-          <h3 style={{ margin:0 }}>🔍 Universal Athlete Lookup &amp; Watch</h3>
-          <button onClick={onClose} style={{ background:"#1e293b", color:"#fff", border:"1px solid #334155", borderRadius:"6px", padding:"4px 9px", cursor:"pointer" }}>✕</button>
+    <div onClick={onClose} style={{ ...MODAL_BG, alignItems: "flex-start", paddingTop: "12px" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:"#111622", border:"1px solid #334155", borderRadius:"12px", maxWidth:"640px", width:"100%", maxHeight:"90dvh", overflowY:"auto", WebkitOverflowScrolling:"touch", padding:"15px", color:"#fff", textAlign:"left" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"8px" }}>
+          <h3 style={{ margin:0, fontSize:"1.08rem" }}>🔍 Universal Athlete &amp; Team Lookup</h3>
+          <button onClick={onClose} style={{ background:"#1e293b", color:"#fff", border:"1px solid #334155", borderRadius:"6px", padding:"4px 10px", cursor:"pointer" }}>✕</button>
         </div>
-        <input autoFocus value={qStr} onChange={e => setQStr(e.target.value)} placeholder="Search ANY athlete or academy — upcoming brackets, past podiums, or superfights..." style={{ width:"100%", padding:"11px 13px", borderRadius:"8px", background:"#182030", color:"#fff", border:"1.5px solid #38bdf8", fontSize:"0.92rem", boxSizing:"border-box", marginBottom:"12px" }} />
-        {qStr.trim().length < 2 ? <div style={{ color:"#94a3b8", fontSize:"0.84rem" }}>Search any athlete — even if they aren&apos;t registered in an upcoming event yet — to open their Trophy Room or activate 🔔 Watch Alerts!</div> : (
-          <div style={{ display:"grid", gap:"9px" }}>
-            {podProfiles.length > 0 && <div style={{ color:"#fbbf24", fontWeight:"bold", fontSize:"0.78rem", marginTop:"4px" }}>🏆 VERIFIED PROFILES &amp; TROPHY ROOMS ({podProfiles.length})</div>}
+        <input
+          autoFocus
+          enterKeyHint="search"
+          value={qStr}
+          onChange={e => setQStr(e.target.value)}
+          placeholder="Search ANY athlete or academy (e.g. Carlson Gracie San Antonio, Cassia Moura, Tainan)..."
+          style={{ width:"100%", padding:"11px 13px", borderRadius:"8px", background:"#182030", color:"#fff", border:"1.5px solid #38bdf8", fontSize:"0.92rem", boxSizing:"border-box", marginBottom:"10px" }}
+        />
+        {trimmedQ.length < 2 ? (
+          <div style={{ color:"#94a3b8", fontSize:"0.83rem", lineHeight:1.45 }}>
+            Type any <b>athlete name</b> or <b>academy name</b> — view every teammate&apos;s verified Trophy Room, upcoming brackets, or tap <b>🔔 Watch</b> for live tournament alerts!
+          </div>
+        ) : (
+          <div style={{ display:"grid", gap:"8px" }}>
+            {matchingGyms.length > 0 && (
+              <div style={{ background:"#172032", border:"1px solid #f59e0b", borderRadius:"8px", padding:"8px 11px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
+                <div style={{ fontSize:"0.8rem" }}>
+                  <span style={{ color:"#fbbf24", fontWeight:"800" }}>🏛️ TEAM ROSTER LOADED:</span> <b>{matchingGyms[0].Academy}</b>
+                  <span style={{ color:"#cbd5e1", marginLeft:"6px" }}>(🥇{matchingGyms[0].Gold} 🥈{matchingGyms[0].Silver} 🥉{matchingGyms[0].Bronze})</span>
+                </div>
+                <a href={"/?gym=" + encodeURIComponent(matchingGyms[0].key)} style={{ background:"#f59e0b", color:"#000", padding:"4px 9px", borderRadius:"6px", fontWeight:"800", fontSize:"0.74rem", textDecoration:"none" }}>Team Trophy Room →</a>
+              </div>
+            )}
+
+            {podProfiles.length > 0 && <div style={{ color:"#fbbf24", fontWeight:"bold", fontSize:"0.78rem", marginTop:"2px" }}>🏆 VERIFIED PROFILES &amp; TROPHY ROOMS ({podProfiles.length})</div>}
             {podProfiles.map((p, i) => (
-              <div key={"p"+i} style={{ background:"#182030", border:"1px solid #334155", borderRadius:"8px", padding:"9px 11px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
-                <div><div><b onClick={() => setTrophyPick(p)} style={{ cursor:"pointer", textDecoration:"underline", textDecorationColor:"rgba(251,191,36,0.5)" }} title="Open Official Trophy Room">{p.name}</b> <span style={{ color:"#ff9f43", fontSize:"0.78rem" }}>• {p.academy}</span></div><div style={{ fontSize:"0.76rem", color:"#cbd5e1" }}>🥇{p.g} 🥈{p.s} 🥉{p.b} {p.proTitles ? " • " + p.proTitles[0] : ""}</div></div>
-                <div style={{ display:"flex", gap:"6px" }}>
-                  <button onClick={() => setTrophyPick(p)} style={{ background:"#f59e0b", color:"#000", border:"none", borderRadius:"6px", padding:"5px 9px", fontSize:"0.74rem", fontWeight:"800", cursor:"pointer" }}>🏆 Trophy Room</button>
-                  <button onClick={() => openFollow(p.name, p.academy)} style={{ background: getWatch(p.name) ? "#132a1c" : "#162536", color: getWatch(p.name) ? "#2ecc71" : "#38bdf8", border:"1px solid #0284c7", borderRadius:"6px", padding:"5px 9px", fontSize:"0.74rem", fontWeight:"bold", cursor:"pointer" }}>{getWatch(p.name) ? "✓ Watching" : "🔔 Watch"}</button>
+              <div key={"p"+i} onClick={() => { document.activeElement?.blur?.(); setTrophyPick(p); }} style={{ background:"#182030", border:"1px solid #334155", borderRadius:"8px", padding:"9px 11px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap", cursor:"pointer" }}>
+                <div style={{ minWidth:0, flex:"1 1 200px" }}>
+                  <div>
+                    <b style={{ textDecoration:"underline", textDecorationColor:"rgba(251,191,36,0.5)" }}>{p.name}</b>
+                    {p.academy && <span style={{ color:"#ff9f43", fontSize:"0.78rem" }}> • {p.academy}</span>}
+                  </div>
+                  <div style={{ fontSize:"0.76rem", color:"#cbd5e1" }}>
+                    🥇{p.g} 🥈{p.s} 🥉{p.b} {p.proTitles ? " • " + p.proTitles[0] : ""}
+                  </div>
+                </div>
+                <div style={{ display:"flex", gap:"6px" }} onClick={e => e.stopPropagation()}>
+                  <button type="button" onClick={() => { document.activeElement?.blur?.(); setTrophyPick(p); }} style={{ background:"#f59e0b", color:"#000", border:"none", borderRadius:"6px", padding:"5px 9px", fontSize:"0.74rem", fontWeight:"800", cursor:"pointer" }}>🏆 Trophy Room</button>
+                  <button type="button" onClick={() => openFollow(p.name, p.academy)} style={{ background: getWatch(p.name) ? "#132a1c" : "#162536", color: getWatch(p.name) ? "#2ecc71" : "#38bdf8", border:"1px solid #0284c7", borderRadius:"6px", padding:"5px 9px", fontSize:"0.74rem", fontWeight:"bold", cursor:"pointer" }}>{getWatch(p.name) ? "✓ Watching" : "🔔 Watch"}</button>
                 </div>
               </div>
             ))}
-            {regHits.length > 0 && <div style={{ color:"#4ade80", fontWeight:"bold", fontSize:"0.78rem" }}>🟢 LIVE UPCOMING REGISTRATIONS ({regHits.length})</div>}
+
+            {regHits.length > 0 && <div style={{ color:"#4ade80", fontWeight:"bold", fontSize:"0.78rem", marginTop:"4px" }}>🟢 LIVE UPCOMING REGISTRATIONS ({regHits.length})</div>}
             {regHits.map((r, i) => {
               const ev = evMap[r.e] || { id: r.e, name: "Upcoming Event" };
               return (
                 <div key={"r"+i} style={{ background:"#182030", border:"1px solid #22c55e", borderRadius:"8px", padding:"9px 11px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
-                  <div><div><b onClick={() => setTrophyPick({ name: r.n, academy: r.a, g: 0, s: 0, b: 0, events: [] })} style={{ cursor:"pointer", textDecoration:"underline", textDecorationColor:"rgba(56,189,248,0.5)" }} title="Open Official Trophy Room">{r.n}</b> <span style={{ color:"#ff9f43", fontSize:"0.78rem" }}>• {r.a}</span></div><div style={{ fontSize:"0.76rem", color:"#cbd5e1" }}>{ev.name} {ev.date ? <span style={{ color:"#fbbf24", fontWeight:"bold" }}>• 📅 {ev.date}</span> : null} • {r.d}</div></div>
+                  <div style={{ minWidth:0, flex:"1 1 200px" }}>
+                    <div><b onClick={() => setTrophyPick({ name: r.n, academy: r.a, g: 0, s: 0, b: 0, events: [] })} style={{ cursor:"pointer", textDecoration:"underline", textDecorationColor:"rgba(56,189,248,0.5)" }}>{r.n}</b> <span style={{ color:"#ff9f43", fontSize:"0.78rem" }}>• {r.a}</span></div>
+                    <div style={{ fontSize:"0.76rem", color:"#cbd5e1" }}>{ev.name} {ev.date ? <span style={{ color:"#fbbf24", fontWeight:"bold" }}>• 📅 {ev.date}</span> : null} • {r.d}</div>
+                  </div>
                   <div style={{ display:"flex", gap:"6px" }}>
-                    <button onClick={() => openFollow(r.n, r.a, ev, r.d)} style={{ background: getWatch(r.n, ev.id) ? "#132a1c" : "#162536", color: getWatch(r.n, ev.id) ? "#2ecc71" : "#38bdf8", border:"1px solid #0284c7", borderRadius:"6px", padding:"5px 9px", fontSize:"0.74rem", fontWeight:"bold", cursor:"pointer" }}>{getWatch(r.n, ev.id) ? "✓ Watching" : "🔔 Watch"}</button>
-                    <button onClick={() => onOpenBracket(ev, r.n)} style={{ background:"#38bdf8", color:"#000", border:"none", borderRadius:"6px", padding:"5px 9px", fontSize:"0.74rem", fontWeight:"bold", cursor:"pointer" }}>Bracket →</button>
+                    <button type="button" onClick={() => openFollow(r.n, r.a, ev, r.d)} style={{ background: getWatch(r.n, ev.id) ? "#132a1c" : "#162536", color: getWatch(r.n, ev.id) ? "#2ecc71" : "#38bdf8", border:"1px solid #0284c7", borderRadius:"6px", padding:"5px 9px", fontSize:"0.74rem", fontWeight:"bold", cursor:"pointer" }}>{getWatch(r.n, ev.id) ? "✓ Watching" : "🔔 Watch"}</button>
+                    <button type="button" onClick={() => onOpenBracket(ev, r.n)} style={{ background:"#38bdf8", color:"#000", border:"none", borderRadius:"6px", padding:"5px 9px", fontSize:"0.74rem", fontWeight:"bold", cursor:"pointer" }}>Bracket →</button>
                   </div>
                 </div>
               );
             })}
-            {(() => {
-              const trimmedQ = qStr.trim();
-              const alreadyWatched = Boolean(
-                getWatch(trimmedQ) ||
-                regHits.some(r => getWatch(r.n, r.e) || getWatch(r.n)) ||
-                podProfiles.some(p => getWatch(p.name))
-              );
-              return alreadyWatched ? (
-                <div style={{ background:"#132a1c", border:"1px solid #2ecc71", borderRadius:"8px", padding:"9px 12px", fontSize:"0.8rem", color:"#4ade80", fontWeight:"bold", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                  <span>✓ Watching — Live Mat #, Match Time &amp; New-Bracket Alerts Active</span>
-                </div>
-              ) : (
-                <div style={{ background:"#141c2b", border:"1px dashed #38bdf8", borderRadius:"8px", padding:"10px 12px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
-                  <div style={{ fontSize:"0.8rem", color:"#cbd5e1" }}>Get a Push/Email alert the moment <b>&quot;{trimmedQ}&quot;</b> joins any bracket:</div>
-                  <button onClick={() => openFollow(trimmedQ, "")} style={{ background:"#ff9f43", color:"#000", border:"none", borderRadius:"6px", padding:"6px 11px", fontSize:"0.76rem", fontWeight:"800", cursor:"pointer" }}>🔔 Watch &quot;{trimmedQ}&quot;</button>
-                </div>
-              );
-            })()}
+
+            <div style={{ background:"#151d2b", border:"1px dashed #38bdf8", borderRadius:"8px", padding:"10px 12px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
+              <span style={{ fontSize:"0.78rem", color:"#cbd5e1" }}>
+                {podProfiles.length === 0 && regHits.length === 0
+                  ? <>Don&apos;t see <b>{trimmedQ}</b> yet? Open their Trophy Room or Watch for future brackets:</>
+                  : <>Want alerts for every future tournament <b>{trimmedQ}</b> enters?</>}
+              </span>
+              <div style={{ display:"flex", gap:"6px" }}>
+                {podProfiles.length === 0 && (
+                  <button type="button" onClick={() => setTrophyPick({ name: trimmedQ, academy: "", g: 0, s: 0, b: 0, events: [] })} style={{ background:"#f59e0b", color:"#000", border:"none", borderRadius:"6px", padding:"6px 10px", fontSize:"0.75rem", fontWeight:"800", cursor:"pointer" }}>🏆 Open Trophy Room</button>
+                )}
+                <button type="button" onClick={() => openFollow(trimmedQ, "")} style={{ background: alreadyWatched ? "#132a1c" : "#0284c7", color: alreadyWatched ? "#2ecc71" : "#fff", border:"none", borderRadius:"6px", padding:"6px 11px", fontSize:"0.75rem", fontWeight:"800", cursor:"pointer" }}>
+                  {alreadyWatched ? "✓ Watching Future Brackets" : "🔔 Watch Athlete"}
+                </button>
+              </div>
+            </div>
           </div>
         )}
-        {watchPick && <MatAlertModal event={watchPick.ev} comp={watchPick.comp} division={watchPick.div} existingWatch={getWatch(watchPick.comp.Name, watchPick.ev.id)} onRemove={removeWatch} onClose={() => setWatchPick(null)} />}
-        {trophyPick && <AthleteTrophyRoomModal athlete={trophyPick} onClose={() => setTrophyPick(null)} onWatch={(nm, ac) => { setTrophyPick(null); openFollow(nm, ac); }} isWatching={Boolean(getWatch(trophyPick.name))} />}
+
+        {watchPick && <MatAlertModal event={watchPick.ev} comp={watchPick.comp} division={watchPick.div} onClose={() => setWatchPick(null)} />}
+        {trophyPick && <AthleteTrophyRoomModal athlete={trophyPick} onClose={() => setTrophyPick(null)} isWatching={Boolean(getWatch(trophyPick.name))} onWatch={(nm, ac) => openFollow(nm, ac)} />}
       </div>
     </div>
   );
