@@ -344,22 +344,31 @@ const editDistMax2 = (a, b) => {
 const nameStopWords = new Set(["de", "da", "do", "dos", "das", "del", "jr", "sr", "ii", "iii", "iv", "filho", "neto", "professor", "prof", "coach"]);
 const sigNameTokens = (nm) => foldStr(nm).split(/[\s-]+/).map(t => t.replace(/[^a-z0-9]/g, "")).filter(t => t.length >= 2 && !nameStopWords.has(t));
 
+const _PRO_EXACT_MAP = new Map();
+const _PRO_FIRST_MAP = new Map();
+PRO_SUPERFIGHTS.forEach(p => {
+  const pf = foldStr(p.name);
+  _PRO_EXACT_MAP.set(pf, p);
+  (p.aliases || []).forEach(al => _PRO_EXACT_MAP.set(foldStr(al), p));
+  const pToks = sigNameTokens(p.name);
+  if (pToks.length >= 2) {
+    if (!_PRO_FIRST_MAP.has(pToks[0])) _PRO_FIRST_MAP.set(pToks[0], []);
+    _PRO_FIRST_MAP.get(pToks[0]).push({ p, surnames: new Set(pToks.slice(1)) });
+  }
+});
+
 export const findProAthlete = (nm) => {
+  if (!nm) return null;
   const f = foldStr(nm).replace(/\b(jr\.?|sr\.?|ii|iii|iv|professor|prof\.?|coach)\b/g, " ").replace(/\s+/g, " ").trim();
   if (!f) return null;
+  if (_PRO_EXACT_MAP.has(f)) return _PRO_EXACT_MAP.get(f);
   const fToks = sigNameTokens(nm);
-  return PRO_SUPERFIGHTS.find(p => {
-    const pf = foldStr(p.name);
-    if (pf === f) return true;
-    if ((p.aliases || []).some(al => foldStr(al) === f)) return true;
-    const pToks = sigNameTokens(p.name);
-    // Match First Name + ANY shared Surname token (unifies "Cassia Moura Remesar" AND "Cassia Remesar Moura" -> "Cassia Moura"!)
-    if (fToks.length >= 2 && pToks.length >= 2 && fToks[0] === pToks[0]) {
-      const pSurnames = new Set(pToks.slice(1));
-      if (fToks.slice(1).some(st => pSurnames.has(st))) return true;
+  if (fToks.length >= 2 && _PRO_FIRST_MAP.has(fToks[0])) {
+    for (const cand of _PRO_FIRST_MAP.get(fToks[0])) {
+      if (fToks.slice(1).some(st => cand.surnames.has(st))) return cand.p;
     }
-    return false;
-  }) || null;
+  }
+  return null;
 };
 
 const COMPOUND_SHARD_HINTS = {
@@ -534,4 +543,76 @@ export function getEventGiTags(ev) {
   if (/\b(no[- ]?gi|nogi)\b/i.test(txt)) return { gi: false, nogi: true };
   if (txt.startsWith("ibjjf") || /\bibjjf\b/i.test(txt)) return { gi: true, nogi: false };
   return { gi: true, nogi: true };
+}
+
+export const BJJ_BELT_GROUPS = [
+  {
+    group: "Adult & Juvenile Ranks (IBJJF)",
+    options: [
+      "White Belt", "White Belt • 1 Stripe", "White Belt • 2 Stripes", "White Belt • 3 Stripes", "White Belt • 4 Stripes",
+      "Blue Belt", "Blue Belt • 1 Stripe", "Blue Belt • 2 Stripes", "Blue Belt • 3 Stripes", "Blue Belt • 4 Stripes",
+      "Purple Belt", "Purple Belt • 1 Stripe", "Purple Belt • 2 Stripes", "Purple Belt • 3 Stripes", "Purple Belt • 4 Stripes",
+      "Brown Belt", "Brown Belt • 1 Stripe", "Brown Belt • 2 Stripes", "Brown Belt • 3 Stripes", "Brown Belt • 4 Stripes",
+      "Black Belt", "Black Belt • 1st Degree", "Black Belt • 2nd Degree", "Black Belt • 3rd Degree", "Black Belt • 4th Degree", "Black Belt • 5th Degree", "Black Belt • 6th Degree",
+      "Coral Belt (7th Degree Red/Black)", "Coral Belt (8th Degree Red/White)", "Red Belt (9th/10th Degree)"
+    ]
+  },
+  {
+    group: "Youth / Kids Ranks (Ages 4–15)",
+    options: [
+      "White Belt (Youth)", "White Belt (Youth) • 1 Stripe", "White Belt (Youth) • 2 Stripes", "White Belt (Youth) • 3 Stripes", "White Belt (Youth) • 4 Stripes",
+      "Grey/White Belt", "Grey/White Belt • 1 Stripe", "Grey/White Belt • 2 Stripes", "Grey/White Belt • 3 Stripes", "Grey/White Belt • 4 Stripes",
+      "Grey Belt", "Grey Belt • 1 Stripe", "Grey Belt • 2 Stripes", "Grey Belt • 3 Stripes", "Grey Belt • 4 Stripes",
+      "Grey/Black Belt", "Grey/Black Belt • 1 Stripe", "Grey/Black Belt • 2 Stripes", "Grey/Black Belt • 3 Stripes", "Grey/Black Belt • 4 Stripes",
+      "Yellow/White Belt", "Yellow/White Belt • 1 Stripe", "Yellow/White Belt • 2 Stripes", "Yellow/White Belt • 3 Stripes", "Yellow/White Belt • 4 Stripes",
+      "Yellow Belt", "Yellow Belt • 1 Stripe", "Yellow Belt • 2 Stripes", "Yellow Belt • 3 Stripes", "Yellow Belt • 4 Stripes",
+      "Yellow/Black Belt", "Yellow/Black Belt • 1 Stripe", "Yellow/Black Belt • 2 Stripes", "Yellow/Black Belt • 3 Stripes", "Yellow/Black Belt • 4 Stripes",
+      "Orange/White Belt", "Orange/White Belt • 1 Stripe", "Orange/White Belt • 2 Stripes", "Orange/White Belt • 3 Stripes", "Orange/White Belt • 4 Stripes",
+      "Orange Belt", "Orange Belt • 1 Stripe", "Orange Belt • 2 Stripes", "Orange Belt • 3 Stripes", "Orange Belt • 4 Stripes",
+      "Orange/Black Belt", "Orange/Black Belt • 1 Stripe", "Orange/Black Belt • 2 Stripes", "Orange/Black Belt • 3 Stripes", "Orange/Black Belt • 4 Stripes",
+      "Green/White Belt", "Green/White Belt • 1 Stripe", "Green/White Belt • 2 Stripes", "Green/White Belt • 3 Stripes", "Green/White Belt • 4 Stripes",
+      "Green Belt", "Green Belt • 1 Stripe", "Green Belt • 2 Stripes", "Green Belt • 3 Stripes", "Green Belt • 4 Stripes",
+      "Green/Black Belt", "Green/Black Belt • 1 Stripe", "Green/Black Belt • 2 Stripes", "Green/Black Belt • 3 Stripes", "Green/Black Belt • 4 Stripes"
+    ]
+  }
+];
+
+export function normalizeBeltValue(raw) {
+  const s = (raw || "").trim();
+  if (!s) return "";
+  const all = BJJ_BELT_GROUPS.flatMap(g => g.options);
+  if (all.includes(s)) return s;
+  const low = s.toLowerCase().replace(/\s+/g, " ").replace(/gray/g, "grey").trim();
+  const map = {
+    "white": "White Belt", "blue": "Blue Belt", "purple": "Purple Belt", "brown": "Brown Belt", "black": "Black Belt",
+    "grey/white": "Grey/White Belt", "grey-white": "Grey/White Belt",
+    "grey": "Grey Belt",
+    "grey/black": "Grey/Black Belt", "grey-black": "Grey/Black Belt",
+    "yellow/white": "Yellow/White Belt", "yellow": "Yellow Belt", "yellow/black": "Yellow/Black Belt",
+    "orange/white": "Orange/White Belt", "orange": "Orange Belt", "orange/black": "Orange/Black Belt",
+    "green/white": "Green/White Belt", "green": "Green Belt", "green/black": "Green/Black Belt",
+    "3rd degree black belt": "Black Belt • 3rd Degree"
+  };
+  return map[low] || s;
+}
+
+export function getBeltVisualSpec(raw) {
+  const norm = normalizeBeltValue(raw);
+  if (!norm) return null;
+  const low = norm.toLowerCase();
+  let main = "#f8fafc", mid = null, bar = "#0f172a", textCol = "#f8fafc";
+  if (low.includes("coral") && low.includes("white")) { main = "#dc2626"; mid = "#ffffff"; bar = "#dc2626"; }
+  else if (low.includes("coral")) { main = "#dc2626"; mid = "#111827"; bar = "#dc2626"; }
+  else if (low.startsWith("red belt")) { main = "#b91c1c"; bar = "#fef2f2"; }
+  else if (low.includes("black belt")) { main = "#111827"; bar = "#dc2626"; }
+  else if (low.includes("brown")) { main = "#78350f"; }
+  else if (low.includes("purple")) { main = "#7e22ce"; }
+  else if (low.includes("blue")) { main = "#1d4ed8"; }
+  else if (low.includes("green")) { main = "#15803d"; mid = low.includes("/white") ? "#ffffff" : (low.includes("/black") ? "#090d16" : null); }
+  else if (low.includes("orange")) { main = "#ea580c"; mid = low.includes("/white") ? "#ffffff" : (low.includes("/black") ? "#090d16" : null); }
+  else if (low.includes("yellow")) { main = "#eab308"; mid = low.includes("/white") ? "#ffffff" : (low.includes("/black") ? "#090d16" : null); }
+  else if (low.includes("grey") || low.includes("gray")) { main = "#94a3b8"; mid = low.includes("/white") ? "#ffffff" : (low.includes("/black") ? "#090d16" : null); }
+  const sm = low.match(/(\d+)(?:st|nd|rd|th)?\s*(?:stripe|degree)/);
+  const stripes = sm ? Math.min(6, parseInt(sm[1], 10)) : 0;
+  return { label: norm, main, mid, bar, stripes, textCol };
 }

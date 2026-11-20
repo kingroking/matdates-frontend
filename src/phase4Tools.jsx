@@ -387,8 +387,11 @@ export function LeaderboardModal({ onClose }) {
   const [mode, setMode] = useState(initParams.athlete ? 'ATHLETES' : 'GYMS');
   const [fed, setFed] = useState('ALL');
   const [age, setAge] = useState('ALL');
+  const [standEra, setStandEra] = useState('2026');
   const [qStr, setQStr] = useState('');
   const [athQuery, setAthQuery] = useState(initParams.athlete || '');
+  const deferredQStr = React.useDeferredValue(qStr);
+  const deferredAthQ = React.useDeferredValue(athQuery);
   const [selectedGymKey, setSelectedGymKey] = useState(initParams.gymKey || null);
   const [medalFilter, setMedalFilter] = useState('ALL');
   const [bucketMap, setBucketMap] = useState({});
@@ -431,32 +434,33 @@ export function LeaderboardModal({ onClose }) {
   }, []);
 
   useEffect(() => {
-    try {
-      const url = new URL(window.location.href);
-      url.searchParams.delete('gym');
-      url.searchParams.delete('athlete');
-      if (selectedGymKey) {
-        url.searchParams.set('gym', selectedGymKey);
-      } else if (mode === 'ATHLETES' && athQuery.trim().length >= 2) {
-        url.searchParams.set('athlete', athQuery.trim());
-      }
-      window.history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash);
-    } catch {}
-  }, [selectedGymKey, mode, athQuery]);
+    const t = setTimeout(() => {
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('gym');
+        url.searchParams.delete('athlete');
+        if (selectedGymKey) {
+          url.searchParams.set('gym', selectedGymKey);
+        } else if (mode === 'ATHLETES' && deferredAthQ.trim().length >= 2) {
+          url.searchParams.set('athlete', deferredAthQ.trim());
+        }
+        window.history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash);
+      } catch {}
+    }, 450);
+    return () => clearTimeout(t);
+  }, [selectedGymKey, mode, deferredAthQ]);
 
   const loadGymBucket = async (gymKey) => {
     const bkt = bucketOfKey(gymKey);
     // Fire upcoming roster fetch in background WITHOUT blocking Trophy Room render!
-    if (rosterCache === null) {
-      setRosterCache([]);
-      getDocs(query(collection(db, 'event_competitors'), where('event_id', '==', '__athlete_index__')))
-        .then(rSnap => {
-          const rItems = [];
-          rSnap.docs.forEach(d => (d.data().items || []).forEach(it => rItems.push(it)));
-          setRosterCache(rItems);
-        })
-        .catch(() => {});
-    }
+    const rgPrefix = (gymKey || '00').replace(/[^a-z0-9]/g, '').slice(0, 2).padEnd(2, '0');
+    getDocs(query(collection(db, 'event_competitors'), where('event_id', '==', '__rg_' + rgPrefix + '__')))
+      .then(rSnap => {
+        const rItems = [];
+        rSnap.docs.forEach(d => (d.data().items || []).forEach(it => rItems.push(it)));
+        setRosterCache(prev => [...(prev || []), ...rItems]);
+      })
+      .catch(() => {});
     if (bucketMap[bkt]) return;
     setLoadingBucket(bkt);
     try {
@@ -474,7 +478,7 @@ export function LeaderboardModal({ onClose }) {
 
   useEffect(() => {
     if (mode !== 'ATHLETES') return;
-    const trimmed = athQuery.trim();
+    const trimmed = deferredAthQ.trim();
     if (trimmed.length < 2) return;
     const bkts = athBucketsForQuery(trimmed);
     const fallback = athLastBucket(trimmed);
@@ -483,12 +487,15 @@ export function LeaderboardModal({ onClose }) {
     if (!missing.length) return;
     setLoadingAthShard(missing[0]);
     Promise.all(missing.map(bkt =>
-      getDocs(query(collection(db, 'event_competitors'), where('event_id', '==', `__a2_${bkt}__`)))
-        .then(snap => {
-          const arr = [];
-          snap.docs.forEach(d => (d.data().items || []).forEach(it => arr.push(it)));
-          return [bkt, arr];
-        }).catch(() => [bkt, []])
+      Promise.all([
+        getDocs(query(collection(db, 'event_competitors'), where('event_id', '==', `__a2_${bkt}__`))),
+        getDocs(query(collection(db, 'event_competitors'), where('event_id', '==', `__alltime_a2_${bkt}__`)))
+      ]).then(([snap26, snapAll]) => {
+        const arr = [];
+        snap26.docs.forEach(d => (d.data().items || []).forEach(it => arr.push(it)));
+        snapAll.docs.forEach(d => (d.data().items || []).forEach(it => arr.push({ ...it, isHist: true })));
+        return [bkt, arr];
+      }).catch(() => [bkt, []])
     )).then(pairs => {
       setAthShardMap(prev => {
         const next = { ...prev };
@@ -498,7 +505,7 @@ export function LeaderboardModal({ onClose }) {
       })
       .catch(() => setAthShardMap(prev => ({ ...prev, [bkt]: [] })))
       .finally(() => setLoadingAthShard(''));
-  }, [mode, athQuery, athShardMap]);
+  }, [mode, deferredAthQ, athShardMap]);
 
   const openTrophyRoom = (gymKey, initMedal = 'ALL') => {
     setSelectedGymKey(gymKey);
@@ -506,7 +513,7 @@ export function LeaderboardModal({ onClose }) {
     loadGymBucket(gymKey);
   };
 
-  const aggregated = React.useMemo(() => {
+  const rankedBase = React.useMemo(() => {
     const map = {};
     const scClubs26 = [];
     rows.forEach(r => {
@@ -576,27 +583,27 @@ export function LeaderboardModal({ onClose }) {
       .map((item, idx) => ({ ...item, trueRank: idx + 1 }));
 
     const byKey = {};
-    rankedAll.forEach(x => { byKey[x.key] = x; });
+    rankedAll.forEach(x => { x._low = x.Academy.toLowerCase(); byKey[x.key] = x; });
+    return { rankedAll, byKey };
+  }, [rows, fed, age, sortBy, standEra]);
 
-    const q = qStr.trim().toLowerCase();
+  const aggregated = React.useMemo(() => {
+    const { rankedAll, byKey } = rankedBase;
+    const q = deferredQStr.trim().toLowerCase();
     if (!q) return { totalGyms: rankedAll.length, list: rankedAll.slice(0, 80), byKey };
-
     const tokens = q.split(/\s+/).filter(Boolean);
-    const direct = rankedAll.filter(x => {
-      const low = x.Academy.toLowerCase();
-      return low.includes(q) || tokens.every(t => low.includes(t));
-    });
+    const direct = rankedAll.filter(x => x._low.includes(q) || tokens.every(t => x._low.includes(t)));
     if (direct.length < 5 && tokens.length >= 2) {
       const prefix2 = tokens.slice(0, 2).join(' ');
       const seenK = new Set(direct.map(d => d.key));
-      const parents = rankedAll.filter(x => !seenK.has(x.key) && x.Academy.toLowerCase().startsWith(prefix2)).slice(0, 10);
+      const parents = rankedAll.filter(x => !seenK.has(x.key) && x._low.startsWith(prefix2)).slice(0, 10);
       return { totalGyms: rankedAll.length, list: [...direct, ...parents].slice(0, 100), byKey };
     }
     return { totalGyms: rankedAll.length, list: direct.slice(0, 120), byKey };
-  }, [rows, fed, age, qStr, sortBy]);
+  }, [rankedBase, deferredQStr]);
 
   const athleteResults = React.useMemo(() => {
-    const trimmed = athQuery.trim();
+    const trimmed = deferredAthQ.trim();
     if (trimmed.length < 2) return [];
     const bkts = athBucketsForQuery(trimmed);
     const fb = athLastBucket(trimmed);
@@ -604,7 +611,7 @@ export function LeaderboardModal({ onClose }) {
     const rawPool = [];
     bkts.forEach(b => { if (athShardMap[b]) rawPool.push(...athShardMap[b]); });
 
-    const hits = canonicalizeHits(rawPool).filter(m =>
+    const hits = canonicalizeHits(standEra === '2026' ? rawPool.filter(r => !r.isHist) : rawPool).filter(m =>
       smartAthleteMatch(m.n, m.a, trimmed) &&
       (fed === "ALL" || (/ufc/i.test((m.ev || "") + " " + (m.f || "")) ? "UFC" : m.f) === fed) &&
       (age === "ALL" || !m.ag || m.ag === age)
@@ -657,7 +664,7 @@ export function LeaderboardModal({ onClose }) {
     return Array.from(grouped.values())
       .sort((a, b) => (b.g * 9 + b.s * 3 + b.b + (b.isPro ? 12 : 0)) - (a.g * 9 + a.s * 3 + a.b + (a.isPro ? 12 : 0)))
       .slice(0, 80);
-  }, [athQuery, athShardMap, fed, age, sortBy]);
+  }, [deferredAthQ, athShardMap, fed, age, sortBy, standEra]);
 
   const activeGym = selectedGymKey ? aggregated.byKey[selectedGymKey] : null;
   const box = { position:'fixed', top:0, left:0, right:0, bottom:0, width:'100%', maxWidth:'100vw', overflowX:'hidden', overflowY:'auto', backgroundColor:'rgba(0,0,0,0.9)', zIndex:9999, display:'flex', justifyContent:'center', alignItems:'flex-start', padding:'8px', boxSizing:'border-box' };
@@ -889,7 +896,15 @@ export function LeaderboardModal({ onClose }) {
       <div onClick={e => e.stopPropagation()} style={card}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'10px', gap:'10px', flexShrink:0 }}>
           <div style={{ minWidth:0 }}>
-            <h2 style={{ margin:0, color:'#fff', fontSize:'1.16rem', lineHeight:1.25 }}>🏆 2026 BJJ Medal Standings & Podiums</h2>
+            <div style={{ display:'flex', alignItems:'center', gap:'8px', flexWrap:'wrap' }}>
+              <h2 style={{ margin:0, color:'#fff', fontSize:'1.12rem', lineHeight:1.25 }}>
+                🏆 {standEra === '2026' ? '2026 Season Standings' : 'All-Time Legacy Standings'}
+              </h2>
+              <div style={{ display:'inline-flex', background:'#181e29', border:'1px solid #334155', borderRadius:'7px', padding:'2px', gap:'2px' }}>
+                <button type="button" onClick={() => setStandEra('2026')} style={{ padding:'3px 8px', borderRadius:'5px', border:'none', fontSize:'0.72rem', fontWeight:'800', cursor:'pointer', background: standEra === '2026' ? '#f59e0b' : 'transparent', color: standEra === '2026' ? '#000' : '#cbd5e1' }}>🔥 2026 Featured</button>
+                <button type="button" onClick={() => setStandEra('ALLTIME')} style={{ padding:'3px 8px', borderRadius:'5px', border:'none', fontSize:'0.72rem', fontWeight:'800', cursor:'pointer', background: standEra === 'ALLTIME' ? '#38bdf8' : 'transparent', color: standEra === 'ALLTIME' ? '#000' : '#cbd5e1' }}>🏛️ All-Time</button>
+              </div>
+            </div>
             {!(qStr.trim() || athQuery.trim()) && <p style={{ margin:'3px 0 0', color:'#94a3b8', fontSize:'0.75rem', lineHeight:1.3 }}>
               {mode === 'GYMS'
                 ? `${aggregated.totalGyms.toLocaleString()} medaling academies ranked — tap any academy to open its full Trophy Room.`

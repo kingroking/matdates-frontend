@@ -29,6 +29,7 @@ const cleanProfileUrl = (url) => {
 
 function CompetitorTable({ calcResult, event, onClose }) {
   const [searchTerm, setSearchTerm] = useState("");
+  const deferredCompSearch = React.useDeferredValue(searchTerm);
   const [liveCompetitors, setLiveCompetitors] = useState([]);
   const [loading, setLoading] = useState(true);
   

@@ -291,7 +291,8 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, meda
     }).catch(() => {});
 
     // STRICT exact-gym matching on __athlete_index__ (NO MORE outside "Carlson Gracie" or "San Antonio" gyms bleeding in!)
-    getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__athlete_index__"))).then(sn => {
+    const rgPrefix = (canonicalTargetKey || "00").slice(0, 2).padEnd(2, "0");
+    getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__rg_" + rgPrefix + "__"))).then(sn => {
       const seen = new Set();
       const hits = [];
       sn.forEach(d => ((d.data() || {}).items || []).forEach(it => {
@@ -554,7 +555,8 @@ export function PromoterHomeDashboard({ events, user }) {
   const [checkins, setCheckins] = useState([]);
   const [sales, setSales] = useState([]);
   const [cardId, setCardId] = useState(events?.[0]?.id || "");
-  const [cfg, setCfg] = useState({ ticketUrl: "", gaLabel: "", vipTableLabel: "", weighInInfo: "", cornerInfo: "", bookedRoster: [] });
+  const [cfg, setCfg] = useState({ ticketUrl: "", gaLabel: "", vipTableLabel: "", weighInInfo: "", cornerInfo: "", bookedRoster: [], scheduledBouts: [], boutResults: [] });
+  const [boutForm, setBoutForm] = useState({ fighterA: "", fighterB: "", division: "", winner: "", method: "" });
   const [bulkAthletes, setBulkAthletes] = useState("");
   const [staffInput, setStaffInput] = useState("");
   const [showTour, setShowTour] = useState(false);
@@ -589,7 +591,7 @@ export function PromoterHomeDashboard({ events, user }) {
   useEffect(() => {
     if (!cardId) return;
     getDoc(doc(db, "mat_watches", "prom_cfg_" + cardId)).then(d => {
-      if (d.exists()) setCfg(prev => ({ ...prev, ...d.data(), bookedRoster: d.data().bookedRoster || [] }));
+      if (d.exists()) setCfg(prev => ({ ...prev, ...d.data(), bookedRoster: d.data().bookedRoster || [], scheduledBouts: d.data().scheduledBouts || [], boutResults: d.data().boutResults || [] }));
       else setCfg({ ticketUrl: "", gaLabel: "", vipTableLabel: "", weighInInfo: "", cornerInfo: "", bookedRoster: [] });
     }).catch(() => {});
   }, [cardId]);
@@ -649,6 +651,47 @@ export function PromoterHomeDashboard({ events, user }) {
       updatedAt: new Date().toISOString()
     }, { merge: true });
     setMsg("✅ Saved Ticket Checkout Link, VIP Table Tiers & Official Briefing onto Event Card!");
+  };
+
+  const publishBoutOrResult = async (e) => {
+    e.preventDefault();
+    if (!cardId || (!boutForm.fighterA.trim() && !boutForm.winner.trim())) return;
+    const evObj = (events || []).find(x => x.id === cardId) || {};
+    const nextBouts = [...(cfg.scheduledBouts || [])];
+    const nextResults = [...(cfg.boutResults || [])];
+    if (boutForm.winner.trim()) {
+      const w = boutForm.winner.trim();
+      const l = foldStr(w) === foldStr(boutForm.fighterA) ? boutForm.fighterB.trim() : boutForm.fighterA.trim();
+      nextResults.unshift({
+        id: Date.now().toString(36),
+        winner: w,
+        loser: l,
+        method: boutForm.method.trim() || "Official Decision",
+        division: boutForm.division.trim() || "SuperFight",
+        postedAt: new Date().toISOString()
+      });
+    } else {
+      nextBouts.unshift({
+        id: Date.now().toString(36),
+        fighterA: boutForm.fighterA.trim(),
+        fighterB: boutForm.fighterB.trim(),
+        division: boutForm.division.trim() || "SuperFight",
+        postedAt: new Date().toISOString()
+      });
+    }
+    await setDoc(doc(db, "mat_watches", "prom_cfg_" + cardId), {
+      kind: "prom_cfg",
+      eventId: cardId,
+      eventName: evObj.name || "",
+      eventDate: evObj.date || "",
+      orgName: ws?.orgName || "Promoter",
+      scheduledBouts: nextBouts,
+      boutResults: nextResults,
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+    setCfg(prev => ({ ...prev, scheduledBouts: nextBouts, boutResults: nextResults }));
+    setBoutForm({ fighterA: "", fighterB: "", division: "", winner: "", method: "" });
+    setMsg("🚨 Published! All fans watching these athletes will automatically receive SuperFight Matchup / Result Push & Email Alerts!");
   };
 
   const addStaff = async (e) => {

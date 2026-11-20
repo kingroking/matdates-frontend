@@ -164,6 +164,11 @@ const lookupGymBucket = (gk) => {
 export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) {
   useEffect(() => { trackEvent("athleteSearches"); }, []);
   const [qStr, setQStr] = useState("");
+  const [debouncedQ, setDebouncedQ] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQ(qStr), 140);
+    return () => clearTimeout(t);
+  }, [qStr]);
   const [regItems, setRegItems] = useState([]);
   const [claimedBios, setClaimedBios] = useState([]);
   const [gymRows, setGymRows] = useState([]);
@@ -175,9 +180,7 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
   const evMap = useMemo(() => Object.fromEntries((events || []).map(e => [e.id, e])), [events]);
 
   useEffect(() => {
-    getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__athlete_index__"))).then(sn => {
-      const a = []; sn.forEach(d => a.push(...((d.data() || {}).items || []))); setRegItems(a);
-    }).catch(() => {});
+    // Sharded __r2_XX__ registration buckets load on demand below for instant mobile performance!
 
     getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__public_bios__"))).then(sn => {
       setClaimedBios(sn.docs.map(d => d.data()).filter(x => x && x.name));
@@ -196,26 +199,31 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
 
   // 1. Fetch ALL candidate 2-letter athlete shards (handles compound Brazilian surnames & aliases!)
   useEffect(() => {
-    if (qStr.trim().length < 2) return;
-    const bkts = athBucketsForQuery(qStr);
+    if (debouncedQ.trim().length < 2) return;
+    const bkts = athBucketsForQuery(debouncedQ);
     bkts.forEach(bkt => {
       if (podShards[bkt]) return;
       setPodShards(p => ({ ...p, [bkt]: [] }));
       Promise.all([
         getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__a2_" + bkt + "__"))),
+        getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__alltime_a2_" + bkt + "__"))),
+        getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__r2_" + bkt + "__"))),
         getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__c2_" + bkt + "__")))
-      ]).then(([snPod, snComp]) => {
-        const a = [];
+      ]).then(([snPod, snHist, snReg, snComp]) => {
+        const a = [], r = [];
         snPod.forEach(d => a.push(...((d.data() || {}).items || [])));
+        snHist.forEach(d => ((d.data() || {}).items || []).forEach(h => a.push({ ...h, isHist: true })));
         snComp.forEach(d => ((d.data() || {}).items || []).forEach(c => a.push({ ...c, isRosterEntry: true })));
+        snReg.forEach(d => r.push(...((d.data() || {}).items || [])));
         setPodShards(p => ({ ...p, [bkt]: a }));
+        if (r.length) setRegItems(prev => [...prev, ...r]);
       }).catch(() => {});
     });
-  }, [qStr]);
+  }, [debouncedQ]);
 
   // 2. Also detect matching Academies (e.g. "Carlson Gracie San Antonio", "Northern Tribe", "AOJ") and fetch their __m2_XX__ team medal shard!
   const matchingGyms = useMemo(() => {
-    const q = foldStr(qStr).trim();
+    const q = foldStr(debouncedQ).trim();
     if (q.length < 3 || !gymRows.length) return [];
     const terms = q.split(/\s+/).filter(Boolean);
     const byK = new Map();
@@ -232,7 +240,7 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
       cur.Bronze += Number(r.Bronze || 0);
     });
     return Array.from(byK.values()).sort((a, b) => (b.Gold * 9 + b.Silver * 3 + b.Bronze) - (a.Gold * 9 + a.Silver * 3 + a.Bronze)).slice(0, 4);
-  }, [qStr, gymRows]);
+  }, [debouncedQ, gymRows]);
 
   useEffect(() => {
     matchingGyms.forEach(g => {
@@ -247,12 +255,19 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
   }, [matchingGyms]);
 
   const regHits = useMemo(() => {
-    if (qStr.trim().length < 2) return [];
-    return regItems.filter(x => smartAthleteMatch(x.n, x.a, qStr)).slice(0, 40);
-  }, [regItems, qStr]);
+    if (debouncedQ.trim().length < 2) return [];
+    const seenR = new Set();
+    return regItems.filter(x => {
+      if (!smartAthleteMatch(x.n, x.a, debouncedQ)) return false;
+      const rk = (x.n || "") + "|" + (x.e || "") + "|" + (x.d || "");
+      if (seenR.has(rk)) return false;
+      seenR.add(rk);
+      return true;
+    }).slice(0, 35);
+  }, [regItems, debouncedQ]);
 
   const podProfiles = useMemo(() => {
-    if (qStr.trim().length < 2) return [];
+    if (debouncedQ.trim().length < 2) return [];
     const map = new Map();
 
     const ensureProfile = (nm, ac, extra = {}) => {
@@ -290,11 +305,11 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
 
     // A. Seed matching Claimed Athlete Bios (so claimed teammates ALWAYS show up!)
     claimedBios.forEach(b => {
-      if (smartAthleteMatch(b.name, b.academy, qStr, b.nickname || "")) {
+      if (smartAthleteMatch(b.name, b.academy, debouncedQ, b.nickname || "")) {
         const r = ensureProfile(b.name, b.academy || "", { claimed: true });
         if (b.nickname) r.nickname = b.nickname;
       }
-      if (b.coach && smartAthleteMatch(b.coach, b.academy, qStr)) {
+      if (b.coach && smartAthleteMatch(b.coach, b.academy, debouncedQ)) {
         const cleanCoach = b.coach.replace(/^(head\s+professor|professor|prof\.?|coach)\s+/i, "").trim();
         if (cleanCoach.length >= 3) ensureProfile(cleanCoach, b.academy || "");
       }
@@ -302,14 +317,14 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
 
     // B. Seed matching Pro / Invitational Stars
     PRO_SUPERFIGHTS.forEach(p => {
-      if (smartAthleteMatch(p.name, p.academy, qStr)) {
+      if (smartAthleteMatch(p.name, p.academy, debouncedQ)) {
         ensureProfile(p.name, p.academy, { proTitles: p.titles });
       }
     });
 
     // C. Merge multi-shard Athlete podium rows + matching Academy team shard rows (deduplicated!)
     const combinedRows = [];
-    athBucketsForQuery(qStr).forEach(b => { if (podShards[b]) combinedRows.push(...podShards[b]); });
+    athBucketsForQuery(debouncedQ).forEach(b => { if (podShards[b]) combinedRows.push(...podShards[b]); });
     const matchedGymKeys = new Set(matchingGyms.map(g => g.key));
     matchingGyms.forEach(g => {
       const gb = lookupGymBucket(g.key);
@@ -320,8 +335,8 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
 
     combinedRows.forEach(m => {
       const fromMatchedGym = matchedGymKeys.has(lookupNormGym(m.a));
-      if (!fromMatchedGym && !smartAthleteMatch(m.n, m.a, qStr)) return;
-      const rec = ensureProfile(m.n, m.a);
+      if (!fromMatchedGym && !smartAthleteMatch(m.n, m.a, debouncedQ)) return;
+      const rec = ensureProfile(m.n, m.isHist ? '' : m.a); if (!rec.academy && m.a) rec.academy = m.a;
       const dk = foldStr(m.ev) + "|" + foldStr(m.d) + "|" + m.p;
       if (rec.seen.has(dk)) return;
       rec.seen.add(dk);
@@ -338,7 +353,7 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
     return Array.from(map.values())
       .sort((a, b) => (b.claimed ? 4 : 0) + (b.g * 9 + b.s * 3 + b.b) + (b.proTitles ? 15 : 0) - ((a.claimed ? 4 : 0) + (a.g * 9 + a.s * 3 + a.b) + (a.proTitles ? 15 : 0)))
       .slice(0, 45);
-  }, [qStr, podShards, gymShards, matchingGyms, claimedBios]);
+  }, [debouncedQ, podShards, gymShards, matchingGyms, claimedBios]);
 
   const openFollow = (nm, ac, ev, div) => setWatchPick({
     ev: ev || { id: "", name: "All Upcoming Tournaments", link: "https://matdates.com/?athlete=" + encodeURIComponent(nm).replace(/%20/g, "+"), sort_date: "" },

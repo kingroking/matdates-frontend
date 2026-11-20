@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import { collection, doc, getDoc, getDocs, setDoc, query, where } from "firebase/firestore";
 import { db, auth } from "./firebase";
 import { addDoc } from "firebase/firestore";
-import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, matchesYouthInitial, computeEliteSpotlight, PRO_SUPERFIGHTS } from "./proHubData";
+import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, matchesYouthInitial, computeEliteSpotlight, PRO_SUPERFIGHTS, BJJ_BELT_GROUPS, normalizeBeltValue, getBeltVisualSpec } from "./proHubData";
 
 export function SuperFightsPanel({ fed, qStr, onOpenTrophy, onWatch, getWatch }) {
   const [subTab, setSubTab] = useState("PROS");
@@ -160,6 +160,24 @@ function parseBookField(rawBook) {
   };
 }
 
+function BeltRankBadge({ belt }) {
+  const spec = getBeltVisualSpec(belt);
+  if (!spec) return null;
+  return (
+    <span style={{ display:"inline-flex", alignItems:"center", gap:"7px", background:"#151c28", border:"1px solid #334155", borderRadius:"7px", padding:"3px 8px", fontSize:"0.75rem", fontWeight:"800", color:"#f8fafc" }}>
+      <span style={{ position:"relative", width:"34px", height:"11px", borderRadius:"2px", background: spec.main, border:"1px solid rgba(255,255,255,0.35)", display:"inline-flex", alignItems:"center", justifyContent:"flex-end", overflow:"hidden", flexShrink:0 }}>
+        {spec.mid && <span style={{ position:"absolute", left:0, right:"11px", top:"3px", height:"3px", background: spec.mid }} />}
+        <span style={{ width:"11px", height:"100%", background: spec.bar, display:"inline-flex", alignItems:"center", justifyContent:"space-evenly", padding:"0 1px", boxSizing:"border-box", zIndex:1 }}>
+          {Array.from({ length: spec.stripes }).map((_, i) => (
+            <span key={i} style={{ width:"1.5px", height:"8px", background:"#ffffff", display:"block" }} />
+          ))}
+        </span>
+      </span>
+      <span>{spec.label}</span>
+    </span>
+  );
+}
+
 export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, onShareCard }) {
   const [activeAth, setActiveAth] = useState(athlete);
   useEffect(() => { setActiveAth(athlete); }, [athlete]);
@@ -171,6 +189,9 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
   const initials = nm.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]?.toUpperCase() || "").join("") || "🥋";
 
   const [evs, setEvs] = useState(activeAth?.events || []);
+  const [histEvs, setHistEvs] = useState([]);
+  const [promBouts, setPromBouts] = useState([]);
+  const [eraView, setEraView] = useState("2026");
   const [cnt, setCnt] = useState({ g: activeAth?.g || 0, s: activeAth?.s || 0, b: activeAth?.b || 0, acad: activeAth?.academy || activeAth?.a || "" });
   const [bio, setBio] = useState(null);
   const [myFamilyBios, setMyFamilyBios] = useState([]);
@@ -231,7 +252,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
       if (pd.exists() && pd.data()?.event_id === "__public_bios__") {
         const pbd = pd.data();
         setBio(prev => ({ ...(prev || {}), ...pbd }));
-        setForm(prev => ({ ...emptyForm, ...prev, ...pbd, handle: pbd.handle ? "@" + pbd.handle.replace(/^@+/, "") : "" }));
+        setForm(prev => ({ ...emptyForm, ...prev, ...pbd, belt: normalizeBeltValue(pbd.belt || prev.belt), handle: pbd.handle ? "@" + pbd.handle.replace(/^@+/, "") : "" }));
       }
     }).catch(() => {});
 
@@ -245,24 +266,64 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
           setDoc(doc(db, "event_competitors", pubKey), { event_id: "__public_bios__", slug, avatarData: cached.avatarData }, { merge: true }).catch(() => {});
         }
         setBio(bd);
-        setForm({ ...emptyForm, ...bd, handle: bd.handle ? "@" + bd.handle.replace(/^@+/, "") : "" });
+        setForm({ ...emptyForm, ...bd, belt: normalizeBeltValue(bd.belt), handle: bd.handle ? "@" + bd.handle.replace(/^@+/, "") : "" });
         try { localStorage.setItem(lsKey, JSON.stringify(bd)); } catch {}
       }
     }).catch(() => {});
 
-    const targetFold = foldStr(nm);
-    getDocs(collection(db, "mat_watches")).then(sn => {
+    setHistEvs([]);
+    setPromBouts([]);
+    setEraView("2026");
+    getDocs(query(collection(db, "mat_watches"), where("athleteName", "==", nm))).then(sn => {
       const uniqueWatchers = new Set();
       sn.forEach(d => {
         const wd = d.data() || {};
-        if (wd.kind) return;
-        if (!wd.active && !wd.followFuture) return;
-        if (foldStr(wd.athleteName || "") === targetFold) {
-          const watcherKey = (wd.uid || (wd.email || "").toLowerCase() || wd.fcmToken || d.id);
-          uniqueWatchers.add(watcherKey);
-        }
+        if (wd.kind || (!wd.active && !wd.followFuture)) return;
+        uniqueWatchers.add(wd.uid || (wd.email || "").toLowerCase() || wd.fcmToken || d.id);
       });
       setWatcherCount(uniqueWatchers.size);
+    }).catch(() => {});
+
+    // Fetch Promoter SuperFight bouts/results & Prior-Year All-Time Career Archive in background
+    getDocs(query(collection(db, "mat_watches"), where("kind", "==", "prom_cfg"))).then(sn => {
+      const myBouts = [];
+      const tLow = foldStr(nm);
+      sn.forEach(d => {
+        const cfg = d.data() || {};
+        (cfg.boutResults || []).forEach(r => {
+          if (foldStr(r.winner) === tLow || foldStr(r.loser) === tLow) {
+            const won = foldStr(r.winner) === tLow;
+            myBouts.push({
+              ev: cfg.eventName || "Verified SuperFight",
+              d: (won ? "🏆 W vs. " + r.loser : "Bout vs. " + r.winner) + (r.method ? " (" + r.method + ")" : ""),
+              p: won ? 1 : 2,
+              f: "SUPERFIGHT",
+              yr: 2026
+            });
+          }
+        });
+      });
+      if (myBouts.length) setPromBouts(myBouts);
+    }).catch(() => {});
+
+    const histBkts = athBucketsForQuery(nm);
+    if (!histBkts.length && athBucket(nm) !== "__") histBkts.push(athBucket(nm));
+    Promise.all(histBkts.map(b => getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__alltime_a2_" + b + "__"))))).then(snaps => {
+      const tgt = foldStr(nm), qWords = tgt.split(/\s+/).filter(Boolean), seenH = new Set(), outH = [];
+      snaps.forEach(s => s.forEach(d => ((d.data() || {}).items || []).forEach(it => {
+        const cFold = foldStr(it.n);
+        let ok = cFold === tgt || (it.ag === "YOUTH" && matchesYouthInitial(it.n, nm));
+        if (!ok && qWords.length >= 2) {
+          const cw = cFold.split(/\s+/).filter(Boolean);
+          if (cw.length >= 2 && cw[0] === qWords[0] && cw[cw.length - 1] === qWords[qWords.length - 1]) ok = true;
+        }
+        if (!ok) return;
+        const dk = foldStr(it.ev) + "|" + foldStr(it.d) + "|" + it.p;
+        if (seenH.has(dk)) return;
+        seenH.add(dk);
+        outH.push(it);
+      })));
+      if (outH.length) setHistEvs(outH);
     }).catch(() => {});
 
     if (passedEvs.length > 0) return;
@@ -541,12 +602,39 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
                 {bio?.openSf && <span style={{ background:"#132a1c", color:"#4ade80", border:"1px solid #22c55e", padding:"3px 7px", borderRadius:"5px", fontSize:"0.71rem", fontWeight:"bold" }}>🥊 Open for SuperFights</span>}
               </div>
 
-              <div style={{ color:"#ff9f43", fontSize:"0.84rem", fontWeight:"bold", display:"flex", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
-                <span>{cnt.acad || elite.pro?.academy || "Independent"}{(bio?.belt || elite.pro?.belt) ? " • " + (bio?.belt || elite.pro?.belt) : ""}</span>
-                <span style={{ background:"#18202f", border:"1px solid #2d3748", borderRadius:"6px", padding:"2px 8px", fontSize:"0.76rem", color:"#e2e8f0" }}>
-                  🥇<b>{cnt.g}</b> 🥈<b>{cnt.s}</b> 🥉<b>{cnt.b}</b> • <b style={{ color:"#34d399" }}>{elite.pts} Pts</b>
-                </span>
-              </div>
+              {(() => {
+                const currentAcad = (bio?.academy || cnt.acad || elite.pro?.academy || histEvs[0]?.a || "Independent");
+                const liveBelt = (editBio || claimStep) ? (form.belt || bio?.belt || elite.pro?.belt) : (bio?.belt || elite.pro?.belt);
+                const s26Evs = [...promBouts, ...evs];
+                const g26 = s26Evs.reduce((acc, x) => acc + (x.mg !== undefined ? Number(x.mg) : (Number(x.p) === 1 ? 1 : 0)), 0) || cnt.g;
+                const s26 = s26Evs.reduce((acc, x) => acc + (x.ms !== undefined ? Number(x.ms) : (Number(x.p) === 2 ? 1 : 0)), 0) || cnt.s;
+                const b26 = s26Evs.reduce((acc, x) => acc + (x.mb !== undefined ? Number(x.mb) : (Number(x.p) >= 3 ? 1 : 0)), 0) || cnt.b;
+                const hG = histEvs.reduce((acc, x) => acc + (Number(x.p) === 1 ? 1 : 0), 0);
+                const hS = histEvs.reduce((acc, x) => acc + (Number(x.p) === 2 ? 1 : 0), 0);
+                const hB = histEvs.reduce((acc, x) => acc + (Number(x.p) >= 3 ? 1 : 0), 0);
+                const totG = g26 + hG, totS = s26 + hS, totB = b26 + hB;
+                const dispG = eraView === "ALLTIME" ? totG : g26;
+                const dispS = eraView === "ALLTIME" ? totS : s26;
+                const dispB = eraView === "ALLTIME" ? totB : b26;
+                const dispPts = dispG * 9 + dispS * 3 + dispB;
+                return (
+                  <div style={{ display:"grid", gap:"6px", marginTop:"4px" }}>
+                    <div style={{ color:"#ff9f43", fontSize:"0.85rem", fontWeight:"bold", display:"flex", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
+                      <span>🏛️ {currentAcad}</span>
+                      {liveBelt && <BeltRankBadge belt={liveBelt} />}
+                    </div>
+                    <div style={{ display:"flex", alignItems:"center", gap:"6px", flexWrap:"wrap" }}>
+                      <button type="button" onClick={() => setEraView("2026")} style={{ background: eraView === "2026" ? "#f59e0b" : "#18202f", color: eraView === "2026" ? "#000" : "#cbd5e1", border: eraView === "2026" ? "none" : "1px solid #334155", borderRadius:"6px", padding:"3px 8px", fontSize:"0.73rem", fontWeight:"800", cursor:"pointer" }}>
+                        🔥 2026 Season: 🥇{g26} 🥈{s26} 🥉{b26}
+                      </button>
+                      <button type="button" onClick={() => setEraView("ALLTIME")} style={{ background: eraView === "ALLTIME" ? "#38bdf8" : "#18202f", color: eraView === "ALLTIME" ? "#000" : "#cbd5e1", border: eraView === "ALLTIME" ? "none" : "1px solid #334155", borderRadius:"6px", padding:"3px 8px", fontSize:"0.73rem", fontWeight:"800", cursor:"pointer" }}>
+                        🏛️ All-Time Career: 🥇{totG} 🥈{totS} 🥉{totB}
+                      </button>
+                      <span style={{ fontSize:"0.74rem", color:"#34d399", fontWeight:"800" }}>• {dispPts} Pts</span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* CURRENT SONG ON REPEAT (Right under Athlete Name & Academy!) */}
               {bio?.songRepeat && (
