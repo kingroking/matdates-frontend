@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import { collection, doc, getDoc, getDocs, setDoc, query, where } from "firebase/firestore";
 import { db, auth } from "./firebase";
 import { addDoc } from "firebase/firestore";
-import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, computeEliteSpotlight, PRO_SUPERFIGHTS } from "./proHubData";
+import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, matchesYouthInitial, computeEliteSpotlight, PRO_SUPERFIGHTS } from "./proHubData";
 
 export function SuperFightsPanel({ fed, qStr, onOpenTrophy, onWatch, getWatch }) {
   const [subTab, setSubTab] = useState("PROS");
@@ -277,7 +277,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
       let g = 0, s = 0, b = 0, acad = activeAth?.academy || activeAth?.a || "";
       sn.forEach(d => ((d.data() || {}).items || []).forEach(it => {
         const cFold = foldStr(it.n);
-        let isMatch = cFold.includes(tgt) || tgt.includes(cFold);
+        let isMatch = cFold.includes(tgt) || tgt.includes(cFold) || (it.ag === 'YOUTH' && matchesYouthInitial(it.n, nm));
         if (!isMatch && qWords.length >= 2) {
           const cWords = cFold.split(/\s+/).filter(Boolean);
           if (cWords.length >= 2 && cWords[0] === qWords[0] && cWords[cWords.length - 1] === qWords[qWords.length - 1]) {

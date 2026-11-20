@@ -259,7 +259,14 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
       const pro = findProAthlete(nm);
       const displayNm = pro ? pro.name : nm;
       const displayAc = (pro && pro.academy) ? pro.academy : (ac || "");
-      const pk = canonicalPersonKey(displayNm, displayAc);
+      let pk = canonicalPersonKey(displayNm, displayAc);
+      for (const [existingKey, existingVal] of map.entries()) {
+        if (sameCompetitorCluster(existingVal.name, existingVal.academy, displayNm, displayAc)) {
+          pk = existingKey;
+          if (displayNm.length > existingVal.name.length && !/^[a-z]\./i.test(displayNm)) existingVal.name = displayNm;
+          break;
+        }
+      }
       if (!map.has(pk)) {
         map.set(pk, {
           name: displayNm,

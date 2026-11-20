@@ -388,7 +388,23 @@ export const athBucketsForQuery = (q) => {
   return Array.from(set).filter(s => s && s.length === 2 && s !== "__").slice(0, 6);
 };
 
+export const matchesYouthInitial = (abbrevOrFullA, fullOrAbbrevB) => {
+  const a = foldStr(abbrevOrFullA).trim(), b = foldStr(fullOrAbbrevB).trim();
+  const mA = a.match(/^([a-z])\.\s+([a-z]{3,})$/);
+  const mB = b.match(/^([a-z])\.\s+([a-z]{3,})$/);
+  if (mA && !mB) {
+    const bw = b.split(/\s+/).filter(Boolean);
+    return bw.length >= 2 && bw[0][0] === mA[1] && bw[bw.length - 1] === mA[2];
+  }
+  if (mB && !mA) {
+    const aw = a.split(/\s+/).filter(Boolean);
+    return aw.length >= 2 && aw[0][0] === mB[1] && aw[aw.length - 1] === mB[2];
+  }
+  return false;
+};
+
 export const smartAthleteMatch = (candName, candAcad, queryStr, extraNick = "") => {
+  if (matchesYouthInitial(candName, queryStr)) return true;
   const qClean = foldStr(queryStr).replace(/\b(professor|prof\.?|coach)\b/g, " ").replace(/\s+/g, " ").trim();
   if (qClean.length < 2) return false;
   const qTerms = qClean.split(/\s+/).filter(Boolean);
@@ -422,6 +438,7 @@ export const canonicalPersonKey = (nm, acad) => {
 
 // Merge helper for lists: collapses compound-surname variants like "John Silva" + "John Silva Santos" on the same/compatible team!
 export const sameCompetitorCluster = (nameA, acadA, nameB, acadB) => {
+  if (matchesYouthInitial(nameA, nameB)) return true;
   const proA = findProAthlete(nameA), proB = findProAthlete(nameB);
   if (proA && proB) return proA.name === proB.name;
   const tA = sigNameTokens(nameA), tB = sigNameTokens(nameB);
