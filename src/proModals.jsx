@@ -53,58 +53,377 @@ export function TaleOfTheTapeModal({ compA, compB, division, onClose }) {
   );
 }
 
-export function WeekendWarRoomModal({ events, watches, onRemoveWatch, onOpenAthlete, onClose, onOpenEvent }) {
-  const upcoming = (events || []).filter(e => {
-    if (!e.sort_date) return false;
-    const d = Math.ceil((new Date(e.sort_date + "T12:00:00") - new Date()) / 86400000);
-    return d >= -2 && d <= 14;
-  });
+export function WeekendWarRoomModal({ events, watches, onRemoveWatch, onWatchAthlete, onShareCard, onOpenAthlete, onClose, onOpenEvent }) {
+  const [showWatchedDrawer, setShowWatchedDrawer] = useState(false);
+  const [showGeneral14d, setShowGeneral14d] = useState(false);
+  const [trophyAth, setTrophyAth] = useState(null);
+  const [regEntries, setRegEntries] = useState([]);
+  const [loadingRegs, setLoadingRegs] = useState(false);
+
+  // Deduplicate watched athletes by folded name while keeping all division/mat statuses attached
+  const groupedWatches = useMemo(() => {
+    const map = new Map();
+    (watches || []).forEach(w => {
+      const nm = (w.athleteName || "").trim();
+      if (!nm) return;
+      const k = foldStr(nm);
+      if (!map.has(k)) {
+        map.set(k, { name: nm, academy: w.academy || "", items: [] });
+      }
+      const g = map.get(k);
+      if (!g.academy && w.academy) g.academy = w.academy;
+      g.items.push(w);
+    });
+    return Array.from(map.values());
+  }, [watches]);
+
+  // Fetch tiny __r2_XX__ registration shards for all watched athletes so we know every upcoming event they entered!
+  useEffect(() => {
+    if (!groupedWatches.length) {
+      setRegEntries([]);
+      return;
+    }
+    const bktSet = new Set();
+    groupedWatches.forEach(gw => {
+      athBucketsForQuery(gw.name).forEach(b => bktSet.add(b));
+    });
+    const bkts = Array.from(bktSet);
+    if (!bkts.length) return;
+    setLoadingRegs(true);
+    Promise.all(
+      bkts.map(b => getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__r2_" + b + "__"))))
+    ).then(snaps => {
+      const found = [];
+      snaps.forEach(sn => sn.forEach(d => {
+        ((d.data() || {}).items || []).forEach(it => {
+          const hit = groupedWatches.find(gw => smartAthleteMatch(it.n, it.a, gw.name));
+          if (hit) found.push({ ...it, watchedName: hit.name, watchedAcad: it.a || hit.academy || "" });
+        });
+      }));
+      setRegEntries(found);
+      setLoadingRegs(false);
+    }).catch(() => setLoadingRegs(false));
+  }, [groupedWatches]);
+
+  // Match upcoming events to watched athletes (via live __r2_XX__ registrations, explicit watch eventId, or SuperFight card banner!)
+  const { watchedNext14d, watchedLater, generalNext14d } = useMemo(() => {
+    const now = new Date();
+    const w14 = [], wLater = [], gen14 = [];
+
+    (events || []).forEach(ev => {
+      if (!ev.sort_date) return;
+      const daysOut = Math.ceil((new Date(ev.sort_date + "T12:00:00") - now) / 86400000);
+      if (daysOut < -2) return;
+
+      const matchedMap = new Map();
+      // 1) Explicit active division watches on this event
+      (watches || []).forEach(w => {
+        if (w.eventId && w.eventId === ev.id && w.athleteName) {
+          const k = foldStr(w.athleteName);
+          const status = w.finalResult || [w.lastMat, w.lastTime].filter(Boolean).join(" • ") || w.division || "Registered";
+          matchedMap.set(k, { name: w.athleteName, academy: w.academy || "", detail: status, rawWatch: w });
+        }
+      });
+
+      // 2) Live bracket registrations from __r2_XX__ shards
+      regEntries.forEach(r => {
+        if (r.e === ev.id) {
+          const k = foldStr(r.watchedName || r.n);
+          if (!matchedMap.has(k)) {
+            matchedMap.set(k, { name: r.watchedName || r.n, academy: r.watchedAcad || r.a || "", detail: r.d || "Bracket Registered", rawWatch: { athleteName: r.watchedName || r.n, eventId: ev.id } });
+          }
+        }
+      });
+
+      // 3) SuperFight card headline / matchmaking banner mentions
+      if (ev.type === "Super Fight" || (ev.news_banner || "").length > 3) {
+        const cardBlob = " " + foldStr((ev.name || "") + " " + (ev.news_banner || "")) + " ";
+        groupedWatches.forEach(gw => {
+          const k = foldStr(gw.name);
+          if (k.length >= 5 && cardBlob.includes(" " + k + " ") && !matchedMap.has(k)) {
+            matchedMap.set(k, { name: gw.name, academy: gw.academy || "", detail: "🥊 SuperFight Card", rawWatch: { athleteName: gw.name, eventId: ev.id } });
+          }
+        });
+      }
+
+      const competitors = Array.from(matchedMap.values());
+      if (competitors.length > 0) {
+        const item = { ev, daysOut, competitors };
+        if (daysOut <= 14) w14.push(item);
+        else wLater.push(item);
+      } else if (daysOut <= 14) {
+        gen14.push(ev);
+      }
+    });
+
+    return { watchedNext14d: w14, watchedLater: wLater, generalNext14d: gen14 };
+  }, [events, watches, regEntries, groupedWatches]);
+
+  const checkWatching = (nm) => groupedWatches.some(g => foldStr(g.name) === foldStr(nm));
+
   return (
-    <div onClick={onClose} style={MODAL_BG}>
-      <div onClick={e => e.stopPropagation()} style={{ background:"#111622", border:"1.5px solid #2ecc71", borderRadius:"12px", maxWidth:"640px", width:"100%", maxHeight:"88svh", overflowY:"auto", padding:"16px", color:"#fff", textAlign:"left" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"10px" }}>
-          <h3 style={{ margin:0, color:"#ffffff" }}>🔥 War Room — My Watched Athletes &amp; Live Deadlines</h3>
-          <button onClick={onClose} style={{ background:"#1e293b", color:"#fff", border:"1px solid #334155", borderRadius:"6px", padding:"4px 9px", cursor:"pointer" }}>✕</button>
+    <div onClick={onClose} style={{ ...MODAL_BG, overscrollBehavior:"none" }}>
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          background:"#0d1320", border:"1.5px solid #2ecc71", borderRadius:"14px",
+          maxWidth:"650px", width:"100%", maxHeight:"88dvh",
+          display:"flex", flexDirection:"column", overflow:"hidden",
+          color:"#fff", textAlign:"left", boxShadow:"0 22px 55px rgba(0,0,0,0.88)"
+        }}
+      >
+        {/* Pinned War Room Header */}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:"10px", padding:"13px 16px", background:"#11192a", borderBottom:"1px solid #1e293b", flexShrink:0 }}>
+          <div>
+            <h3 style={{ margin:0, color:"#ffffff", fontSize:"1.08rem", fontWeight:"900" }}>🔥 My Live War Room</h3>
+            <div style={{ fontSize:"0.73rem", color:"#94a3b8", marginTop:"2px" }}>Tap any athlete name to open their Official Trophy Room</div>
+          </div>
+          <button onClick={onClose} style={{ background:"#1e293b", color:"#fff", border:"1px solid #334155", borderRadius:"7px", width:"30px", height:"30px", cursor:"pointer", fontWeight:"bold" }}>✕</button>
         </div>
-        <div style={{ color:"#4ade80", fontWeight:"800", fontSize:"0.8rem", marginBottom:"6px" }}>🔔 MY WATCHED ATHLETES ({watches.length})</div>
-        {watches.length === 0 ? (
-          <div style={{ background:"#182030", padding:"12px", borderRadius:"8px", color:"#94a3b8", fontSize:"0.8rem", marginBottom:"14px" }}>
-            Tap <b>🔔 Watch</b> on any competitor in Athlete Lookup, Brackets, or Podiums to get live tournament-day Mat #, Match Time &amp; Podium push alerts!
-          </div>
-        ) : (
-          <div style={{ display:"grid", gap:"6px", marginBottom:"16px" }}>
-            {watches.map((w, i) => (
-              <div key={w.id || i} style={{ background:"#182030", border:"1px solid #283548", padding:"9px 11px", borderRadius:"8px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap", fontSize:"0.81rem" }}>
-                <div>
-                  <div style={{ fontWeight:"bold", color:"#fff" }}>{w.athleteName} {w.division ? <span style={{ color:"#93c5fd", fontWeight:"normal", fontSize:"0.75rem" }}>• {w.division}</span> : null}</div>
-                  <div style={{ color:"#94a3b8", fontSize:"0.75rem" }}>{w.eventName || "Following All Upcoming Registrations"}</div>
-                </div>
-                <div style={{ display:"flex", gap:"6px", alignItems:"center" }}>
-                  <span style={{ color:"#4ade80", fontWeight:"bold", fontSize:"0.76rem" }}>{w.finalResult || [w.lastMat, w.lastTime].filter(Boolean).join(" • ") || "Tracking Live"}</span>
-                  {onOpenAthlete && w.eventId && <button onClick={() => onOpenAthlete(w)} style={{ background:"#162536", color:"#38bdf8", border:"1px solid #0284c7", borderRadius:"5px", padding:"4px 8px", fontSize:"0.72rem", fontWeight:"bold", cursor:"pointer" }}>Bracket</button>}
-                  {onRemoveWatch && <button onClick={() => onRemoveWatch(w)} title="Stop watching" style={{ background:"#2a1215", color:"#fca5a5", border:"1px solid #ef4444", borderRadius:"5px", padding:"4px 7px", fontSize:"0.72rem", cursor:"pointer" }}>✕</button>}
-                </div>
+
+        {/* Scrollable War Room Body */}
+        <div style={{ flex:1, minHeight:0, overflowY:"auto", overscrollBehavior:"contain", WebkitOverflowScrolling:"touch", padding:"14px 16px 24px" }}>
+
+          {/* 1. TUCKED-IN / COLLAPSIBLE MY WATCHED ATHLETES DRAWER */}
+          <div style={{ background:"#141d2e", border:"1px solid #283548", borderRadius:"10px", marginBottom:"14px", overflow:"hidden" }}>
+            <button
+              type="button"
+              onClick={() => setShowWatchedDrawer(p => !p)}
+              style={{
+                width:"100%", background:"transparent", border:"none", color:"#fff",
+                padding:"11px 13px", display:"flex", justifyContent:"space-between", alignItems:"center",
+                gap:"8px", cursor:"pointer", textAlign:"left"
+              }}
+            >
+              <div style={{ display:"flex", alignItems:"center", gap:"8px", flexWrap:"wrap", minWidth:0 }}>
+                <span style={{ color:"#4ade80", fontWeight:"900", fontSize:"0.8rem", letterSpacing:"0.5px" }}>
+                  🔔 MY WATCHED ATHLETES ({groupedWatches.length})
+                </span>
+                {!showWatchedDrawer && groupedWatches.length > 0 && (
+                  <span style={{ fontSize:"0.74rem", color:"#94a3b8", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis", maxWidth:"290px" }}>
+                    • {groupedWatches.slice(0, 3).map(g => g.name.split(" ")[0]).join(", ")}{groupedWatches.length > 3 ? ` +${groupedWatches.length - 3} more` : ""}
+                  </span>
+                )}
               </div>
-            ))}
-          </div>
-        )}
-        <div style={{ color:"#fbbf24", fontWeight:"800", fontSize:"0.8rem", marginBottom:"6px" }}>⏳ THIS WEEKEND &amp; NEXT 14 DAYS ({upcoming.length})</div>
-        <div style={{ display:"grid", gap:"7px" }}>
-          {upcoming.map(ev => {
-            const b = getDeadlineBadge(ev);
-            return (
-              <div key={ev.id} style={{ background:"#182030", border:"1px solid #2d3748", borderRadius:"8px", padding:"9px 11px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
-                <div>
-                  <div style={{ fontWeight:"bold", fontSize:"0.88rem", color:"#fff" }}>{ev.name}</div>
-                  <div style={{ fontSize:"0.76rem", color:"#94a3b8" }}>{ev.date} • {ev.location}</div>
-                  {b && <span style={{ display:"inline-block", marginTop:"4px", background:b.bg, color:b.color, border:"1px solid " + b.border, borderRadius:"4px", padding:"2px 6px", fontSize:"0.7rem", fontWeight:"bold" }}>{b.text}</span>}
-                </div>
-                <button onClick={() => onOpenEvent(ev)} style={{ background:"#38bdf8", color:"#000", border:"none", borderRadius:"6px", padding:"6px 10px", fontSize:"0.76rem", fontWeight:"bold", cursor:"pointer" }}>Brackets</button>
+              <span style={{ background:"#1e293b", color:"#38bdf8", border:"1px solid #334155", borderRadius:"6px", padding:"3px 9px", fontSize:"0.72rem", fontWeight:"800", flexShrink:0 }}>
+                {showWatchedDrawer ? "▲ Tuck In" : "▼ Show List"}
+              </span>
+            </button>
+
+            {showWatchedDrawer && (
+              <div style={{ padding:"4px 12px 12px", borderTop:"1px solid #1e293b", display:"grid", gap:"7px" }}>
+                {groupedWatches.length === 0 ? (
+                  <div style={{ color:"#94a3b8", fontSize:"0.79rem", padding:"6px 2px" }}>
+                    Tap <b>🔔 Watch</b> on any competitor in Athlete Lookup, Brackets, or Trophy Rooms to track their upcoming events, live Mat #, Match Time &amp; Podium results here!
+                  </div>
+                ) : (
+                  groupedWatches.map((gw, i) => (
+                    <div key={gw.name + i} style={{ background:"#0f1624", border:"1px solid #243044", borderRadius:"8px", padding:"9px 11px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
+                      <div style={{ minWidth:0 }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:"7px", flexWrap:"wrap" }}>
+                          <button
+                            type="button"
+                            onClick={() => setTrophyAth({ name: gw.name, academy: gw.academy || "" })}
+                            title={"Open " + gw.name + "'s Trophy Room"}
+                            style={{ background:"none", border:"none", padding:0, color:"#fbbf24", fontWeight:"900", fontSize:"0.88rem", cursor:"pointer", textDecoration:"underline", textUnderlineOffset:"3px" }}
+                          >
+                            🏆 {gw.name}
+                          </button>
+                          {gw.academy && <span style={{ color:"#94a3b8", fontSize:"0.74rem" }}>• {gw.academy}</span>}
+                        </div>
+                        {gw.items.map((w, wi) => (
+                          <div key={w.id || wi} style={{ fontSize:"0.74rem", color:"#cbd5e1", marginTop:"3px", display:"flex", alignItems:"center", gap:"6px", flexWrap:"wrap" }}>
+                            <span>{w.eventName || "Following All Future Tournaments & SuperFights"}</span>
+                            {w.division && <span style={{ color:"#93c5fd" }}>({w.division})</span>}
+                            <span style={{ color:"#4ade80", fontWeight:"bold" }}>
+                              • {w.finalResult || [w.lastMat, w.lastTime].filter(Boolean).join(" • ") || "Active Alerts"}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div style={{ display:"flex", gap:"6px", alignItems:"center" }}>
+                        <button
+                          type="button"
+                          onClick={() => setTrophyAth({ name: gw.name, academy: gw.academy || "" })}
+                          style={{ background:"#1f293d", color:"#fde047", border:"1px solid rgba(250,204,21,0.4)", borderRadius:"6px", padding:"4px 8px", fontSize:"0.72rem", fontWeight:"800", cursor:"pointer" }}
+                        >
+                          Trophy Room
+                        </button>
+                        {onOpenAthlete && gw.items.find(x => x.eventId) && (
+                          <button
+                            type="button"
+                            onClick={() => onOpenAthlete(gw.items.find(x => x.eventId))}
+                            style={{ background:"#162536", color:"#38bdf8", border:"1px solid #0284c7", borderRadius:"6px", padding:"4px 8px", fontSize:"0.72rem", fontWeight:"800", cursor:"pointer" }}
+                          >
+                            Bracket
+                          </button>
+                        )}
+                        {onRemoveWatch && (
+                          <button
+                            type="button"
+                            onClick={() => gw.items.forEach(w => onRemoveWatch(w))}
+                            title={"Remove " + gw.name + " from Watch list"}
+                            style={{ background:"#2a1215", color:"#fca5a5", border:"1px solid #ef4444", borderRadius:"6px", padding:"4px 7px", fontSize:"0.72rem", cursor:"pointer" }}
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
-            );
-          })}
+            )}
+          </div>
+
+          {/* 2. THIS WEEKEND & NEXT 14 DAYS — WATCHED ATHLETES COMPETING! */}
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", marginBottom:"8px" }}>
+            <div style={{ color:"#fbbf24", fontWeight:"900", fontSize:"0.8rem", letterSpacing:"0.5px" }}>
+              ⚔️ THIS WEEKEND &amp; NEXT 14 DAYS — WATCHED COMPETING ({watchedNext14d.length})
+            </div>
+            {loadingRegs && <span style={{ fontSize:"0.71rem", color:"#38bdf8" }}>Checking brackets...</span>}
+          </div>
+
+          {watchedNext14d.length === 0 ? (
+            <div style={{ background:"#141d2e", border:"1px dashed #2d3b52", borderRadius:"10px", padding:"12px 13px", color:"#94a3b8", fontSize:"0.8rem", marginBottom:"14px", lineHeight:1.45 }}>
+              {groupedWatches.length === 0
+                ? "Add athletes to your Watch list (tap 🔔 Watch in Lookup or any Trophy Room) and every tournament or SuperFight they enter will automatically appear right here!"
+                : "None of your watched athletes are listed on brackets in the next 14 days yet. As soon as anyone on your Watch list registers for an upcoming tournament or SuperFight, their card & live mat status pop right into this list!"}
+            </div>
+          ) : (
+            <div style={{ display:"grid", gap:"9px", marginBottom:"16px" }}>
+              {watchedNext14d.map(({ ev, daysOut, competitors }) => {
+                const b = getDeadlineBadge(ev);
+                return (
+                  <div key={ev.id} style={{ background:"linear-gradient(145deg,#162235,#111827)", border:"1px solid #22c55e", borderRadius:"10px", padding:"11px 12px", display:"grid", gap:"8px" }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:"8px", flexWrap:"wrap" }}>
+                      <div>
+                        <div style={{ display:"flex", alignItems:"center", gap:"6px", flexWrap:"wrap" }}>
+                          <span style={{ background: daysOut <= 2 ? "#dc2626" : "#132a1c", color: daysOut <= 2 ? "#fff" : "#4ade80", border: daysOut <= 2 ? "none" : "1px solid #22c55e", borderRadius:"5px", padding:"2px 6px", fontSize:"0.66rem", fontWeight:"900" }}>
+                            {daysOut <= 0 ? "🔴 LIVE NOW" : daysOut <= 2 ? "🔥 THIS WEEKEND" : `⏳ IN ${daysOut} DAYS`}
+                          </span>
+                          <span style={{ fontWeight:"900", fontSize:"0.92rem", color:"#fff" }}>{ev.name}</span>
+                        </div>
+                        <div style={{ fontSize:"0.76rem", color:"#94a3b8", marginTop:"2px" }}>{ev.date} • {ev.location}</div>
+                        {b && <span style={{ display:"inline-block", marginTop:"4px", background:b.bg, color:b.color, border:"1px solid " + b.border, borderRadius:"4px", padding:"2px 6px", fontSize:"0.69rem", fontWeight:"bold" }}>{b.text}</span>}
+                      </div>
+                      <button type="button" onClick={() => onOpenEvent(ev)} style={{ background:"#38bdf8", color:"#000", border:"none", borderRadius:"7px", padding:"6px 11px", fontSize:"0.76rem", fontWeight:"800", cursor:"pointer", flexShrink:0 }}>
+                        Open Brackets
+                      </button>
+                    </div>
+
+                    {/* Clickable Watched Athletes Competing in This Event */}
+                    <div style={{ display:"flex", gap:"6px", flexWrap:"wrap", paddingTop:"6px", borderTop:"1px solid rgba(51,65,85,0.6)" }}>
+                      {competitors.map((c, ci) => (
+                        <div key={c.name + ci} style={{ background:"#0b101b", border:"1px solid #334155", borderRadius:"8px", padding:"4px 9px", display:"inline-flex", alignItems:"center", gap:"6px", fontSize:"0.75rem" }}>
+                          <button
+                            type="button"
+                            onClick={() => setTrophyAth({ name: c.name, academy: c.academy || "" })}
+                            title={"Open " + c.name + "'s Trophy Room"}
+                            style={{ background:"none", border:"none", padding:0, color:"#fde047", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer", textDecoration:"underline", textUnderlineOffset:"2px" }}
+                          >
+                            🥋 {c.name}
+                          </button>
+                          <span style={{ color:"#93c5fd", fontSize:"0.71rem" }}>• {c.detail}</span>
+                          {onOpenAthlete && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenAthlete({ athleteName: c.name, eventId: ev.id })}
+                              style={{ background:"#162536", color:"#38bdf8", border:"none", borderRadius:"4px", padding:"2px 6px", fontSize:"0.68rem", fontWeight:"800", cursor:"pointer" }}
+                            >
+                              Mat/Bracket ↗
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* 3. FURTHER-OUT UPCOMING REGISTRATIONS FOR WATCHED ATHLETES (15+ Days Out) */}
+          {watchedLater.length > 0 && (
+            <div style={{ marginBottom:"14px" }}>
+              <div style={{ color:"#93c5fd", fontWeight:"900", fontSize:"0.77rem", letterSpacing:"0.5px", marginBottom:"7px" }}>
+                📅 UPCOMING LATER ON WATCHED SCHEDULES ({watchedLater.length})
+              </div>
+              <div style={{ display:"grid", gap:"7px" }}>
+                {watchedLater.slice(0, 12).map(({ ev, competitors }) => (
+                  <div key={ev.id} style={{ background:"#141d2e", border:"1px solid #283548", borderRadius:"9px", padding:"9px 11px", display:"grid", gap:"6px" }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
+                      <div>
+                        <div style={{ fontWeight:"800", fontSize:"0.86rem", color:"#fff" }}>{ev.name}</div>
+                        <div style={{ fontSize:"0.74rem", color:"#94a3b8" }}>{ev.date} • {ev.location}</div>
+                      </div>
+                      <button type="button" onClick={() => onOpenEvent(ev)} style={{ background:"#1e293b", color:"#38bdf8", border:"1px solid #0284c7", borderRadius:"6px", padding:"5px 9px", fontSize:"0.73rem", fontWeight:"800", cursor:"pointer" }}>
+                        Brackets
+                      </button>
+                    </div>
+                    <div style={{ display:"flex", gap:"6px", flexWrap:"wrap" }}>
+                      {competitors.map((c, ci) => (
+                        <button
+                          key={c.name + ci}
+                          type="button"
+                          onClick={() => setTrophyAth({ name: c.name, academy: c.academy || "" })}
+                          style={{ background:"#0b101b", border:"1px solid #334155", borderRadius:"6px", padding:"3px 8px", color:"#fde047", fontSize:"0.73rem", fontWeight:"800", cursor:"pointer" }}
+                        >
+                          🏆 {c.name} <span style={{ color:"#94a3b8", fontWeight:"normal" }}>({c.detail})</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Optional Tucked-In General Next 14 Days Schedule */}
+          {generalNext14d.length > 0 && (
+            <div style={{ borderTop:"1px solid #1e293b", paddingTop:"10px" }}>
+              <button
+                type="button"
+                onClick={() => setShowGeneral14d(p => !p)}
+                style={{ background:"none", border:"none", padding:0, color:"#94a3b8", fontSize:"0.75rem", fontWeight:"800", cursor:"pointer", display:"flex", alignItems:"center", gap:"6px" }}
+              >
+                <span>{showGeneral14d ? "▲ Hide" : "▼ Show"} All Other Upcoming Events Next 14 Days ({generalNext14d.length})</span>
+              </button>
+              {showGeneral14d && (
+                <div style={{ display:"grid", gap:"6px", marginTop:"8px" }}>
+                  {generalNext14d.map(ev => {
+                    const b = getDeadlineBadge(ev);
+                    return (
+                      <div key={ev.id} style={{ background:"#141b28", border:"1px solid #243044", borderRadius:"8px", padding:"8px 10px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
+                        <div>
+                          <div style={{ fontWeight:"bold", fontSize:"0.84rem", color:"#e2e8f0" }}>{ev.name}</div>
+                          <div style={{ fontSize:"0.73rem", color:"#94a3b8" }}>{ev.date} • {ev.location}</div>
+                          {b && <span style={{ display:"inline-block", marginTop:"3px", background:b.bg, color:b.color, border:"1px solid " + b.border, borderRadius:"4px", padding:"1px 6px", fontSize:"0.68rem", fontWeight:"bold" }}>{b.text}</span>}
+                        </div>
+                        <button type="button" onClick={() => onOpenEvent(ev)} style={{ background:"#1e293b", color:"#cbd5e1", border:"1px solid #334155", borderRadius:"6px", padding:"5px 9px", fontSize:"0.73rem", fontWeight:"bold", cursor:"pointer" }}>Brackets</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Athlete Trophy Room Modal opened directly from War Room! */}
+      {trophyAth && (
+        <AthleteTrophyRoomModal
+          athlete={trophyAth}
+          onClose={() => setTrophyAth(null)}
+          isWatching={checkWatching(trophyAth.name)}
+          onWatch={(nm, ac) => {
+            if (onWatchAthlete) onWatchAthlete(nm, ac);
+          }}
+          onShareCard={onShareCard}
+        />
+      )}
     </div>
   );
 }

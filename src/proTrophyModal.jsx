@@ -671,15 +671,15 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
             </div>
           )}
 
-          {/* 1. PRO FIGHTER HERO CARD — Name + Emoji + Belt + IG Clustered Snugly Right Around Profile Photo! */}
+          {/* 1. PRO FIGHTER HERO CARD — Intentionally Wrapped Beside & Directly Underneath Profile Photo! */}
           <div style={{ background:"linear-gradient(145deg,#151f32 0%,#0f1624 60%,#1a1625 100%)", border:"1px solid #283548", borderRadius:"13px", padding:"13px" }}>
+            {/* Upper Row: Avatar + Vertically Centered Name/Spirit Emoji & Academy/Instagram */}
             <div style={{ display:"flex", alignItems:"center", gap:"13px", flexWrap:"nowrap" }}>
-              {/* Profile Picture */}
               <div
                 onClick={() => { if (isOwner) handleRequestOrOpenEdit(); }}
                 title={hasNeonGoldRing ? "⚡ 100+ Watchers Club — Neon Gold Status!" : (isOwner ? "Tap to update profile photo" : nm)}
                 style={{
-                  width:"78px", height:"78px", borderRadius:"50%", flexShrink:0,
+                  width:"76px", height:"76px", borderRadius:"50%", flexShrink:0,
                   border: hasNeonGoldRing ? "3px solid #fde047" : "2.5px solid #f59e0b",
                   animation: hasNeonGoldRing ? "mdNeonGoldPulse 2.2s ease-in-out infinite" : "none",
                   background:"linear-gradient(135deg,#1e293b,#090d16)",
@@ -690,15 +690,14 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
                 {(editBio && form.avatarData) || bio?.avatarData ? (
                   <img src={(editBio && form.avatarData !== undefined) ? form.avatarData : bio.avatarData} alt={nm} style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }} />
                 ) : (
-                  <span style={{ color:"#fbbf24", fontWeight:"900", fontSize:"1.35rem" }}>{initials}</span>
+                  <span style={{ color:"#fbbf24", fontWeight:"900", fontSize:"1.32rem" }}>{initials}</span>
                 )}
               </div>
 
-              {/* Tightly Clustered Around Photo: Name + Spirit Emoji -> Belt + Instagram -> Academy -> Open for SuperFights */}
               <div style={{ flex:1, minWidth:0, display:"grid", gap:"5px" }}>
-                {/* Row 1: Athlete Name + Spirit Emoji */}
+                {/* Line 1: Athlete Name + Spirit Emoji */}
                 <div style={{ display:"flex", alignItems:"center", gap:"6px", flexWrap:"wrap" }}>
-                  <h2 style={{ margin:0, fontSize:"1.32rem", color:"#ffffff", fontWeight:"900", lineHeight:1.15 }}>
+                  <h2 style={{ margin:0, fontSize:"1.34rem", color:"#ffffff", fontWeight:"900", lineHeight:1.15 }}>
                     {(bio?.nickname && foldStr(bio.nickname) !== foldStr(nm)) ? (
                       <>{firstName} <span style={{ color:"#fbbf24", fontStyle:"italic" }}>&ldquo;{bio.nickname}&rdquo;</span> {restName}</>
                     ) : nm}
@@ -710,9 +709,11 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
                   )}
                 </div>
 
-                {/* Row 2: Belt & Stripes Badge + Pink Instagram Button right beside the photo */}
-                <div style={{ display:"flex", alignItems:"center", gap:"6px", flexWrap:"wrap" }}>
-                  {liveBelt && <BeltRankBadge belt={liveBelt} />}
+                {/* Line 2: Current Academy + Instagram Handle right beside photo */}
+                <div style={{ display:"flex", alignItems:"center", gap:"7px", flexWrap:"wrap" }}>
+                  <span style={{ color:"#ff9f43", fontSize:"0.84rem", fontWeight:"800", lineHeight:1.25 }}>
+                    🏛️ {currentAcad}
+                  </span>
                   <button
                     type="button"
                     onClick={handleInstagramClick}
@@ -723,63 +724,59 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
                       color: bio?.handle ? "#ffffff" : "#94a3b8",
                       border: bio?.handle ? "none" : "1px solid #475569",
                       boxShadow: bio?.handle ? "0 2px 8px rgba(225,48,108,0.4)" : "none",
-                      borderRadius:"7px", padding:"3.5px 8px", cursor:"pointer", fontWeight:"800", fontSize:"0.72rem"
+                      borderRadius:"7px", padding:"3px 8px", cursor:"pointer", fontWeight:"800", fontSize:"0.72rem"
                     }}
                   >
                     {IG_ICON}
                     {bio?.handle ? "@" + bio.handle : "IG"}
                   </button>
                 </div>
-
-                {/* Row 3: Current Academy */}
-                <div style={{ color:"#ff9f43", fontSize:"0.82rem", fontWeight:"800", lineHeight:1.25 }}>
-                  🏛️ {currentAcad}
-                </div>
-
-                {/* Row 4 (Lower under Belt & Academy): Open for SuperFights + Walkout Song */}
-                {(bio?.openSf || bio?.songRepeat) && (
-                  <div style={{ display:"flex", alignItems:"center", gap:"6px", flexWrap:"wrap", marginTop:"1px" }}>
-                    {bio?.openSf && (
-                      <span style={{ background:"#132a1c", color:"#4ade80", border:"1px solid #22c55e", padding:"2px 8px", borderRadius:"8px", fontSize:"0.68rem", fontWeight:"800" }}>
-                        🥊 Open for SuperFights
-                      </span>
-                    )}
-                    {bio?.songRepeat && (
-                      <button
-                        type="button"
-                        onClick={handleSongClick}
-                        title="Listen to walkout / repeat track"
-                        style={{
-                          background:"rgba(14,165,233,0.12)", color:"#e0f2fe",
-                          border:"1px solid rgba(56,189,248,0.5)", borderRadius:"14px", padding:"2px 9px",
-                          fontSize:"0.71rem", fontWeight:"700", cursor:"pointer", display:"inline-flex", alignItems:"center", gap:"4px"
-                        }}
-                      >
-                        <span style={{ color:"#38bdf8" }}>🎵</span> <b>{bio.songRepeat}</b> <span style={{ color:"#38bdf8" }}>▶</span>
-                      </button>
-                    )}
-                    {bio?.songRepeat && !bio?.songUrl && (
-                      <button
-                        type="button"
-                        onClick={() => setShowMusicPicker(p => !p)}
-                        style={{ background:"#182030", color:"#94a3b8", border:"1px solid #334155", borderRadius:"10px", padding:"2px 6px", fontSize:"0.65rem", cursor:"pointer" }}
-                      >
-                        {musicPref === "apple" ? "Apple ⚙️" : musicPref === "ytmusic" ? "YT ⚙️" : musicPref === "spotify" ? "Spotify ⚙️" : "App 🎧"}
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {showMusicPicker && bio?.songRepeat && (
-                  <div style={{ marginTop:"3px", background:"#0f172a", border:"1px solid #38bdf8", borderRadius:"8px", padding:"5px 8px", display:"inline-flex", gap:"6px", alignItems:"center", flexWrap:"wrap", fontSize:"0.71rem" }}>
-                    <span style={{ color:"#cbd5e1", fontWeight:"bold" }}>Open in:</span>
-                    <button type="button" onClick={() => chooseMusicService("spotify")} style={{ background:"#1DB954", color:"#000", border:"none", borderRadius:"5px", padding:"3px 8px", fontWeight:"800", cursor:"pointer", fontSize:"0.7rem" }}>Spotify</button>
-                    <button type="button" onClick={() => chooseMusicService("apple")} style={{ background:"#fa243c", color:"#fff", border:"none", borderRadius:"5px", padding:"3px 8px", fontWeight:"800", cursor:"pointer", fontSize:"0.7rem" }}>Apple Music</button>
-                    <button type="button" onClick={() => chooseMusicService("ytmusic")} style={{ background:"#ff0033", color:"#fff", border:"none", borderRadius:"5px", padding:"3px 8px", fontWeight:"800", cursor:"pointer", fontSize:"0.7rem" }}>YouTube Music</button>
-                  </div>
-                )}
               </div>
             </div>
+
+            {/* Wrapped Full-Width Directly Underneath Photo: Belt & Stripes Bar + Open for SuperFights + Walkout Song! */}
+            {(liveBelt || bio?.openSf || bio?.songRepeat) && (
+              <div style={{ marginTop:"10px", paddingTop:"9px", borderTop:"1px dashed rgba(51,65,85,0.6)", display:"flex", alignItems:"center", gap:"7px", flexWrap:"wrap" }}>
+                {liveBelt && <BeltRankBadge belt={liveBelt} />}
+                {bio?.openSf && (
+                  <span style={{ background:"#132a1c", color:"#4ade80", border:"1px solid #22c55e", padding:"3.5px 9px", borderRadius:"8px", fontSize:"0.71rem", fontWeight:"800" }}>
+                    🥊 Open for SuperFights
+                  </span>
+                )}
+                {bio?.songRepeat && (
+                  <button
+                    type="button"
+                    onClick={handleSongClick}
+                    title="Listen to walkout / repeat track"
+                    style={{
+                      background:"rgba(14,165,233,0.12)", color:"#e0f2fe",
+                      border:"1px solid rgba(56,189,248,0.5)", borderRadius:"14px", padding:"3.5px 10px",
+                      fontSize:"0.72rem", fontWeight:"700", cursor:"pointer", display:"inline-flex", alignItems:"center", gap:"4px"
+                    }}
+                  >
+                    <span style={{ color:"#38bdf8" }}>🎵</span> <b>{bio.songRepeat}</b> <span style={{ color:"#38bdf8" }}>▶</span>
+                  </button>
+                )}
+                {bio?.songRepeat && !bio?.songUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setShowMusicPicker(p => !p)}
+                    style={{ background:"#182030", color:"#94a3b8", border:"1px solid #334155", borderRadius:"10px", padding:"2.5px 7px", fontSize:"0.66rem", cursor:"pointer" }}
+                  >
+                    {musicPref === "apple" ? "Apple ⚙️" : musicPref === "ytmusic" ? "YT ⚙️" : musicPref === "spotify" ? "Spotify ⚙️" : "App 🎧"}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {showMusicPicker && bio?.songRepeat && (
+              <div style={{ marginTop:"6px", background:"#0f172a", border:"1px solid #38bdf8", borderRadius:"8px", padding:"5px 8px", display:"inline-flex", gap:"6px", alignItems:"center", flexWrap:"wrap", fontSize:"0.71rem" }}>
+                <span style={{ color:"#cbd5e1", fontWeight:"bold" }}>Open in:</span>
+                <button type="button" onClick={() => chooseMusicService("spotify")} style={{ background:"#1DB954", color:"#000", border:"none", borderRadius:"5px", padding:"3px 8px", fontWeight:"800", cursor:"pointer", fontSize:"0.7rem" }}>Spotify</button>
+                <button type="button" onClick={() => chooseMusicService("apple")} style={{ background:"#fa243c", color:"#fff", border:"none", borderRadius:"5px", padding:"3px 8px", fontWeight:"800", cursor:"pointer", fontSize:"0.7rem" }}>Apple Music</button>
+                <button type="button" onClick={() => chooseMusicService("ytmusic")} style={{ background:"#ff0033", color:"#fff", border:"none", borderRadius:"5px", padding:"3px 8px", fontWeight:"800", cursor:"pointer", fontSize:"0.7rem" }}>YouTube Music</button>
+              </div>
+            )}
 
             {/* TALE-OF-THE-TAPE MEDAL SCOREBOARD + TOP 2026 / ALL-TIME SWITCHER */}
             <div style={{ marginTop:"12px", paddingTop:"10px", borderTop:"1px solid rgba(51,65,85,0.65)" }}>
