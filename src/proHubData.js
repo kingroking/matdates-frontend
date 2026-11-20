@@ -582,37 +582,91 @@ export function normalizeBeltValue(raw) {
   if (!s) return "";
   const all = BJJ_BELT_GROUPS.flatMap(g => g.options);
   if (all.includes(s)) return s;
-  const low = s.toLowerCase().replace(/\s+/g, " ").replace(/gray/g, "grey").trim();
+  const low = s.toLowerCase().replace(/\s+/g, " ").replace(/gray/g, "grey").replace(/\s*-\s*/g, "/").trim();
+  const stripeMatch = low.match(/(\d+)\s*stripe/);
+  const degMatch = low.match(/(\d+)(?:st|nd|rd|th)?\s*degree/);
+  const baseRaw = low
+    .replace(/•.*$/, "")
+    .replace(/\(\d+.*\)/, "")
+    .replace(/\d+\s*stripes?/, "")
+    .replace(/\d+(?:st|nd|rd|th)?\s*degrees?/, "")
+    .replace(/belt/g, "")
+    .trim();
+
   const map = {
-    "white": "White Belt", "blue": "Blue Belt", "purple": "Purple Belt", "brown": "Brown Belt", "black": "Black Belt",
-    "grey/white": "Grey/White Belt", "grey-white": "Grey/White Belt",
+    "white": "White Belt",
+    "white (youth)": "White Belt (Youth)",
+    "blue": "Blue Belt",
+    "purple": "Purple Belt",
+    "brown": "Brown Belt",
+    "black": "Black Belt",
+    "grey/white": "Grey/White Belt",
     "grey": "Grey Belt",
-    "grey/black": "Grey/Black Belt", "grey-black": "Grey/Black Belt",
-    "yellow/white": "Yellow/White Belt", "yellow": "Yellow Belt", "yellow/black": "Yellow/Black Belt",
-    "orange/white": "Orange/White Belt", "orange": "Orange Belt", "orange/black": "Orange/Black Belt",
-    "green/white": "Green/White Belt", "green": "Green Belt", "green/black": "Green/Black Belt",
-    "3rd degree black belt": "Black Belt • 3rd Degree"
+    "grey/black": "Grey/Black Belt",
+    "yellow/white": "Yellow/White Belt",
+    "yellow": "Yellow Belt",
+    "yellow/black": "Yellow/Black Belt",
+    "orange/white": "Orange/White Belt",
+    "orange": "Orange Belt",
+    "orange/black": "Orange/Black Belt",
+    "green/white": "Green/White Belt",
+    "green": "Green Belt",
+    "green/black": "Green/Black Belt"
   };
-  return map[low] || s;
+  let canonical = map[baseRaw] || map[low] || s;
+  if (stripeMatch && canonical.endsWith("Belt") && !canonical.includes("Black Belt")) {
+    const n = Math.min(4, Math.max(1, parseInt(stripeMatch[1], 10)));
+    canonical = `${canonical} • ${n} Stripe${n > 1 ? "s" : ""}`;
+  } else if (degMatch && canonical === "Black Belt") {
+    const d = Math.min(6, Math.max(1, parseInt(degMatch[1], 10)));
+    const suf = d === 1 ? "st" : d === 2 ? "nd" : d === 3 ? "rd" : "th";
+    canonical = `Black Belt • ${d}${suf} Degree`;
+  }
+  return all.includes(canonical) ? canonical : s;
 }
 
 export function getBeltVisualSpec(raw) {
   const norm = normalizeBeltValue(raw);
   if (!norm) return null;
   const low = norm.toLowerCase();
-  let main = "#f8fafc", mid = null, bar = "#0f172a", textCol = "#f8fafc";
-  if (low.includes("coral") && low.includes("white")) { main = "#dc2626"; mid = "#ffffff"; bar = "#dc2626"; }
-  else if (low.includes("coral")) { main = "#dc2626"; mid = "#111827"; bar = "#dc2626"; }
-  else if (low.startsWith("red belt")) { main = "#b91c1c"; bar = "#fef2f2"; }
-  else if (low.includes("black belt")) { main = "#111827"; bar = "#dc2626"; }
-  else if (low.includes("brown")) { main = "#78350f"; }
-  else if (low.includes("purple")) { main = "#7e22ce"; }
-  else if (low.includes("blue")) { main = "#1d4ed8"; }
-  else if (low.includes("green")) { main = "#15803d"; mid = low.includes("/white") ? "#ffffff" : (low.includes("/black") ? "#090d16" : null); }
-  else if (low.includes("orange")) { main = "#ea580c"; mid = low.includes("/white") ? "#ffffff" : (low.includes("/black") ? "#090d16" : null); }
-  else if (low.includes("yellow")) { main = "#eab308"; mid = low.includes("/white") ? "#ffffff" : (low.includes("/black") ? "#090d16" : null); }
-  else if (low.includes("grey") || low.includes("gray")) { main = "#94a3b8"; mid = low.includes("/white") ? "#ffffff" : (low.includes("/black") ? "#090d16" : null); }
+  let main = "#f8fafc", mid = null, bar = "#090d16";
+
+  // IMPORTANT: Check Youth belts (Grey/Yellow/Orange/Green — including /Black & /White!) BEFORE Adult Black Belt!
+  if (low.includes("grey") || low.includes("gray")) {
+    main = "#94a3b8";
+    mid = low.includes("/white") ? "#ffffff" : (low.includes("/black") ? "#0b0f19" : null);
+    bar = "#0b0f19";
+  } else if (low.includes("yellow")) {
+    main = "#facc15";
+    mid = low.includes("/white") ? "#ffffff" : (low.includes("/black") ? "#0b0f19" : null);
+    bar = "#0b0f19";
+  } else if (low.includes("orange")) {
+    main = "#f97316";
+    mid = low.includes("/white") ? "#ffffff" : (low.includes("/black") ? "#0b0f19" : null);
+    bar = "#0b0f19";
+  } else if (low.includes("green")) {
+    main = "#16a34a";
+    mid = low.includes("/white") ? "#ffffff" : (low.includes("/black") ? "#0b0f19" : null);
+    bar = "#0b0f19";
+  } else if (low.includes("coral") && low.includes("white")) {
+    main = "#dc2626"; mid = "#ffffff"; bar = "#dc2626";
+  } else if (low.includes("coral")) {
+    main = "#dc2626"; mid = "#111827"; bar = "#dc2626";
+  } else if (low.startsWith("red belt")) {
+    main = "#b91c1c"; bar = "#ffffff";
+  } else if (low.startsWith("black belt") || low === "black" || low.includes("degree black")) {
+    main = "#111827"; bar = "#dc2626";
+  } else if (low.includes("brown")) {
+    main = "#78350f"; bar = "#090d16";
+  } else if (low.includes("purple")) {
+    main = "#7e22ce"; bar = "#090d16";
+  } else if (low.includes("blue")) {
+    main = "#1d4ed8"; bar = "#090d16";
+  } else {
+    main = "#f8fafc"; bar = "#090d16";
+  }
+
   const sm = low.match(/(\d+)(?:st|nd|rd|th)?\s*(?:stripe|degree)/);
   const stripes = sm ? Math.min(6, parseInt(sm[1], 10)) : 0;
-  return { label: norm, main, mid, bar, stripes, textCol };
+  return { label: norm, main, mid, bar, stripes };
 }

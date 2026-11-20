@@ -164,16 +164,16 @@ function BeltRankBadge({ belt }) {
   const spec = getBeltVisualSpec(belt);
   if (!spec) return null;
   return (
-    <span style={{ display:"inline-flex", alignItems:"center", gap:"7px", background:"#151c28", border:"1px solid #334155", borderRadius:"7px", padding:"3px 8px", fontSize:"0.75rem", fontWeight:"800", color:"#f8fafc" }}>
-      <span style={{ position:"relative", width:"34px", height:"11px", borderRadius:"2px", background: spec.main, border:"1px solid rgba(255,255,255,0.35)", display:"inline-flex", alignItems:"center", justifyContent:"flex-end", overflow:"hidden", flexShrink:0 }}>
-        {spec.mid && <span style={{ position:"absolute", left:0, right:"11px", top:"3px", height:"3px", background: spec.mid }} />}
-        <span style={{ width:"11px", height:"100%", background: spec.bar, display:"inline-flex", alignItems:"center", justifyContent:"space-evenly", padding:"0 1px", boxSizing:"border-box", zIndex:1 }}>
+    <span style={{ display:"inline-flex", alignItems:"center", gap:"8px", background:"rgba(15,23,42,0.9)", border:"1px solid #334155", borderRadius:"8px", padding:"3px 9px 3px 6px", fontSize:"0.75rem", fontWeight:"800", color:"#f8fafc", boxShadow:"0 2px 6px rgba(0,0,0,0.35)" }}>
+      <span style={{ position:"relative", width:"44px", height:"13px", borderRadius:"3px", background: spec.main, border:"1px solid rgba(255,255,255,0.42)", display:"inline-flex", alignItems:"center", justifyContent:"flex-end", overflow:"hidden", flexShrink:0, boxShadow:"inset 0 1px 2px rgba(255,255,255,0.25), inset 0 -1px 2px rgba(0,0,0,0.35)" }}>
+        {spec.mid && <span style={{ position:"absolute", left:0, right:"14px", top:"4px", height:"3.5px", background: spec.mid }} />}
+        <span style={{ width:"14px", height:"100%", background: spec.bar, borderLeft:"1px solid rgba(255,255,255,0.22)", display:"inline-flex", alignItems:"center", justifyContent:"space-evenly", padding:"0 1.5px", boxSizing:"border-box", zIndex:1 }}>
           {Array.from({ length: spec.stripes }).map((_, i) => (
-            <span key={i} style={{ width:"1.5px", height:"8px", background:"#ffffff", display:"block" }} />
+            <span key={i} style={{ width:"1.6px", height:"9px", background:"#ffffff", borderRadius:"0.5px", display:"block" }} />
           ))}
         </span>
       </span>
-      <span>{spec.label}</span>
+      <span style={{ letterSpacing:"0.2px" }}>{spec.label}</span>
     </span>
   );
 }
@@ -518,15 +518,36 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
   const firstName = nameParts[0] || nm;
   const restName = nameParts.slice(1).join(" ");
 
+  const currentAcad = bio?.academy || cnt.acad || elite.pro?.academy || histEvs[0]?.a || "Independent";
+  const liveBelt = (editBio || claimStep)
+    ? (form.belt || bio?.belt || elite.pro?.belt || "")
+    : (bio?.belt || elite.pro?.belt || "");
+
+  const s26Evs = [...promBouts, ...evs];
+  const g26 = s26Evs.reduce((acc, x) => acc + (x.mg !== undefined ? Number(x.mg) : (Number(x.p) === 1 ? 1 : 0)), 0) || cnt.g;
+  const s26 = s26Evs.reduce((acc, x) => acc + (x.ms !== undefined ? Number(x.ms) : (Number(x.p) === 2 ? 1 : 0)), 0) || cnt.s;
+  const b26 = s26Evs.reduce((acc, x) => acc + (x.mb !== undefined ? Number(x.mb) : (Number(x.p) >= 3 ? 1 : 0)), 0) || cnt.b;
+  const hG = histEvs.reduce((acc, x) => acc + (Number(x.p) === 1 ? 1 : 0), 0);
+  const hS = histEvs.reduce((acc, x) => acc + (Number(x.p) === 2 ? 1 : 0), 0);
+  const hB = histEvs.reduce((acc, x) => acc + (Number(x.p) >= 3 ? 1 : 0), 0);
+  const totG = g26 + hG, totS = s26 + hS, totB = b26 + hB;
+
+  const dispG = eraView === "ALLTIME" ? totG : g26;
+  const dispS = eraView === "ALLTIME" ? totS : s26;
+  const dispB = eraView === "ALLTIME" ? totB : b26;
+  const dispPts = dispG * 9 + dispS * 3 + dispB;
+  const visibleEvents = eraView === "ALLTIME" ? [...promBouts, ...evs, ...histEvs] : [...promBouts, ...evs];
+  const hasScoutingCards = Boolean(bio && (bio.quote || bio.age || bio.coach || bio.favMove || bio.cheatMeal || bio.currentRead));
+
   return (
-    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", zIndex:10070, display:"flex", alignItems:"center", justifyContent:"center", padding:"12px" }}>
+    <div onClick={onClose} style={{ position:"fixed", inset:0, background:"rgba(3,7,18,0.88)", backdropFilter:"blur(4px)", zIndex:10070, display:"flex", alignItems:"center", justifyContent:"center", padding:"10px" }}>
       <style>{NEON_GOLD_KEYFRAMES}</style>
-      <div onClick={e => e.stopPropagation()} style={{ background:"#0f141e", border:"1.5px solid #f59e0b", borderRadius:"14px", maxWidth:"660px", width:"100%", maxHeight:"90svh", overflowY:"auto", padding:"18px", textAlign:"left", color:"#fff" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:"#0b101b", border:"1.5px solid rgba(245,158,11,0.65)", borderRadius:"16px", maxWidth:"670px", width:"100%", maxHeight:"91dvh", overflowY:"auto", WebkitOverflowScrolling:"touch", padding:"16px", textAlign:"left", color:"#fff", boxShadow:"0 24px 60px rgba(0,0,0,0.85)" }}>
 
         {/* MULTI-ATHLETE FAMILY QUICK-SWITCHER */}
         {myFamilyBios.length > 1 && (
           <div style={{ display:"flex", alignItems:"center", gap:"6px", flexWrap:"wrap", marginBottom:"12px", paddingBottom:"9px", borderBottom:"1px solid #1e293b" }}>
-            <span style={{ fontSize:"0.71rem", color:"#94a3b8", fontWeight:"800" }}>👨‍👩‍👧‍👦 MY ATHLETES:</span>
+            <span style={{ fontSize:"0.7rem", color:"#94a3b8", fontWeight:"800", letterSpacing:"0.6px" }}>👨‍👩‍👧‍👦 MY ATHLETES:</span>
             {myFamilyBios.map((fb, idx) => {
               const active = foldStr(fb.name) === foldStr(nm);
               return (
@@ -535,9 +556,9 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
                   type="button"
                   onClick={() => setActiveAth({ name: fb.name, academy: fb.academy || "", g: 0, s: 0, b: 0, events: [] })}
                   style={{
-                    background: active ? "#f59e0b" : "#182030",
+                    background: active ? "#f59e0b" : "#161f30",
                     color: active ? "#000" : "#cbd5e1",
-                    border: active ? "none" : "1px solid #334155",
+                    border: active ? "none" : "1px solid #2d3b52",
                     borderRadius:"14px", padding:"3px 10px", fontSize:"0.73rem", fontWeight:"800", cursor:"pointer"
                   }}
                 >
@@ -548,125 +569,104 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
           </div>
         )}
 
-        {/* 1. PROFILE HEADER + AVATAR + NICKNAME + SPIRIT EMOJI + PINK IG + SONG ON REPEAT */}
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:"10px" }}>
-          <div style={{ display:"flex", alignItems:"flex-start", gap:"13px", flex:1, minWidth:0 }}>
+        {/* 1. PRO FIGHTER HERO BANNER CARD */}
+        <div style={{ background:"linear-gradient(145deg,#151f32 0%,#0f1624 60%,#1a1625 100%)", border:"1px solid #283548", borderRadius:"13px", padding:"14px", position:"relative" }}>
+          <button onClick={onClose} title="Close" style={{ position:"absolute", top:"11px", right:"11px", background:"#1e293b", color:"#cbd5e1", border:"1px solid #334155", borderRadius:"8px", width:"30px", height:"30px", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", fontWeight:"bold" }}>✕</button>
+
+          <div style={{ display:"flex", alignItems:"center", gap:"14px", paddingRight:"34px", flexWrap:"wrap" }}>
+            {/* Avatar */}
             <div
               onClick={() => { if (isOwner) handleRequestOrOpenEdit(); }}
-              title={hasNeonGoldRing ? "⚡ 100+ Watchers Club — Neon Gold Status!" : (isOwner ? "Click to change profile photo" : nm)}
+              title={hasNeonGoldRing ? "⚡ 100+ Watchers Club — Neon Gold Status!" : (isOwner ? "Tap to update profile photo" : nm)}
               style={{
-                width:"68px", height:"68px", borderRadius:"50%", flexShrink:0, marginTop:"2px",
-                border: hasNeonGoldRing ? "3px solid #fde047" : "2px solid #475569",
+                width:"76px", height:"76px", borderRadius:"50%", flexShrink:0,
+                border: hasNeonGoldRing ? "3px solid #fde047" : "2.5px solid #f59e0b",
                 animation: hasNeonGoldRing ? "mdNeonGoldPulse 2.2s ease-in-out infinite" : "none",
-                background:"linear-gradient(135deg,#1e293b,#0f172a)",
+                background:"linear-gradient(135deg,#1e293b,#090d16)",
                 display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden",
-                cursor: isOwner ? "pointer" : "default", position:"relative"
+                cursor: isOwner ? "pointer" : "default", boxShadow:"0 6px 18px rgba(0,0,0,0.5)"
               }}
             >
-              {bio?.avatarData ? (
-                <img src={bio.avatarData} alt={nm} style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }} />
+              {(editBio && form.avatarData) || bio?.avatarData ? (
+                <img src={(editBio && form.avatarData !== undefined) ? form.avatarData : bio.avatarData} alt={nm} style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }} />
               ) : (
-                <span style={{ color: hasNeonGoldRing ? "#fde047" : "#fbbf24", fontWeight:"900", fontSize:"1.25rem" }}>{initials}</span>
+                <span style={{ color:"#fbbf24", fontWeight:"900", fontSize:"1.35rem" }}>{initials}</span>
               )}
             </div>
 
-            <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ color:"#fbbf24", fontSize:"0.72rem", fontWeight:"800", letterSpacing:"1.4px" }}>🏆 MATDATES OFFICIAL TROPHY ROOM</div>
-              <div style={{ display:"flex", alignItems:"center", gap:"8px", flexWrap:"wrap", margin:"3px 0" }}>
-                <h2 style={{ margin:0, fontSize:"1.42rem", color:"#ffffff", fontWeight:"900", lineHeight:1.2 }}>
+            {/* Identity + Academy + Live Woven Belt */}
+            <div style={{ flex:"1 1 210px", minWidth:0 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:"6px", flexWrap:"wrap", marginBottom:"3px" }}>
+                <span style={{ color:"#fbbf24", fontSize:"0.68rem", fontWeight:"900", letterSpacing:"1.4px", textTransform:"uppercase" }}>🏆 Official Trophy Room</span>
+                {isClaimed && <span style={{ background:"rgba(34,197,94,0.14)", color:"#4ade80", border:"1px solid rgba(34,197,94,0.4)", borderRadius:"10px", padding:"1px 7px", fontSize:"0.66rem", fontWeight:"800" }}>✓ Verified</span>}
+                {bio?.openSf && <span style={{ background:"#132a1c", color:"#4ade80", border:"1px solid #22c55e", padding:"1px 7px", borderRadius:"10px", fontSize:"0.66rem", fontWeight:"800" }}>🥊 Open for SuperFights</span>}
+              </div>
+
+              <div style={{ display:"flex", alignItems:"center", gap:"7px", flexWrap:"wrap" }}>
+                <h2 style={{ margin:0, fontSize:"1.45rem", color:"#ffffff", fontWeight:"900", lineHeight:1.18 }}>
                   {(bio?.nickname && foldStr(bio.nickname) !== foldStr(nm)) ? (
                     <>{firstName} <span style={{ color:"#fbbf24", fontStyle:"italic" }}>&ldquo;{bio.nickname}&rdquo;</span> {restName}</>
                   ) : nm}
                 </h2>
                 {bio?.spiritEmoji && (
-                  <span title="Current Spirit Vibe" style={{ fontSize:"1.22rem", background:"#182030", border:"1px solid #2d3b52", borderRadius:"8px", padding:"1px 6px", lineHeight:1.3 }}>
+                  <span title="Spirit Vibe" style={{ fontSize:"1.15rem", background:"#182234", border:"1px solid #2d3b52", borderRadius:"8px", padding:"1px 6px", lineHeight:1.25 }}>
                     {bio.spiritEmoji}
                   </span>
                 )}
                 <button
                   type="button"
                   onClick={handleInstagramClick}
-                  title={bio?.handle ? "Follow @" + bio.handle + " on Instagram" : "Instagram profile not linked yet"}
+                  title={bio?.handle ? "Follow @" + bio.handle + " on Instagram" : "Link Instagram"}
                   style={{
                     display:"inline-flex", alignItems:"center", gap:"5px",
-                    background: bio?.handle ? "#E1306C" : "#1e293b",
+                    background: bio?.handle ? "linear-gradient(135deg,#f43f5e,#e1306c,#c026d3)" : "#1e293b",
                     color: bio?.handle ? "#ffffff" : "#94a3b8",
-                    border: bio?.handle ? "1px solid #f472b6" : "1px solid #475569",
-                    boxShadow: bio?.handle ? "0 2px 10px rgba(225,48,108,0.45)" : "none",
-                    borderRadius:"7px", padding:"4px 9px", cursor:"pointer", fontWeight:"800", fontSize:"0.74rem"
+                    border: bio?.handle ? "none" : "1px solid #475569",
+                    boxShadow: bio?.handle ? "0 2px 10px rgba(225,48,108,0.4)" : "none",
+                    borderRadius:"8px", padding:"4px 9px", cursor:"pointer", fontWeight:"800", fontSize:"0.73rem"
                   }}
                 >
                   {IG_ICON}
                   {bio?.handle ? "@" + bio.handle : "IG"}
                 </button>
-                {bio?.openSf && <span style={{ background:"#132a1c", color:"#4ade80", border:"1px solid #22c55e", padding:"3px 7px", borderRadius:"5px", fontSize:"0.71rem", fontWeight:"bold" }}>🥊 Open for SuperFights</span>}
               </div>
 
-              {(() => {
-                const currentAcad = (bio?.academy || cnt.acad || elite.pro?.academy || histEvs[0]?.a || "Independent");
-                const liveBelt = (editBio || claimStep) ? (form.belt || bio?.belt || elite.pro?.belt) : (bio?.belt || elite.pro?.belt);
-                const s26Evs = [...promBouts, ...evs];
-                const g26 = s26Evs.reduce((acc, x) => acc + (x.mg !== undefined ? Number(x.mg) : (Number(x.p) === 1 ? 1 : 0)), 0) || cnt.g;
-                const s26 = s26Evs.reduce((acc, x) => acc + (x.ms !== undefined ? Number(x.ms) : (Number(x.p) === 2 ? 1 : 0)), 0) || cnt.s;
-                const b26 = s26Evs.reduce((acc, x) => acc + (x.mb !== undefined ? Number(x.mb) : (Number(x.p) >= 3 ? 1 : 0)), 0) || cnt.b;
-                const hG = histEvs.reduce((acc, x) => acc + (Number(x.p) === 1 ? 1 : 0), 0);
-                const hS = histEvs.reduce((acc, x) => acc + (Number(x.p) === 2 ? 1 : 0), 0);
-                const hB = histEvs.reduce((acc, x) => acc + (Number(x.p) >= 3 ? 1 : 0), 0);
-                const totG = g26 + hG, totS = s26 + hS, totB = b26 + hB;
-                const dispG = eraView === "ALLTIME" ? totG : g26;
-                const dispS = eraView === "ALLTIME" ? totS : s26;
-                const dispB = eraView === "ALLTIME" ? totB : b26;
-                const dispPts = dispG * 9 + dispS * 3 + dispB;
-                return (
-                  <div style={{ display:"grid", gap:"6px", marginTop:"4px" }}>
-                    <div style={{ color:"#ff9f43", fontSize:"0.85rem", fontWeight:"bold", display:"flex", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
-                      <span>🏛️ {currentAcad}</span>
-                      {liveBelt && <BeltRankBadge belt={liveBelt} />}
-                    </div>
-                    <div style={{ display:"flex", alignItems:"center", gap:"6px", flexWrap:"wrap" }}>
-                      <button type="button" onClick={() => setEraView("2026")} style={{ background: eraView === "2026" ? "#f59e0b" : "#18202f", color: eraView === "2026" ? "#000" : "#cbd5e1", border: eraView === "2026" ? "none" : "1px solid #334155", borderRadius:"6px", padding:"3px 8px", fontSize:"0.73rem", fontWeight:"800", cursor:"pointer" }}>
-                        🔥 2026 Season: 🥇{g26} 🥈{s26} 🥉{b26}
-                      </button>
-                      <button type="button" onClick={() => setEraView("ALLTIME")} style={{ background: eraView === "ALLTIME" ? "#38bdf8" : "#18202f", color: eraView === "ALLTIME" ? "#000" : "#cbd5e1", border: eraView === "ALLTIME" ? "none" : "1px solid #334155", borderRadius:"6px", padding:"3px 8px", fontSize:"0.73rem", fontWeight:"800", cursor:"pointer" }}>
-                        🏛️ All-Time Career: 🥇{totG} 🥈{totS} 🥉{totB}
-                      </button>
-                      <span style={{ fontSize:"0.74rem", color:"#34d399", fontWeight:"800" }}>• {dispPts} Pts</span>
-                    </div>
-                  </div>
-                );
-              })()}
+              {/* Academy + Live Visual BJJ Belt Badge */}
+              <div style={{ marginTop:"7px", display:"flex", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
+                <span style={{ color:"#ff9f43", fontSize:"0.85rem", fontWeight:"800" }}>🏛️ {currentAcad}</span>
+                {liveBelt && <BeltRankBadge belt={liveBelt} />}
+              </div>
 
-              {/* CURRENT SONG ON REPEAT (Right under Athlete Name & Academy!) */}
+              {/* Walkout / Song on Repeat Pill */}
               {bio?.songRepeat && (
-                <div style={{ marginTop:"6px", display:"flex", alignItems:"center", gap:"6px", flexWrap:"wrap" }}>
+                <div style={{ marginTop:"8px", display:"flex", alignItems:"center", gap:"6px", flexWrap:"wrap" }}>
                   <button
                     type="button"
                     onClick={handleSongClick}
-                    title="Listen on your preferred music app"
+                    title="Listen to walkout / repeat track"
                     style={{
-                      background:"linear-gradient(90deg,#162436,#1d1836)", color:"#e2e8f0",
-                      border:"1px solid #38bdf8", borderRadius:"16px", padding:"3px 10px",
-                      fontSize:"0.74rem", fontWeight:"700", cursor:"pointer", display:"inline-flex", alignItems:"center", gap:"5px"
+                      background:"rgba(14,165,233,0.12)", color:"#e0f2fe",
+                      border:"1px solid rgba(56,189,248,0.5)", borderRadius:"16px", padding:"3px 10px",
+                      fontSize:"0.73rem", fontWeight:"700", cursor:"pointer", display:"inline-flex", alignItems:"center", gap:"5px"
                     }}
                   >
-                    <span style={{ color:"#38bdf8" }}>🎵 On Repeat:</span> <b>{bio.songRepeat}</b> <span style={{ color:"#93c5fd" }}>▶</span>
+                    <span style={{ color:"#38bdf8" }}>🎵 Walkout / Repeat:</span> <b>{bio.songRepeat}</b> <span style={{ color:"#38bdf8" }}>▶</span>
                   </button>
                   {!bio?.songUrl && (
                     <button
                       type="button"
                       onClick={() => setShowMusicPicker(p => !p)}
-                      title="Choose preferred music service (Spotify, Apple Music, or YouTube Music)"
-                      style={{ background:"#182030", color:"#94a3b8", border:"1px solid #334155", borderRadius:"12px", padding:"2px 7px", fontSize:"0.68rem", cursor:"pointer" }}
+                      style={{ background:"#182030", color:"#94a3b8", border:"1px solid #334155", borderRadius:"12px", padding:"2px 7px", fontSize:"0.67rem", cursor:"pointer" }}
                     >
-                      {musicPref === "apple" ? "Apple Music ⚙️" : musicPref === "ytmusic" ? "YT Music ⚙️" : musicPref === "spotify" ? "Spotify ⚙️" : "Pick App 🎧"}
+                      {musicPref === "apple" ? "Apple Music ⚙️" : musicPref === "ytmusic" ? "YT Music ⚙️" : musicPref === "spotify" ? "Spotify ⚙️" : "App 🎧"}
                     </button>
                   )}
                 </div>
               )}
 
               {showMusicPicker && bio?.songRepeat && (
-                <div style={{ marginTop:"5px", background:"#141c2c", border:"1px solid #38bdf8", borderRadius:"8px", padding:"6px 9px", display:"inline-flex", gap:"6px", alignItems:"center", flexWrap:"wrap", fontSize:"0.72rem" }}>
-                  <span style={{ color:"#cbd5e1", fontWeight:"bold" }}>Listen on:</span>
+                <div style={{ marginTop:"6px", background:"#0f172a", border:"1px solid #38bdf8", borderRadius:"8px", padding:"6px 9px", display:"inline-flex", gap:"6px", alignItems:"center", flexWrap:"wrap", fontSize:"0.72rem" }}>
+                  <span style={{ color:"#cbd5e1", fontWeight:"bold" }}>Open in:</span>
                   <button type="button" onClick={() => chooseMusicService("spotify")} style={{ background:"#1DB954", color:"#000", border:"none", borderRadius:"5px", padding:"3px 8px", fontWeight:"800", cursor:"pointer", fontSize:"0.71rem" }}>Spotify</button>
                   <button type="button" onClick={() => chooseMusicService("apple")} style={{ background:"#fa243c", color:"#fff", border:"none", borderRadius:"5px", padding:"3px 8px", fontWeight:"800", cursor:"pointer", fontSize:"0.71rem" }}>Apple Music</button>
                   <button type="button" onClick={() => chooseMusicService("ytmusic")} style={{ background:"#ff0033", color:"#fff", border:"none", borderRadius:"5px", padding:"3px 8px", fontWeight:"800", cursor:"pointer", fontSize:"0.71rem" }}>YouTube Music</button>
@@ -674,7 +674,42 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
               )}
             </div>
           </div>
-          <button onClick={onClose} style={{ background:"#1e293b", color:"#fff", border:"1px solid #334155", borderRadius:"6px", padding:"4px 10px", height:"32px", cursor:"pointer" }}>✕</button>
+
+          {/* TALE-OF-THE-TAPE MEDAL SCOREBOARD + 2026 / ALL-TIME SWITCHER */}
+          <div style={{ marginTop:"13px", paddingTop:"11px", borderTop:"1px solid rgba(51,65,85,0.65)" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap", marginBottom:"8px" }}>
+              <span style={{ fontSize:"0.7rem", fontWeight:"800", color:"#94a3b8", letterSpacing:"0.9px", textTransform:"uppercase" }}>
+                {eraView === "2026" ? "🔥 Featured 2026 Season Record" : "🏛️ All-Time Verified Career Record"}
+              </span>
+              <div style={{ display:"inline-flex", background:"#090d16", border:"1px solid #2d3b52", borderRadius:"8px", padding:"2px", gap:"2px" }}>
+                <button type="button" onClick={() => setEraView("2026")} style={{ padding:"3px 9px", borderRadius:"6px", border:"none", fontSize:"0.71rem", fontWeight:"800", cursor:"pointer", background: eraView === "2026" ? "#f59e0b" : "transparent", color: eraView === "2026" ? "#000" : "#94a3b8" }}>
+                  2026 Season
+                </button>
+                <button type="button" onClick={() => setEraView("ALLTIME")} style={{ padding:"3px 9px", borderRadius:"6px", border:"none", fontSize:"0.71rem", fontWeight:"800", cursor:"pointer", background: eraView === "ALLTIME" ? "#38bdf8" : "transparent", color: eraView === "ALLTIME" ? "#000" : "#94a3b8" }}>
+                  All-Time ({totG + totS + totB})
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:"7px" }}>
+              <div style={{ background:"#0b101b", border:"1px solid rgba(250,204,21,0.35)", borderRadius:"9px", padding:"7px 6px", textAlign:"center" }}>
+                <div style={{ fontSize:"1.12rem", fontWeight:"900", color:"#fde047" }}>🥇 {dispG}</div>
+                <div style={{ fontSize:"0.64rem", fontWeight:"800", color:"#94a3b8", letterSpacing:"0.6px" }}>GOLD</div>
+              </div>
+              <div style={{ background:"#0b101b", border:"1px solid rgba(203,213,225,0.3)", borderRadius:"9px", padding:"7px 6px", textAlign:"center" }}>
+                <div style={{ fontSize:"1.12rem", fontWeight:"900", color:"#e2e8f0" }}>🥈 {dispS}</div>
+                <div style={{ fontSize:"0.64rem", fontWeight:"800", color:"#94a3b8", letterSpacing:"0.6px" }}>SILVER</div>
+              </div>
+              <div style={{ background:"#0b101b", border:"1px solid rgba(217,119,6,0.35)", borderRadius:"9px", padding:"7px 6px", textAlign:"center" }}>
+                <div style={{ fontSize:"1.12rem", fontWeight:"900", color:"#fdba74" }}>🥉 {dispB}</div>
+                <div style={{ fontSize:"0.64rem", fontWeight:"800", color:"#94a3b8", letterSpacing:"0.6px" }}>BRONZE</div>
+              </div>
+              <div style={{ background:"#0b101b", border:"1px solid rgba(52,211,153,0.35)", borderRadius:"9px", padding:"7px 6px", textAlign:"center" }}>
+                <div style={{ fontSize:"1.12rem", fontWeight:"900", color:"#34d399" }}>{dispPts}</div>
+                <div style={{ fontSize:"0.64rem", fontWeight:"800", color:"#94a3b8", letterSpacing:"0.6px" }}>MAT PTS</div>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Unclaimed Instagram Notice */}
@@ -688,243 +723,287 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
         )}
 
         {savedBanner && (
-          <div style={{ marginTop:"10px", background:"#132a1c", border:"1px solid #2ecc71", color:"#4ade80", padding:"8px 12px", borderRadius:"7px", fontSize:"0.82rem", fontWeight:"bold" }}>
-            ✅ Verified Athlete Profile, Photo &amp; Bio Settings Locked!
+          <div style={{ marginTop:"10px", background:"#132a1c", border:"1px solid #2ecc71", color:"#4ade80", padding:"8px 12px", borderRadius:"8px", fontSize:"0.82rem", fontWeight:"bold" }}>
+            ✅ Verified Athlete Profile, Belt Rank, Photo &amp; Bio Locked!
           </div>
         )}
 
-        {/* CLEAN SINGLE-LINE ACTION BAR: Watch (+ Count) • Jits (Youth) / Smoothcomp (Adult) • Share Stats */}
-        <div style={{ display:"flex", gap:"8px", alignItems:"center", flexWrap:"wrap", margin:"12px 0" }}>
-          <button
-            type="button"
-            onClick={() => { onWatch(nm, cnt.acad || elite.pro?.academy || ""); setTimeout(() => setWatcherCount(c => isWatching ? c : Math.max(1, c + 1)), 250); }}
-            style={{
-              background: isWatching ? "#132a1c" : "#162536",
-              color: isWatching ? "#2ecc71" : "#38bdf8",
-              border: isWatching ? "1px solid #2ecc71" : "1px solid #0284c7",
-              borderRadius:"7px", padding:"7px 12px", fontWeight:"800", fontSize:"0.78rem", cursor:"pointer", whiteSpace:"nowrap"
-            }}
-          >
-            {isWatching ? "✓ Watching" : "🔔 Watch"}
-            {bio?.showWatchCount ? ` • 🔥 ${watcherCount}` : (isOwner ? ` • 👁️ ${watcherCount}` : "")}
-          </button>
-
-          <a
-            href={externalRecordHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={() => { if (isYouthCompetitor) trackEvent("jitsGgOutclicks"); }}
-            title={isYouthCompetitor ? "View youth match records & rankings on Jits" : "View adult match history & profile on Smoothcomp"}
-            style={{
-              background: isYouthCompetitor ? "#132033" : "#241b12",
-              color: isYouthCompetitor ? "#38bdf8" : "#ff9f43",
-              border: isYouthCompetitor ? "1px solid #0284c7" : "1px solid #d97706",
-              borderRadius:"7px", padding:"7px 12px", fontWeight:"800", fontSize:"0.78rem",
-              textDecoration:"none", display:"inline-flex", alignItems:"center", gap:"4px", whiteSpace:"nowrap"
-            }}
-          >
-            {externalRecordLabel}
-          </a>
-
-          {onShareCard && (
+        {/* 2. BALANCED ACTION BAR */}
+        <div style={{ display:"flex", gap:"7px", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", margin:"11px 0" }}>
+          <div style={{ display:"flex", gap:"7px", alignItems:"center", flexWrap:"wrap" }}>
             <button
               type="button"
-              onClick={() => (trackEvent("shareStatsClicks"), onShareCard({ badge: elite.isElite ? elite.tierLabel : "2026 OFFICIAL TROPHY ROOM", title: nm, subtitle: cnt.acad || elite.pro?.academy || "", gold: cnt.g, silver: cnt.s, bronze: cnt.b, deepLink: bioUrl, lines: [...(elite.pro?.titles || []), ...(elite.isElite ? elite.facts.map(x => "★ " + x) : []), ...evs.slice(0, 5).map(m => (Number(m.p)===1?"🥇":Number(m.p)===2?"🥈":"🥉") + " " + m.ev)] }))}
-              style={{ background:"#ff9f43", color:"#000", border:"none", borderRadius:"7px", padding:"7px 12px", fontWeight:"800", fontSize:"0.78rem", cursor:"pointer", whiteSpace:"nowrap" }}
+              onClick={() => { onWatch(nm, currentAcad); setTimeout(() => setWatcherCount(c => isWatching ? c : Math.max(1, c + 1)), 250); }}
+              style={{
+                background: isWatching ? "#132a1c" : "#162536",
+                color: isWatching ? "#2ecc71" : "#38bdf8",
+                border: isWatching ? "1px solid #2ecc71" : "1px solid #0284c7",
+                borderRadius:"8px", padding:"7px 12px", fontWeight:"800", fontSize:"0.78rem", cursor:"pointer", whiteSpace:"nowrap"
+              }}
             >
-              📲 Share Stats
+              {isWatching ? "✓ Watching" : "🔔 Watch"}
+              {bio?.showWatchCount ? ` • 🔥 ${watcherCount}` : (isOwner ? ` • 👁️ ${watcherCount}` : "")}
             </button>
-          )}
-        </div>
 
-        {/* 2. ATHLETE BIO SECTION */}
-        <div style={{ background:"#141b28", border:"1px solid #283548", borderRadius:"10px", padding:"12px 13px", marginBottom:"12px" }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap", marginBottom: (hasBioDetails || claimStep || editBio) ? "8px" : 0 }}>
-            <span style={{ color:"#93c5fd", fontWeight:"800", fontSize:"0.76rem", letterSpacing:"0.8px" }}>🪪 ATHLETE BIO</span>
-            {!editBio && !claimStep && (
-              isClaimed ? (
-                isOwner ? (
-                  <button type="button" onClick={handleRequestOrOpenEdit} style={{ background:"#1e293b", border:"1px solid #38bdf8", borderRadius:"6px", color:"#38bdf8", fontSize:"0.74rem", fontWeight:"bold", cursor:"pointer", padding:"4px 9px" }}>✏️ Edit Profile &amp; Pic</button>
-                ) : (
-                  <span onClick={handleRequestOrOpenEdit} title="Verified claimed profile — click only if you need to dispute ownership" style={{ color:"#4ade80", fontSize:"0.72rem", fontWeight:"bold", cursor:"pointer" }}>🔒 Verified Athlete</span>
-                )
-              ) : (
-                <button type="button" onClick={handleRequestOrOpenEdit} style={{ background:"none", border:"none", color:"#38bdf8", fontSize:"0.76rem", fontWeight:"bold", cursor:"pointer", textDecoration:"underline", padding:0 }}>
-                  Are you {nm} (or parent)? Claim &amp; Lock Profile →
-                </button>
-              )
+            <a
+              href={externalRecordHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => { if (isYouthCompetitor) trackEvent("jitsGgOutclicks"); }}
+              style={{
+                background: isYouthCompetitor ? "#132033" : "#241b12",
+                color: isYouthCompetitor ? "#38bdf8" : "#ff9f43",
+                border: isYouthCompetitor ? "1px solid #0284c7" : "1px solid #d97706",
+                borderRadius:"8px", padding:"7px 12px", fontWeight:"800", fontSize:"0.78rem",
+                textDecoration:"none", display:"inline-flex", alignItems:"center", gap:"4px", whiteSpace:"nowrap"
+              }}
+            >
+              {externalRecordLabel}
+            </a>
+
+            {onShareCard && (
+              <button
+                type="button"
+                onClick={() => (trackEvent("shareStatsClicks"), onShareCard({ badge: elite.isElite ? elite.tierLabel : "OFFICIAL TROPHY ROOM", title: nm, subtitle: currentAcad + (liveBelt ? " • " + normalizeBeltValue(liveBelt) : ""), gold: dispG, silver: dispS, bronze: dispB, deepLink: bioUrl, lines: [...(elite.pro?.titles || []), ...(elite.isElite ? elite.facts.map(x => "★ " + x) : []), ...visibleEvents.slice(0, 5).map(m => (Number(m.p)===1?"🥇":Number(m.p)===2?"🥈":"🥉") + " " + m.ev)] }))}
+                style={{ background:"linear-gradient(90deg,#f59e0b,#fbbf24)", color:"#000", border:"none", borderRadius:"8px", padding:"7px 12px", fontWeight:"800", fontSize:"0.78rem", cursor:"pointer", whiteSpace:"nowrap" }}
+              >
+                📲 Share Card
+              </button>
             )}
           </div>
 
-          {claimStep && !editBio && (
-            <div style={{ background:"#0f1624", border:"1px solid #38bdf8", borderRadius:"8px", padding:"11px 12px", display:"grid", gap:"9px" }}>
-              <div style={{ fontSize:"0.81rem", color:"#e2e8f0", fontWeight:"bold" }}>🔒 Claim &amp; Lock {nm}&apos;s Official MatDates Profile</div>
-              <label style={{ fontSize:"0.78rem", color:"#cbd5e1", display:"flex", alignItems:"flex-start", gap:"8px", cursor:"pointer", lineHeight:1.45 }}>
-                <input type="checkbox" checked={confirmIdentity} onChange={e => setConfirmIdentity(e.target.checked)} style={{ marginTop:"2px", accentColor:"#2ecc71" }} />
-                <span>I confirm that I am <b>{nm}</b> or the <b>parent / legal guardian</b> of this youth athlete, and want to lock this profile to <b>{curUser?.email}</b> <i style={{ color:"#94a3b8" }}>(parents &amp; youth athletes can link both accounts inside!)</i>.</span>
-              </label>
-              <div style={{ display:"flex", gap:"8px" }}>
-                <button type="button" disabled={!confirmIdentity} onClick={unlockClaimEditor} style={{ background: confirmIdentity ? "#2ecc71" : "#1e293b", color: confirmIdentity ? "#000" : "#64748b", border:"none", borderRadius:"6px", padding:"7px 13px", fontWeight:"800", fontSize:"0.78rem", cursor: confirmIdentity ? "pointer" : "not-allowed" }}>
-                  🔓 Continue to Profile Editor
-                </button>
-                <button type="button" onClick={() => { setClaimStep(false); setConfirmIdentity(false); }} style={{ background:"transparent", color:"#94a3b8", border:"1px solid #334155", borderRadius:"6px", padding:"7px 11px", fontSize:"0.76rem", cursor:"pointer" }}>Cancel</button>
-              </div>
-            </div>
-          )}
-
           {!editBio && !claimStep && (
-            hasBioDetails ? (
-              <div style={{ display:"grid", gap:"7px" }}>
-                {bio.quote && (
-                  <div style={{ background:"#0f1624", borderLeft:"3px solid #f59e0b", padding:"7px 10px", borderRadius:"6px", fontSize:"0.82rem", color:"#fef3c7", fontStyle:"italic" }}>
-                    &ldquo;{bio.quote}&rdquo;
-                  </div>
-                )}
-                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(185px, 1fr))", gap:"7px", fontSize:"0.81rem" }}>
-                  {bio.age && <div style={{ background:"#0f141e", padding:"6px 9px", borderRadius:"6px" }}><span style={{ color:"#94a3b8" }}>🎂 Age:</span> <b>{bio.age}</b></div>}
-                  {bio.belt && <div style={{ background:"#0f141e", padding:"6px 9px", borderRadius:"6px" }}><span style={{ color:"#94a3b8" }}>🥋 Belt Rank:</span> <b>{bio.belt}</b></div>}
-                  {bio.coach && <div style={{ background:"#0f141e", padding:"6px 9px", borderRadius:"6px" }}><span style={{ color:"#94a3b8" }}>🏛️ Head Professor:</span> <b>{bio.coach}</b></div>}
-                  {bio.favMove && <div style={{ background:"#0f141e", padding:"6px 9px", borderRadius:"6px" }}><span style={{ color:"#94a3b8" }}>⚡ Go-To Move:</span> <b>{bio.favMove}</b></div>}
-                  {bio.cheatMeal && <div style={{ background:"#0f141e", padding:"6px 9px", borderRadius:"6px", gridColumn:"1 / -1" }}><span style={{ color:"#fbbf24" }}>🍕 Favorite Full Cheat Meal / Snack:</span> <b>{bio.cheatMeal}</b></div>}
-                  {bio.currentRead && (() => {
-                    const bk = parseBookField(bio.currentRead);
-                    return (
-                      <div style={{ background:"#0f141e", padding:"6px 9px", borderRadius:"6px", gridColumn:"1 / -1", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
-                        <span><span style={{ color:"#93c5fd" }}>📖 Current Read:</span> <b>{bk.title}</b></span>
-                        <a
-                          href={bk.url}
-                          target="_blank"
-                          rel="noopener"
-                          style={{ background:"#ff9900", color:"#000", padding:"4px 9px", borderRadius:"5px", fontWeight:"800", fontSize:"0.72rem", textDecoration:"none", whiteSpace:"nowrap" }}
-                        >
-                          Buy on Amazon ↗
-                        </a>
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
+            isClaimed ? (
+              isOwner ? (
+                <button type="button" onClick={handleRequestOrOpenEdit} style={{ background:"#172234", border:"1px solid #38bdf8", borderRadius:"8px", color:"#38bdf8", fontSize:"0.76rem", fontWeight:"800", cursor:"pointer", padding:"7px 11px" }}>✏️ Edit Profile &amp; Pic</button>
+              ) : (
+                <span onClick={handleRequestOrOpenEdit} title="Verified claimed profile — tap only if you need to request ownership review" style={{ color:"#64748b", fontSize:"0.71rem", cursor:"pointer" }}>🔒 Claimed</span>
+              )
             ) : (
-              <div style={{ color:"#64748b", fontSize:"0.78rem", marginTop:"4px" }}>
-                {isClaimed ? "Verified profile claimed — tap Edit Profile & Pic to add fight nickname, spirit emoji, song on repeat, motto & cheat meal!" : "Unclaimed profile — athletes (or parents) can lock their photo, @Instagram, nickname, song on repeat, motto & favorite cheat meal!"}
-              </div>
+              <button type="button" onClick={handleRequestOrOpenEdit} style={{ background:"#132a1c", border:"1px solid #22c55e", borderRadius:"8px", color:"#4ade80", fontSize:"0.75rem", fontWeight:"800", cursor:"pointer", padding:"7px 11px" }}>
+                🪪 Claim Profile →
+              </button>
             )
-          )}
-
-          {editBio && (
-            <form onSubmit={saveBio} style={{ marginTop:"4px", display:"grid", gap:"8px" }}>
-              <div style={{ background:"#112233", border:"1px solid #38bdf8", borderRadius:"7px", padding:"7px 10px", fontSize:"0.76rem", color:"#e0f2fe" }}>
-                ✨ <b>Every question below is 100% optional!</b> Answer just 1 or 2 favorites (or all of them) — anything left blank stays hidden on your profile.
-              </div>
-              <div style={{ background:"#171f30", border:"1px solid #f59e0b", borderRadius:"7px", padding:"7px 10px", fontSize:"0.75rem", color:"#fde68a", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:"6px" }}>
-                <span>✨ <b>Neon Gold Ring Goal:</b> {watcherCount} / {WATCH_GLOW_MIN} Active Watchers</span>
-                <span style={{ color:"#cbd5e1", fontSize:"0.72rem" }}>Share your Trophy Room on IG so fans tap 🔔 Watch!</span>
-              </div>
-
-              <div style={{ background:"#0f141e", border:"1px solid #334155", borderRadius:"7px", padding:"8px 10px", display:"flex", alignItems:"center", gap:"10px", flexWrap:"wrap" }}>
-                {(form.avatarData || bio?.avatarData) && (
-                  <img src={form.avatarData !== undefined ? form.avatarData : bio?.avatarData} alt="Preview" style={{ width:"44px", height:"44px", borderRadius:"50%", objectFit:"cover", border:"1.5px solid #fbbf24" }} />
-                )}
-                <div style={{ flex:1, minWidth:"180px" }}>
-                  <div style={{ fontSize:"0.75rem", color:"#fbbf24", fontWeight:"bold", marginBottom:"3px" }}>📸 Athlete Profile Photo (Glows Neon Gold at {WATCH_GLOW_MIN}+ Watchers!)</div>
-                  <input type="file" accept="image/*" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { const d = await resizeAvatarFile(f); setForm(p => ({ ...p, avatarData: d })); } }} style={{ fontSize:"0.75rem", color:"#cbd5e1", width:"100%" }} />
-                </div>
-                {(form.avatarData || bio?.avatarData) && (
-                  <button type="button" onClick={() => setForm(p => ({ ...p, avatarData: "" }))} style={{ background:"#2a1215", color:"#fca5a5", border:"1px solid #ef4444", borderRadius:"5px", padding:"4px 8px", fontSize:"0.72rem", cursor:"pointer" }}>Remove Pic</button>
-                )}
-              </div>
-
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(150px, 1fr))", gap:"7px" }}>
-                <input placeholder="Instagram @handle (Optional)" value={form.handle || ""} onFocus={() => { if (!form.handle) setForm(f => ({...f, handle: "@"})); }} onChange={e => { const v = e.target.value; setForm({...form, handle: v ? ("@" + v.replace(/^@+/, "")) : ""}); }} style={inp} />
-                <input placeholder="Fight Name / Nickname (Optional)" value={form.nickname || ""} onChange={e => setForm({...form, nickname: e.target.value})} style={inp} />
-                <input placeholder="Spirit Emoji — Max 3 (Optional, e.g. 🦁🔥👑)" value={form.spiritEmoji || ""} onChange={e => setForm({...form, spiritEmoji: limitSpiritEmojis(e.target.value)})} style={inp} />
-              </div>
-
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(195px, 1fr))", gap:"7px" }}>
-                <input placeholder="🎵 Song on Repeat (Optional — Song & Artist)" value={form.songRepeat || ""} onChange={e => setForm({...form, songRepeat: e.target.value})} style={inp} />
-                <input type="url" placeholder="Optional Direct Song Link (blank = auto Spotify/Apple/YT)" value={form.songUrl || ""} onChange={e => setForm({...form, songUrl: e.target.value})} style={inp} />
-              </div>
-
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(145px, 1fr))", gap:"7px" }}>
-                <input placeholder="Age (Optional)" value={form.age || ""} onChange={e => setForm({...form, age: e.target.value})} style={inp} />
-                <input placeholder="Belt Rank (Optional)" value={form.belt || ""} onChange={e => setForm({...form, belt: e.target.value})} style={inp} />
-                <input placeholder="Head Professor / Coach (Optional)" value={form.coach || ""} onChange={e => setForm({...form, coach: e.target.value})} style={inp} />
-                <input placeholder="Go-To Submission / Guard (Optional)" value={form.favMove || ""} onChange={e => setForm({...form, favMove: e.target.value})} style={inp} />
-              </div>
-
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(195px, 1fr))", gap:"7px" }}>
-                <input placeholder="💬 Favorite Quote, Motto, Saying or Verse (Optional)" value={form.quote || ""} onChange={e => setForm({...form, quote: e.target.value})} style={inp} />
-                <input placeholder="📖 Current Read — Book Title or Amazon Link (Optional)" value={form.currentRead || ""} onChange={e => setForm({...form, currentRead: e.target.value})} style={inp} />
-              </div>
-
-              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(195px, 1fr))", gap:"7px" }}>
-                <input placeholder="🍕 Favorite FULL CHEAT Meal / Snack (Optional)" value={form.cheatMeal || ""} onChange={e => setForm({...form, cheatMeal: e.target.value})} style={inp} />
-                <input type="url" placeholder="Jits (Youth) or Smoothcomp (Adult) URL (Optional)" value={form.jitsUrl || ""} onChange={e => setForm({...form, jitsUrl: e.target.value})} style={inp} />
-              </div>
-
-              <input placeholder="Custom Fun Fact (Optional — pins to Insider Spotlight!)" value={form.funFact || ""} onChange={e => setForm({...form, funFact: e.target.value})} style={{ ...inp, width:"100%" }} />
-
-              <label style={{ fontSize:"0.8rem", color:"#cbd5e1", display:"flex", alignItems:"center", gap:"6px", cursor:"pointer" }}>
-                <input type="checkbox" checked={Boolean(form.showWatchCount)} onChange={e => setForm({...form, showWatchCount: e.target.checked})} />
-                <span>🔥 Show total <b>&quot;Watching&quot; count ({watcherCount})</b> publicly on Watch button <i style={{ color:"#94a3b8" }}>(never shows who is watching)</i></span>
-              </label>
-              <label style={{ fontSize:"0.8rem", color:"#cbd5e1", display:"flex", alignItems:"center", gap:"6px", cursor:"pointer" }}>
-                <input type="checkbox" checked={Boolean(form.openSf)} onChange={e => setForm({...form, openSf: e.target.checked})} />
-                <span>🥊 List in the <b>Protected SuperFight Matchmaking Pool</b> <i style={{ color:"#94a3b8" }}>(email stays 100% hidden)</i></span>
-              </label>
-
-              <div style={{ background:"#0f141e", border:"1px solid #2d3b52", borderRadius:"7px", padding:"8px 10px", display:"grid", gap:"6px" }}>
-                <div style={{ fontSize:"0.75rem", color:"#93c5fd", fontWeight:"bold" }}>👨‍👩‍👧‍👦 Co-Manage with Athlete / Parent Account (Optional)</div>
-                <div style={{ fontSize:"0.72rem", color:"#94a3b8" }}>Add your youth athlete&apos;s own email (or parent&apos;s email) so both separate MatDates accounts can edit this Trophy Room!</div>
-                {((form.coEmails || []).length > 0) && (
-                  <div style={{ display:"flex", gap:"6px", flexWrap:"wrap" }}>
-                    {(form.coEmails || []).map((em, i) => (
-                      <span key={i} style={{ background:"#182234", border:"1px solid #38bdf8", borderRadius:"12px", padding:"2px 8px", fontSize:"0.72rem", color:"#e2e8f0", display:"inline-flex", alignItems:"center", gap:"5px" }}>
-                        ✓ {em}
-                        <b onClick={() => setForm(p => ({ ...p, coEmails: (p.coEmails || []).filter(x => x !== em) }))} style={{ color:"#fca5a5", cursor:"pointer" }}>×</b>
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <div style={{ display:"flex", gap:"6px" }}>
-                  <input type="email" placeholder="Add athlete or parent email..." value={coInput} onChange={e => setCoInput(e.target.value)} style={{ ...inp, flex:1 }} />
-                  <button type="button" onClick={() => { const v = coInput.trim().toLowerCase(); if (v.includes("@")) { setForm(p => ({ ...p, coEmails: Array.from(new Set([...(p.coEmails || []), v])) })); setCoInput(""); } }} style={{ background:"#38bdf8", color:"#000", border:"none", borderRadius:"6px", padding:"6px 11px", fontWeight:"800", fontSize:"0.75rem", cursor:"pointer" }}>+ Link Account</button>
-                </div>
-              </div>
-
-              <div style={{ display:"flex", gap:"8px" }}>
-                <button type="submit" disabled={saving} style={{ flex:1, background:"#2ecc71", color:"#000", border:"none", borderRadius:"6px", padding:"9px", fontWeight:"800", cursor:"pointer" }}>
-                  {saving ? "Locking Profile..." : "🔒 Save & Lock Verified Profile"}
-                </button>
-                <button type="button" onClick={() => setEditBio(false)} style={{ background:"#1e293b", color:"#cbd5e1", border:"1px solid #334155", borderRadius:"6px", padding:"9px 12px", cursor:"pointer" }}>Cancel</button>
-              </div>
-            </form>
           )}
         </div>
 
-        {/* 3. INSIDER SPOTLIGHT FACTS */}
-        {(elite.isElite || bio?.funFact) && (
-          <div style={{ marginBottom:"14px", background:"linear-gradient(135deg,#291d09,#171f30)", border:"1px solid #f59e0b", borderRadius:"10px", padding:"11px 13px" }}>
-            <div style={{ color:"#fbbf24", fontWeight:"800", fontSize:"0.76rem", marginBottom:"5px" }}>{elite.tierLabel}</div>
-            {elite.facts.map((f, i) => <div key={i} style={{ fontSize:"0.8rem", color:"#fef3c7", marginBottom:"4px", lineHeight:1.35 }}>★ {f}</div>)}
+        {/* 3. FIGHTER SCOUTING BIO & PROFILE EDITOR */}
+        {(hasScoutingCards || claimStep || editBio || !isClaimed) && (
+          <div style={{ background:"#121927", border:"1px solid #243044", borderRadius:"12px", padding:"12px 13px", marginBottom:"12px" }}>
+            {claimStep && !editBio && (
+              <div style={{ background:"#0f1624", border:"1px solid #38bdf8", borderRadius:"8px", padding:"11px 12px", display:"grid", gap:"9px" }}>
+                <div style={{ fontSize:"0.82rem", color:"#e2e8f0", fontWeight:"bold" }}>🔒 Claim &amp; Lock {nm}&apos;s Official MatDates Profile</div>
+                <label style={{ fontSize:"0.78rem", color:"#cbd5e1", display:"flex", alignItems:"flex-start", gap:"8px", cursor:"pointer", lineHeight:1.45 }}>
+                  <input type="checkbox" checked={confirmIdentity} onChange={e => setConfirmIdentity(e.target.checked)} style={{ marginTop:"2px", accentColor:"#2ecc71" }} />
+                  <span>I confirm that I am <b>{nm}</b> or the <b>parent / legal guardian</b> of this youth athlete, and want to lock this profile to <b>{curUser?.email}</b> <i style={{ color:"#94a3b8" }}>(parents &amp; youth athletes can link both accounts inside!)</i>.</span>
+                </label>
+                <div style={{ display:"flex", gap:"8px" }}>
+                  <button type="button" disabled={!confirmIdentity} onClick={unlockClaimEditor} style={{ background: confirmIdentity ? "#2ecc71" : "#1e293b", color: confirmIdentity ? "#000" : "#64748b", border:"none", borderRadius:"6px", padding:"7px 13px", fontWeight:"800", fontSize:"0.78rem", cursor: confirmIdentity ? "pointer" : "not-allowed" }}>
+                    🔓 Continue to Profile Editor
+                  </button>
+                  <button type="button" onClick={() => { setClaimStep(false); setConfirmIdentity(false); }} style={{ background:"transparent", color:"#94a3b8", border:"1px solid #334155", borderRadius:"6px", padding:"7px 11px", fontSize:"0.76rem", cursor:"pointer" }}>Cancel</button>
+                </div>
+              </div>
+            )}
+
+            {!editBio && !claimStep && (
+              hasScoutingCards ? (
+                <div style={{ display:"grid", gap:"8px" }}>
+                  {bio.quote && (
+                    <div style={{ background:"linear-gradient(90deg,rgba(245,158,11,0.12),rgba(15,22,36,0.4))", borderLeft:"3px solid #f59e0b", padding:"8px 11px", borderRadius:"0 8px 8px 0", fontSize:"0.84rem", color:"#fef3c7", fontStyle:"italic", fontWeight:"600" }}>
+                      &ldquo;{bio.quote}&rdquo;
+                    </div>
+                  )}
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(185px, 1fr))", gap:"7px", fontSize:"0.8rem" }}>
+                    {bio.coach && (
+                      <div style={{ background:"#0b101b", border:"1px solid #1e293b", padding:"8px 10px", borderRadius:"8px" }}>
+                        <div style={{ fontSize:"0.66rem", color:"#94a3b8", fontWeight:"800", textTransform:"uppercase", letterSpacing:"0.5px" }}>🏛️ Head Professor</div>
+                        <div style={{ color:"#f8fafc", fontWeight:"700", marginTop:"2px" }}>{bio.coach}</div>
+                      </div>
+                    )}
+                    {bio.favMove && (
+                      <div style={{ background:"#0b101b", border:"1px solid #1e293b", padding:"8px 10px", borderRadius:"8px" }}>
+                        <div style={{ fontSize:"0.66rem", color:"#38bdf8", fontWeight:"800", textTransform:"uppercase", letterSpacing:"0.5px" }}>⚡ Signature Move / Guard</div>
+                        <div style={{ color:"#f8fafc", fontWeight:"700", marginTop:"2px" }}>{bio.favMove}</div>
+                      </div>
+                    )}
+                    {bio.age && (
+                      <div style={{ background:"#0b101b", border:"1px solid #1e293b", padding:"8px 10px", borderRadius:"8px" }}>
+                        <div style={{ fontSize:"0.66rem", color:"#94a3b8", fontWeight:"800", textTransform:"uppercase", letterSpacing:"0.5px" }}>🎂 Age</div>
+                        <div style={{ color:"#f8fafc", fontWeight:"700", marginTop:"2px" }}>{bio.age}</div>
+                      </div>
+                    )}
+                    {bio.cheatMeal && (
+                      <div style={{ background:"#0b101b", border:"1px solid #1e293b", padding:"8px 10px", borderRadius:"8px" }}>
+                        <div style={{ fontSize:"0.66rem", color:"#fbbf24", fontWeight:"800", textTransform:"uppercase", letterSpacing:"0.5px" }}>🍔 Post-Comp Cheat Meal</div>
+                        <div style={{ color:"#f8fafc", fontWeight:"700", marginTop:"2px" }}>{bio.cheatMeal}</div>
+                      </div>
+                    )}
+                    {bio.currentRead && (() => {
+                      const bk = parseBookField(bio.currentRead);
+                      return (
+                        <div style={{ background:"#0b101b", border:"1px solid #1e293b", padding:"8px 10px", borderRadius:"8px", gridColumn:"1 / -1", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
+                          <div>
+                            <div style={{ fontSize:"0.66rem", color:"#93c5fd", fontWeight:"800", textTransform:"uppercase", letterSpacing:"0.5px" }}>📖 Current Read</div>
+                            <div style={{ color:"#f8fafc", fontWeight:"700", marginTop:"2px" }}>{bk.title}</div>
+                          </div>
+                          <a href={bk.url} target="_blank" rel="noopener" style={{ background:"#ff9900", color:"#000", padding:"5px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.73rem", textDecoration:"none", whiteSpace:"nowrap" }}>
+                            View on Amazon ↗
+                          </a>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ color:"#94a3b8", fontSize:"0.78rem", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
+                  <span>🪪 Athletes &amp; parents can claim this room to add their Belt &amp; Stripes, @Instagram, photo, walkout song &amp; scouting bio.</span>
+                </div>
+              )
+            )}
+
+            {editBio && (
+              <form onSubmit={saveBio} style={{ display:"grid", gap:"8px" }}>
+                <div style={{ background:"#112233", border:"1px solid #38bdf8", borderRadius:"7px", padding:"7px 10px", fontSize:"0.76rem", color:"#e0f2fe" }}>
+                  ✨ <b>Every question below is 100% optional!</b> Pick your Belt &amp; Stripes below and watch your belt bar update live in the header above.
+                </div>
+
+                <div style={{ background:"#0b101b", border:"1px solid #334155", borderRadius:"8px", padding:"8px 10px", display:"flex", alignItems:"center", gap:"10px", flexWrap:"wrap" }}>
+                  {(form.avatarData || bio?.avatarData) && (
+                    <img src={form.avatarData !== undefined ? form.avatarData : bio?.avatarData} alt="Preview" style={{ width:"46px", height:"46px", borderRadius:"50%", objectFit:"cover", border:"1.5px solid #fbbf24" }} />
+                  )}
+                  <div style={{ flex:1, minWidth:"180px" }}>
+                    <div style={{ fontSize:"0.75rem", color:"#fbbf24", fontWeight:"bold", marginBottom:"3px" }}>📸 Athlete Profile Photo (Glows Neon Gold at {WATCH_GLOW_MIN}+ Watchers • Now {watcherCount})</div>
+                    <input type="file" accept="image/*" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { const d = await resizeAvatarFile(f); setForm(p => ({ ...p, avatarData: d })); } }} style={{ fontSize:"0.75rem", color:"#cbd5e1", width:"100%" }} />
+                  </div>
+                  {(form.avatarData || bio?.avatarData) && (
+                    <button type="button" onClick={() => setForm(p => ({ ...p, avatarData: "" }))} style={{ background:"#2a1215", color:"#fca5a5", border:"1px solid #ef4444", borderRadius:"5px", padding:"4px 8px", fontSize:"0.72rem", cursor:"pointer" }}>Remove Pic</button>
+                  )}
+                </div>
+
+                {/* OFFICIAL BJJ BELT & STRIPES DROPDOWN (Auto-updates header BeltRankBadge!) */}
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(210px, 1fr))", gap:"7px" }}>
+                  <select
+                    value={normalizeBeltValue(form.belt || "")}
+                    onChange={e => setForm({ ...form, belt: e.target.value })}
+                    style={{ ...inp, border:"1px solid #f59e0b", fontWeight:"700", cursor:"pointer" }}
+                  >
+                    <option value="">🥋 Select BJJ Belt &amp; Stripes (Optional)</option>
+                    {BJJ_BELT_GROUPS.map(grp => (
+                      <optgroup key={grp.group} label={grp.group}>
+                        {grp.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                      </optgroup>
+                    ))}
+                  </select>
+                  <input placeholder="Head Professor / Coach (Optional)" value={form.coach || ""} onChange={e => setForm({...form, coach: e.target.value})} style={inp} />
+                </div>
+
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(150px, 1fr))", gap:"7px" }}>
+                  <input placeholder="Instagram @handle (Optional)" value={form.handle || ""} onFocus={() => { if (!form.handle) setForm(f => ({...f, handle: "@"})); }} onChange={e => { const v = e.target.value; setForm({...form, handle: v ? ("@" + v.replace(/^@+/, "")) : ""}); }} style={inp} />
+                  <input placeholder="Fight Name / Nickname (Optional)" value={form.nickname || ""} onChange={e => setForm({...form, nickname: e.target.value})} style={inp} />
+                  <input placeholder="Spirit Emoji — Max 3 (Optional, e.g. 🥷🔥👑)" value={form.spiritEmoji || ""} onChange={e => setForm({...form, spiritEmoji: limitSpiritEmojis(e.target.value)})} style={inp} />
+                </div>
+
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(155px, 1fr))", gap:"7px" }}>
+                  <input placeholder="Age (Optional)" value={form.age || ""} onChange={e => setForm({...form, age: e.target.value})} style={inp} />
+                  <input placeholder="Go-To Submission / Guard (Optional)" value={form.favMove || ""} onChange={e => setForm({...form, favMove: e.target.value})} style={inp} />
+                </div>
+
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(195px, 1fr))", gap:"7px" }}>
+                  <input placeholder="🎵 Walkout / Song on Repeat (Optional)" value={form.songRepeat || ""} onChange={e => setForm({...form, songRepeat: e.target.value})} style={inp} />
+                  <input type="url" placeholder="Direct Song Link (Optional — blank = Spotify/Apple/YT)" value={form.songUrl || ""} onChange={e => setForm({...form, songUrl: e.target.value})} style={inp} />
+                </div>
+
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(195px, 1fr))", gap:"7px" }}>
+                  <input placeholder="💬 Favorite Quote, Motto or Verse (Optional)" value={form.quote || ""} onChange={e => setForm({...form, quote: e.target.value})} style={inp} />
+                  <input placeholder="📖 Current Read — Book Title or Link (Optional)" value={form.currentRead || ""} onChange={e => setForm({...form, currentRead: e.target.value})} style={inp} />
+                </div>
+
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(195px, 1fr))", gap:"7px" }}>
+                  <input placeholder="🍔 Favorite Post-Comp Cheat Meal (Optional)" value={form.cheatMeal || ""} onChange={e => setForm({...form, cheatMeal: e.target.value})} style={inp} />
+                  <input type="url" placeholder="Jits (Youth) or Smoothcomp (Adult) URL (Optional)" value={form.jitsUrl || ""} onChange={e => setForm({...form, jitsUrl: e.target.value})} style={inp} />
+                </div>
+
+                <input placeholder="Custom Spotlight Highlight (Optional — pins to Insider Spotlight!)" value={form.funFact || ""} onChange={e => setForm({...form, funFact: e.target.value})} style={{ ...inp, width:"100%" }} />
+
+                <label style={{ fontSize:"0.8rem", color:"#cbd5e1", display:"flex", alignItems:"center", gap:"6px", cursor:"pointer" }}>
+                  <input type="checkbox" checked={Boolean(form.showWatchCount)} onChange={e => setForm({...form, showWatchCount: e.target.checked})} />
+                  <span>🔥 Show total <b>&quot;Watching&quot; count ({watcherCount})</b> publicly on Watch button <i style={{ color:"#94a3b8" }}>(never shows who is watching)</i></span>
+                </label>
+                <label style={{ fontSize:"0.8rem", color:"#cbd5e1", display:"flex", alignItems:"center", gap:"6px", cursor:"pointer" }}>
+                  <input type="checkbox" checked={Boolean(form.openSf)} onChange={e => setForm({...form, openSf: e.target.checked})} />
+                  <span>🥊 List in the <b>Protected SuperFight Matchmaking Pool</b> <i style={{ color:"#94a3b8" }}>(email stays 100% hidden)</i></span>
+                </label>
+
+                <div style={{ background:"#0b101b", border:"1px solid #2d3b52", borderRadius:"7px", padding:"8px 10px", display:"grid", gap:"6px" }}>
+                  <div style={{ fontSize:"0.75rem", color:"#93c5fd", fontWeight:"bold" }}>👨‍👩‍👧‍👦 Co-Manage with Athlete / Parent Account (Optional)</div>
+                  <div style={{ fontSize:"0.72rem", color:"#94a3b8" }}>Add your youth athlete&apos;s own email (or parent&apos;s email) so both separate MatDates accounts can edit this Trophy Room!</div>
+                  {((form.coEmails || []).length > 0) && (
+                    <div style={{ display:"flex", gap:"6px", flexWrap:"wrap" }}>
+                      {(form.coEmails || []).map((em, i) => (
+                        <span key={i} style={{ background:"#182234", border:"1px solid #38bdf8", borderRadius:"12px", padding:"2px 8px", fontSize:"0.72rem", color:"#e2e8f0", display:"inline-flex", alignItems:"center", gap:"5px" }}>
+                          ✓ {em}
+                          <b onClick={() => setForm(p => ({ ...p, coEmails: (p.coEmails || []).filter(x => x !== em) }))} style={{ color:"#fca5a5", cursor:"pointer" }}>×</b>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ display:"flex", gap:"6px" }}>
+                    <input type="email" placeholder="Add athlete or parent email..." value={coInput} onChange={e => setCoInput(e.target.value)} style={{ ...inp, flex:1 }} />
+                    <button type="button" onClick={() => { const v = coInput.trim().toLowerCase(); if (v.includes("@")) { setForm(p => ({ ...p, coEmails: Array.from(new Set([...(p.coEmails || []), v])) })); setCoInput(""); } }} style={{ background:"#38bdf8", color:"#000", border:"none", borderRadius:"6px", padding:"6px 11px", fontWeight:"800", fontSize:"0.75rem", cursor:"pointer" }}>+ Link Account</button>
+                  </div>
+                </div>
+
+                <div style={{ display:"flex", gap:"8px" }}>
+                  <button type="submit" disabled={saving} style={{ flex:1, background:"#2ecc71", color:"#000", border:"none", borderRadius:"7px", padding:"9px", fontWeight:"800", cursor:"pointer" }}>
+                    {saving ? "Locking Profile..." : "🔒 Save & Lock Verified Profile"}
+                  </button>
+                  <button type="button" onClick={() => setEditBio(false)} style={{ background:"#1e293b", color:"#cbd5e1", border:"1px solid #334155", borderRadius:"7px", padding:"9px 12px", cursor:"pointer" }}>Cancel</button>
+                </div>
+              </form>
+            )}
           </div>
         )}
 
-        {/* 4. EVENTS & PODIUMS */}
+        {/* 4. INSIDER SPOTLIGHT FACTS */}
+        {(elite.isElite || bio?.funFact) && (
+          <div style={{ marginBottom:"12px", background:"linear-gradient(135deg,#271c09,#131b2c)", border:"1px solid rgba(245,158,11,0.55)", borderRadius:"11px", padding:"11px 13px" }}>
+            <div style={{ color:"#fbbf24", fontWeight:"800", fontSize:"0.74rem", letterSpacing:"0.6px", marginBottom:"5px" }}>{elite.tierLabel}</div>
+            {elite.facts.map((f, i) => <div key={i} style={{ fontSize:"0.8rem", color:"#fef3c7", marginBottom:"3px", lineHeight:1.38 }}>★ {f}</div>)}
+          </div>
+        )}
+
+        {/* 5. PRO TITLES & SUPERFIGHT VICTORIES */}
         {elite.pro && (
           <div style={{ marginBottom:"12px" }}>
-            <div style={{ color:"#fbbf24", fontWeight:"bold", fontSize:"0.8rem", marginBottom:"5px" }}>👑 PRO TITLES &amp; SUPERFIGHT VICTORIES</div>
-            <div style={{ display:"flex", gap:"6px", flexWrap:"wrap", marginBottom:"6px" }}>{elite.pro.titles.map((t, i) => <span key={i} style={{ background:"#292011", color:"#fde68a", border:"1px solid #d97706", borderRadius:"5px", padding:"2px 8px", fontSize:"0.74rem", fontWeight:"bold" }}>{t}</span>)}</div>
-            {elite.pro.bouts.map((b, i) => <div key={i} style={{ background:"#151b26", padding:"6px 9px", borderRadius:"6px", fontSize:"0.77rem", marginBottom:"4px" }}>🥊 <b>{b.ev}</b> — <b style={{ color:"#4ade80" }}>{b.res}</b> ({b.sub})</div>)}
+            <div style={{ color:"#fbbf24", fontWeight:"800", fontSize:"0.76rem", letterSpacing:"0.6px", marginBottom:"6px" }}>👑 PRO TITLES &amp; SUPERFIGHT VICTORIES</div>
+            <div style={{ display:"flex", gap:"6px", flexWrap:"wrap", marginBottom:"6px" }}>{elite.pro.titles.map((t, i) => <span key={i} style={{ background:"#292011", color:"#fde68a", border:"1px solid #d97706", borderRadius:"6px", padding:"3px 8px", fontSize:"0.73rem", fontWeight:"bold" }}>{t}</span>)}</div>
+            {elite.pro.bouts.map((b, i) => <div key={i} style={{ background:"#131a26", border:"1px solid #1e293b", padding:"7px 10px", borderRadius:"7px", fontSize:"0.77rem", marginBottom:"4px" }}>🥊 <b>{b.ev}</b> — <b style={{ color:"#4ade80" }}>{b.res}</b> ({b.sub})</div>)}
           </div>
         )}
 
-        <div style={{ color:"#93c5fd", fontWeight:"bold", fontSize:"0.8rem", marginBottom:"5px" }}>🏅 VERIFIED TOURNAMENT EVENTS &amp; PODIUMS ({evs.length})</div>
+        {/* 6. VERIFIED TOURNAMENT PODIUMS & SUPERFIGHTS */}
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"6px" }}>
+          <div style={{ color:"#93c5fd", fontWeight:"800", fontSize:"0.76rem", letterSpacing:"0.6px" }}>
+            🏅 {eraView === "ALLTIME" ? "ALL-TIME VERIFIED PODIUMS & BOUTS" : "2026 VERIFIED PODIUMS & BOUTS"} ({visibleEvents.length})
+          </div>
+        </div>
         <div style={{ display:"grid", gap:"5px" }}>
-          {evs.length === 0 ? <div style={{ color:"#94a3b8", fontSize:"0.8rem" }}>Tournament podiums sync automatically as official results post.</div> : evs.map((m, i) => (
-            <div key={i} style={{ background:"#151b26", padding:"6px 9px", borderRadius:"6px", fontSize:"0.76rem", display:"flex", justifyContent:"space-between", gap:"8px" }}>
-              <span>{Number(m.p)===1?"🥇":Number(m.p)===2?"🥈":"🥉"} <b>{m.ev}</b> — {m.d}</span>
-              <b style={{ color:"#38bdf8", fontSize:"0.7rem", flexShrink:0 }}>{/ufc/i.test((m.ev||"")+" "+(m.f||"")) ? "UFC" : m.f}</b>
+          {visibleEvents.length === 0 ? (
+            <div style={{ background:"#121927", border:"1px dashed #283548", borderRadius:"8px", padding:"12px", color:"#94a3b8", fontSize:"0.79rem" }}>
+              {eraView === "2026" && histEvs.length > 0
+                ? `No 2026 podiums posted yet — tap "All-Time (${totG + totS + totB})" above to view ${histEvs.length} prior-season championship medal(s)!`
+                : "Tournament podiums & SuperFight results sync automatically as official brackets conclude."}
+            </div>
+          ) : visibleEvents.slice(0, 65).map((m, i) => (
+            <div key={i} style={{ background:"#131a26", border:"1px solid #1e293b", padding:"7px 10px", borderRadius:"8px", fontSize:"0.77rem", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px" }}>
+              <span style={{ lineHeight:1.35 }}>
+                {Number(m.p)===1 ? "🥇" : Number(m.p)===2 ? "🥈" : "🥉"} <b style={{ color:"#f8fafc" }}>{m.ev}</b>
+                {m.d ? <span style={{ color:"#94a3b8" }}> — {m.d}</span> : null}
+              </span>
+              <span style={{ background:"#1a2436", border:"1px solid #2d3b52", color:"#38bdf8", borderRadius:"5px", padding:"2px 6px", fontSize:"0.67rem", fontWeight:"800", flexShrink:0 }}>
+                {/ufc/i.test((m.ev||"")+" "+(m.f||"")) ? "UFC" : (m.f || "BJJ")}
+              </span>
             </div>
           ))}
         </div>
