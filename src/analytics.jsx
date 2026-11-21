@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { doc, setDoc, getDoc, collection, getDocs, increment } from 'firebase/firestore';
+import { doc, setDoc, getDoc, collection, getDocs, increment, onSnapshot } from 'firebase/firestore';
 import { db } from './firebase';
 
 export function isStandalonePwa() {
@@ -138,61 +138,136 @@ export function AnalyticsAndPwaManager() {
 }
 
 function SponsorStatsModal({ onClose }) {
-  const [totals, setTotals] = useState(null);
-  const [days, setDays] = useState([]);
-  const [watchStats, setWatchStats] = useState({ active: 0, push: 0 });
+  const [totalsDoc, setTotalsDoc] = useState({});
+  const [allDaily, setAllDaily] = useState([]);
+  const [watchStats, setWatchStats] = useState({ active: 0, push: 0, claimedBios: 0, pushDevices: 0 });
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    getDoc(doc(db, 'site_stats', '__totals__'))
-      .then(d => setTotals(d.exists() ? d.data() : {}))
-      .catch(() => setTotals({}));
+    // Live listener on site_stats so opening ?stats=1 never races ahead of trackEvent() writes
+    const unsubStats = onSnapshot(collection(db, 'site_stats'), (snap) => {
+      let rawTotals = {};
+      const dateRows = [];
+      const monthDocs = {};
 
-    getDocs(collection(db, 'site_stats'))
-      .then(snap => {
-        const list = [];
-        snap.forEach(d => {
-          if (d.id !== '__totals__') list.push({ id: d.id, ...d.data() });
-        });
-        list.sort((a, b) => b.id.localeCompare(a.id));
-        setDays(list.slice(0, 14));
-      })
-      .catch(() => {});
+      snap.forEach(d => {
+        const data = d.data() || {};
+        if (d.id === '__totals__') {
+          rawTotals = data;
+        } else if (/^\d{4}-\d{2}-\d{2}$/.test(d.id)) {
+          dateRows.push({ id: d.id, ...data });
+        } else if (/^month_\d{4}-\d{2}$/.test(d.id)) {
+          monthDocs[d.id] = data;
+        }
+      });
 
-    getDocs(collection(db, 'mat_watches'))
-      .then(snap => {
-        let active = 0, push = 0;
-        snap.forEach(d => {
-          const w = d.data() || {};
-          if (w.active !== false) {
-            active += 1;
-            if (w.fcmToken) push += 1;
+      dateRows.sort((a, b) => b.id.localeCompare(a.id));
+      setAllDaily(dateRows);
+      setTotalsDoc(rawTotals);
+
+      // Auto-heal __totals__ & current month_YYYY-MM if historical YYYY-MM-DD rows exceed stored counters!
+      const metricKeys = [
+        'uniqueSessions', 'pageViews', 'athleteSearches', 'bracketOpens',
+        'matAlertsCreated', 'jitsGgOutclicks', 'trophyViews', 'shareStatsClicks',
+        'igOutclicks', 'standingsOpens', 'eventHubOpens', 'verifiedImpressions',
+        'mobileSessions', 'pwaSessions', 'pwaInstalls'
+      ];
+      const summedAll = {};
+      const curMonthPrefix = new Date().toISOString().slice(0, 7);
+      const curMonthKey = 'month_' + curMonthPrefix;
+      const summedMonth = {};
+
+      dateRows.forEach(r => {
+        metricKeys.forEach(k => {
+          const v = Number(r[k] || 0);
+          if (v > 0) {
+            summedAll[k] = (summedAll[k] || 0) + v;
+            if (r.id.startsWith(curMonthPrefix)) {
+              summedMonth[k] = (summedMonth[k] || 0) + v;
+            }
           }
         });
-        setWatchStats({ active, push });
-      })
-      .catch(() => {});
+      });
+
+      const totalsPatch = {};
+      metricKeys.forEach(k => {
+        if ((summedAll[k] || 0) > Number(rawTotals[k] || 0)) {
+          totalsPatch[k] = summedAll[k];
+        }
+      });
+      if (Object.keys(totalsPatch).length > 0) {
+        setDoc(doc(db, 'site_stats', '__totals__'), { ...totalsPatch, reconciledAt: new Date().toISOString() }, { merge: true }).catch(() => {});
+      }
+
+      const curMonthDoc = monthDocs[curMonthKey] || {};
+      const monthPatch = {};
+      metricKeys.forEach(k => {
+        if ((summedMonth[k] || 0) > Number(curMonthDoc[k] || 0)) {
+          monthPatch[k] = summedMonth[k];
+        }
+      });
+      if (Object.keys(monthPatch).length > 0) {
+        setDoc(doc(db, 'site_stats', curMonthKey), { month: curMonthPrefix, ...monthPatch }, { merge: true }).catch(() => {});
+      }
+    }, () => {});
+
+    // Separate real Athlete Watches from Claimed Trophy Rooms & Push Devices
+    const unsubWatches = onSnapshot(collection(db, 'mat_watches'), (snap) => {
+      let active = 0, push = 0, claimedBios = 0, pushDevices = 0;
+      snap.forEach(d => {
+        const w = d.data() || {};
+        if (w.kind === 'athlete_bio') {
+          claimedBios += 1;
+          return;
+        }
+        if (w.kind === 'user_push_device') {
+          const toks = Array.isArray(w.fcmTokens) ? w.fcmTokens.filter(Boolean) : [];
+          pushDevices += toks.length;
+          return;
+        }
+        if (w.kind) return;
+        if (w.active !== false || w.followFuture === true) {
+          active += 1;
+          if (w.fcmToken) push += 1;
+        }
+      });
+      setWatchStats({ active, push, claimedBios, pushDevices });
+    }, () => {});
+
+    return () => {
+      unsubStats();
+      unsubWatches();
+    };
   }, []);
 
-  const t = totals || {};
+  // Compute true totals (always taking the higher of __totals__ or sum of all YYYY-MM-DD rows)
+  const sumKey = (k, prefix = '') => allDaily.reduce((acc, r) => acc + ((!prefix || r.id.startsWith(prefix)) ? Number(r[k] || 0) : 0), 0);
+  const getTot = (k) => Math.max(Number(totalsDoc[k] || 0), sumKey(k));
+
+  const curMonth = new Date().toISOString().slice(0, 7);
+  const monthVisits = sumKey('uniqueSessions', curMonth);
+  const monthViews = sumKey('pageViews', curMonth);
+  const days = allDaily.slice(0, 14);
+
   const cards = [
-    { label: 'Unique Daily Visits', val: t.uniqueSessions || 0, color: '#38bdf8' },
-    { label: 'Total Pageviews', val: t.pageViews || 0, color: '#e2e8f0' },
-    { label: 'Athlete Lookups', val: t.athleteSearches || 0, color: '#ff9f43' },
-    { label: 'Bracket / Roster Opens', val: t.bracketOpens || 0, color: '#a78bfa' },
-    { label: 'Mat Alerts Created', val: t.matAlertsCreated || 0, color: '#2ecc71' },
-    { label: 'Jits Outbound Clicks', val: t.jitsGgOutclicks || 0, color: '#38bdf8' },
-    { label: 'Active Live Watches', val: `${watchStats.active || t.activeWatches || 0} (${watchStats.push || t.activePushWatches || 0} Push)`, color: '#34d399' }
+    { label: 'Unique Visits (All-Time)', val: getTot('uniqueSessions'), sub: `${monthVisits.toLocaleString()} in ${curMonth}`, color: '#38bdf8' },
+    { label: 'Total Pageviews', val: getTot('pageViews'), sub: `${monthViews.toLocaleString()} in ${curMonth}`, color: '#e2e8f0' },
+    { label: 'Trophy Room Views', val: getTot('trophyViews'), sub: `${watchStats.claimedBios} Claimed Profiles`, color: '#fbbf24' },
+    { label: 'Athlete Lookups', val: getTot('athleteSearches'), sub: `${getTot('standingsOpens')} Standings Opens`, color: '#ff9f43' },
+    { label: 'Bracket / Roster Opens', val: getTot('bracketOpens'), sub: `${getTot('jitsGgOutclicks')} Record Clicks`, color: '#a78bfa' },
+    { label: 'Mat Alerts Created', val: getTot('matAlertsCreated'), sub: `${getTot('shareStatsClicks')} Trophy Shares`, color: '#2ecc71' },
+    { label: 'Active Athlete Watches', val: `${watchStats.active} (${watchStats.push} Push)`, sub: `${watchStats.claimedBios} Verified Trophy Rooms`, color: '#34d399' }
   ];
 
   const copySummary = () => {
     const txt = [
       'MatDates.com — Live BJJ Audience & Engagement Snapshot',
-      `• Unique Daily Competitor/Parent Visits: ${(t.uniqueSessions || 0).toLocaleString()}`,
-      `• Total Pageviews: ${(t.pageViews || 0).toLocaleString()}`,
-      `• Athlete & Squad Searches: ${(t.athleteSearches || 0).toLocaleString()}`,
-      `• Live Division Roster Opens: ${(t.bracketOpens || 0).toLocaleString()}`,
-      `• Mat & Match Time Alerts Triggered: ${(t.matAlertsCreated || 0).toLocaleString()}`,
+      `• Unique Competitor/Parent Visits: ${getTot('uniqueSessions').toLocaleString()} (${monthVisits.toLocaleString()} this month)`,
+      `• Total Pageviews: ${getTot('pageViews').toLocaleString()}`,
+      `• Official Trophy Room Views: ${getTot('trophyViews').toLocaleString()} (${watchStats.claimedBios.toLocaleString()} Claimed Profiles)`,
+      `• Athlete & Squad Searches: ${getTot('athleteSearches').toLocaleString()}`,
+      `• Live Division Roster Opens: ${getTot('bracketOpens').toLocaleString()}`,
+      `• Active Athlete Mat Watches: ${watchStats.active.toLocaleString()} (${watchStats.push.toLocaleString()} Push Enabled)`,
       '• 100% Exclusive Single-Sponsor Inventory (Zero Ad Clutter)'
     ].join('\n');
     navigator.clipboard.writeText(txt);
@@ -202,26 +277,27 @@ function SponsorStatsModal({ onClose }) {
 
   return (
     <div onClick={onClose} style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.86)', zIndex:10080, display:'flex', alignItems:'center', justifyContent:'center', padding:'10px', boxSizing:'border-box' }}>
-      <div onClick={e => e.stopPropagation()} style={{ background:'#11141b', border:'1px solid #2d3748', borderRadius:'12px', maxWidth:'680px', width:'100%', padding:'16px', boxSizing:'border-box', overflowX:'hidden', maxHeight:'88svh', overflowY:'auto', color:'#fff' }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:'#11141b', border:'1px solid #2d3748', borderRadius:'12px', maxWidth:'720px', width:'100%', padding:'16px', boxSizing:'border-box', overflowX:'hidden', maxHeight:'88svh', overflowY:'auto', color:'#fff' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'6px' }}>
-          <h3 style={{ margin:0, fontSize:'1.2rem' }}>{'\u{1F4CA}'} MatDates Traction & Sponsor Metrics</h3>
+          <h3 style={{ margin:0, fontSize:'1.2rem' }}>{'\u{1F4CA}'} MatDates Traction &amp; Sponsor Metrics</h3>
           <button onClick={onClose} style={{ background:'none', border:'none', color:'#94a3b8', fontSize:'1.1rem', cursor:'pointer' }}>{'\u2715'}</button>
         </div>
         <p style={{ margin:'0 0 14px', color:'#94a3b8', fontSize:'0.8rem' }}>
-          Cookie-free, privacy-safe engagement counters (excludes localhost). Bookmark <strong>matdates.com/?stats=1</strong> anytime.
+          Live self-reconciling engagement counters (excludes localhost). Bookmark <strong>matdates.com/?stats=1</strong> anytime.
         </p>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(185px, 1fr))', gap:'10px', marginBottom:'16px' }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(190px, 1fr))', gap:'10px', marginBottom:'16px' }}>
           {cards.map((c, i) => (
             <div key={i} style={{ background:'#181c24', border:'1px solid #242b38', borderRadius:'8px', padding:'12px' }}>
-              <div style={{ color:'#94a3b8', fontSize:'0.75rem', marginBottom:'4px' }}>{c.label}</div>
-              <div style={{ color:c.color, fontSize:'1.3rem', fontWeight:'bold' }}>
+              <div style={{ color:'#94a3b8', fontSize:'0.74rem', marginBottom:'4px' }}>{c.label}</div>
+              <div style={{ color:c.color, fontSize:'1.28rem', fontWeight:'bold' }}>
                 {typeof c.val === 'number' ? c.val.toLocaleString() : c.val}
               </div>
+              {c.sub && <div style={{ color:'#64748b', fontSize:'0.7rem', marginTop:'3px' }}>{c.sub}</div>}
             </div>
           ))}
         </div>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px' }}>
-          <strong style={{ fontSize:'0.88rem', color:'#cbd5e1' }}>Last 14 Days Activity</strong>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px', gap:'8px', flexWrap:'wrap' }}>
+          <strong style={{ fontSize:'0.88rem', color:'#cbd5e1' }}>Last 14 Days Activity (Daily UTC)</strong>
           <button onClick={copySummary} style={{ background:'#ff9f43', color:'#000', border:'none', borderRadius:'6px', padding:'6px 12px', fontWeight:'bold', fontSize:'0.78rem', cursor:'pointer' }}>
             {copied ? '\u2713 Copied Sponsor Summary!' : '\u{1F4CB} Copy Sponsor Pitch Summary'}
           </button>
@@ -233,6 +309,7 @@ function SponsorStatsModal({ onClose }) {
                 <th style={{ padding:'8px 10px' }}>Date (UTC)</th>
                 <th style={{ padding:'8px 10px' }}>Visits</th>
                 <th style={{ padding:'8px 10px' }}>Views</th>
+                <th style={{ padding:'8px 10px' }}>Trophies</th>
                 <th style={{ padding:'8px 10px' }}>Lookups</th>
                 <th style={{ padding:'8px 10px' }}>Rosters</th>
                 <th style={{ padding:'8px 10px' }}>Alerts</th>
@@ -240,12 +317,13 @@ function SponsorStatsModal({ onClose }) {
             </thead>
             <tbody>
               {days.length === 0 ? (
-                <tr><td colSpan={6} style={{ padding:'14px', textAlign:'center', color:'#64748b' }}>Live production metrics begin recording as visitors browse matdates.com.</td></tr>
+                <tr><td colSpan={7} style={{ padding:'14px', textAlign:'center', color:'#64748b' }}>Live production metrics begin recording as visitors browse matdates.com.</td></tr>
               ) : days.map(d => (
                 <tr key={d.id} style={{ borderBottom:'1px solid #1f2532' }}>
                   <td style={{ padding:'8px 10px', fontWeight:'bold' }}>{d.id}</td>
                   <td style={{ padding:'8px 10px', color:'#38bdf8' }}>{d.uniqueSessions || 0}</td>
                   <td style={{ padding:'8px 10px' }}>{d.pageViews || 0}</td>
+                  <td style={{ padding:'8px 10px', color:'#fbbf24' }}>{d.trophyViews || 0}</td>
                   <td style={{ padding:'8px 10px', color:'#ff9f43' }}>{d.athleteSearches || 0}</td>
                   <td style={{ padding:'8px 10px', color:'#a78bfa' }}>{d.bracketOpens || 0}</td>
                   <td style={{ padding:'8px 10px', color:'#2ecc71' }}>{d.matAlertsCreated || 0}</td>
