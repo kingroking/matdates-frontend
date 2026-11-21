@@ -1,4 +1,4 @@
-import { foldStr, athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, sameCompetitorCluster, findProAthlete, PRO_SUPERFIGHTS, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch } from './proHubData';
+import { foldStr, athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, sameCompetitorCluster, findProAthlete, PRO_SUPERFIGHTS, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName } from './proHubData';
 import { AcademyProSuite } from "./proWorkspaces";
 import { auth } from "./firebase";
 import { computeEliteSpotlight } from "./proHubData";
@@ -361,7 +361,7 @@ function canonicalizeHits(hits) {
       const dk = foldAscii(m.ev) + "|" + foldAscii(m.d) + "|" + m.p;
       if (c.seen.has(dk)) return;
       c.seen.add(dk);
-      out.push({ ...m, n: c.bestN, a: c.bestA });
+      out.push({ ...m, n: c.bestN, a: cleanAcademyName(c.bestA) });
     });
   });
   return out;
@@ -737,7 +737,7 @@ export function LeaderboardModal({ onClose }) {
         <div onClick={e => e.stopPropagation()} style={card}>
           {trophyCard && <TrophyCardModal cardData={trophyCard} onClose={() => setTrophyCard(null)} />}
           {podiumWatchPick && <div onClick={e=>e.stopPropagation()}><MatAlertModal event={podiumWatchPick.event} comp={podiumWatchPick.comp} division={podiumWatchPick.division} existingWatch={getPodiumWatch(podiumWatchPick.comp.Name)} onRemove={removePodiumWatch} onClose={() => setPodiumWatchPick(null)} /></div>}
-          {openAthTrophy && <div onClick={e=>e.stopPropagation()}><AthleteTrophyRoomModal athlete={openAthTrophy} onBack={() => setOpenAthTrophy(null)} backLabel="← Academy" onClose={() => { clearDirectUrlParams(); setOpenAthTrophy(null); if (onClose) onClose(); }} isWatching={Boolean(getPodiumWatch(openAthTrophy.name))} onShareCard={setTrophyCard} onWatch={(nm, ac) => setPodiumWatchPick({ event: { id: "", name: "All Upcoming Tournaments", link: "https://matdates.com/?athlete=" + encodeURIComponent(nm).replace(/%20/g, "+"), sort_date: "" }, comp: { Name: nm, Academy: ac || "", Division: "" }, division: "" })} /></div>}
+          {openAthTrophy && <div onClick={e=>e.stopPropagation()}><AthleteTrophyRoomModal athlete={openAthTrophy} onBack={() => setOpenAthTrophy(null)} backLabel="← Academy" onClose={() => { clearDirectUrlParams(); setOpenAthTrophy(null); if (onClose) onClose(); }} isWatching={Boolean(getPodiumWatch(openAthTrophy.name))} onShareCard={setTrophyCard} onWatch={(nm, ac) => setPodiumWatchPick({ event: { id: "", name: "All Upcoming Tournaments", link: "https://matdates.com/?athlete=" + encodeURIComponent(nm).replace(/%20/g, "+"), sort_date: "" }, comp: { Name: nm, Academy: cleanAcademyName(ac) || "", Division: "" }, division: "" })} /></div>}
           {copiedToast && <div style={{ background:'#064e3b', color:'#6ee7b7', border:'1px solid #10b981', borderRadius:'6px', padding:'6px 10px', fontSize:'0.76rem', fontWeight:'bold', marginBottom:'8px', textAlign:'center' }}>{copiedToast}</div>}
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:'6px', flexWrap:'wrap', marginBottom:'10px', flexShrink:0 }}>
             <button
@@ -783,7 +783,7 @@ export function LeaderboardModal({ onClose }) {
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:'8px', flexWrap:'wrap' }}>
               <div>
                 <div style={{ color:'#facc15', fontSize:'0.78rem', fontWeight:'bold' }}>GLOBAL RANK #{activeGym.trueRank}</div>
-                <h2 style={{ margin:'2px 0 6px', color:'#fff', fontSize:'1.2rem', wordBreak:'break-word' }}>{activeGym.Academy}</h2>
+                <h2 style={{ margin:'2px 0 6px', color:'#fff', fontSize:'1.2rem', wordBreak:'break-word' }}>{cleanAcademyName(activeGym.Academy)}</h2>
                 <div style={{ display:'flex', gap:'5px', flexWrap:'wrap', alignItems:'center' }}>
                   {Array.from(activeGym.Feds).map(f => (
                     <span key={f} style={{ fontSize:'0.68rem', padding:'2px 7px', borderRadius:'4px', background:'#243044', color:'#93c5fd', fontWeight:'bold' }}>{f}</span>
@@ -828,10 +828,10 @@ export function LeaderboardModal({ onClose }) {
 
           <div style={{ overflowY:'auto', flex:1, display:'flex', flexDirection:'column', gap:'12px', paddingRight:'2px' }}>
             {isLoading ? (
-              <div style={{ padding:'24px', textAlign:'center', color:'#38bdf8' }}>Loading {activeGym.Academy} trophy room...</div>
+              <div style={{ padding:'24px', textAlign:'center', color:'#38bdf8' }}>Loading {cleanAcademyName(activeGym.Academy)} trophy room...</div>
             ) : (
               <>
-                <AcademyProSuite gymName={activeGym.Academy} gymKey={activeGym.key} medalists={indivList} onOpenAthlete={setOpenAthTrophy} user={auth.currentUser} isAdmin={false} onRequireAuth={() => alert("Please Sign In at the top right of MatDates first!")} />
+                <AcademyProSuite gymName={cleanAcademyName(activeGym.Academy)} gymKey={activeGym.key} medalists={indivList} onOpenAthlete={setOpenAthTrophy} user={auth.currentUser} isAdmin={false} onRequireAuth={() => alert("Please Sign In at the top right of MatDates first!")} />
                 {indivList.length > 0 && (
                   <div>
                     <div style={{ color:'#38bdf8', fontSize:'0.8rem', fontWeight:'bold', marginBottom:'6px' }}>
@@ -1001,7 +1001,7 @@ export function LeaderboardModal({ onClose }) {
           )}
         </div>
 
-        {mode === "SUPERFIGHTS" ? (<SuperFightsPanel fed={fed} qStr={qStr} getWatch={getPodiumWatch} onOpenTrophy={setOpenAthTrophy} onWatch={(nm, ac) => setPodiumWatchPick({ event: { id: "", name: "All Upcoming Tournaments", link: "https://matdates.com/?athlete=" + encodeURIComponent(nm).replace(/%20/g, "+"), sort_date: "" }, comp: { Name: nm, Academy: ac || "", Division: "" }, division: "" })} />) : mode === "ATHLETES" ? (
+        {mode === "SUPERFIGHTS" ? (<SuperFightsPanel fed={fed} qStr={qStr} getWatch={getPodiumWatch} onOpenTrophy={setOpenAthTrophy} onWatch={(nm, ac) => setPodiumWatchPick({ event: { id: "", name: "All Upcoming Tournaments", link: "https://matdates.com/?athlete=" + encodeURIComponent(nm).replace(/%20/g, "+"), sort_date: "" }, comp: { Name: nm, Academy: cleanAcademyName(ac) || "", Division: "" }, division: "" })} />) : mode === "ATHLETES" ? (
           <div style={{ overflowY:'auto', WebkitOverflowScrolling:'touch', border:'1px solid #242b38', borderRadius:'8px', background:'#151922', flex:'1 1 auto', minHeight:'260px', padding:'10px' }}>
             {athQuery.trim().length < 2 ? (
               <div style={{ padding:'24px 12px', textAlign:'center', color:'#94a3b8', fontSize:'0.85rem' }}>
@@ -1033,7 +1033,7 @@ export function LeaderboardModal({ onClose }) {
                           <span>🥈 <strong>{a.s}</strong></span>
                           <span>🥉 <strong>{a.b}</strong></span>
                         </div>
-                        <button type="button" onClick={() => { const nm = a.name || a.n || ""; const ac = a.academy || a.a || ""; setPodiumWatchPick({ event: { id: "", name: "All Upcoming Tournaments", link: "https://matdates.com/?athlete=" + encodeURIComponent(nm).replace(/%20/g, "+"), sort_date: "" }, comp: { Name: nm, Academy: ac, Division: "" }, division: "" }); }} style={{ background: getPodiumWatch(a.name || a.n) ? "#132a1c" : "#162536", color: getPodiumWatch(a.name || a.n) ? "#2ecc71" : "#38bdf8", border: getPodiumWatch(a.name || a.n) ? "1px solid #2ecc71" : "1px solid #0284c7", borderRadius:"6px", padding:"5px 9px", fontSize:"0.74rem", fontWeight:"bold", cursor:"pointer", whiteSpace:"nowrap" }}>{getPodiumWatch(a.name || a.n) ? "✓ Watching" : "🔔 Watch"}</button>
+                        <button type="button" onClick={() => { const nm = a.name || a.n || ""; const ac = a.academy || a.a || ""; setPodiumWatchPick({ event: { id: "", name: "All Upcoming Tournaments", link: "https://matdates.com/?athlete=" + encodeURIComponent(nm).replace(/%20/g, "+"), sort_date: "" }, comp: { Name: nm, Academy: cleanAcademyName(ac), Division: "" }, division: "" }); }} style={{ background: getPodiumWatch(a.name || a.n) ? "#132a1c" : "#162536", color: getPodiumWatch(a.name || a.n) ? "#2ecc71" : "#38bdf8", border: getPodiumWatch(a.name || a.n) ? "1px solid #2ecc71" : "1px solid #0284c7", borderRadius:"6px", padding:"5px 9px", fontSize:"0.74rem", fontWeight:"bold", cursor:"pointer", whiteSpace:"nowrap" }}>{getPodiumWatch(a.name || a.n) ? "✓ Watching" : "🔔 Watch"}</button>
                         <button type="button" onClick={() => setOpenAthTrophy(a)} style={{ background:"#f59e0b", color:"#000", border:"none", borderRadius:"6px", padding:"5px 9px", fontSize:"0.74rem", fontWeight:"800", cursor:"pointer" }}>🏆 Trophy Room</button>
                         <button
                           type="button"
@@ -1087,7 +1087,7 @@ export function LeaderboardModal({ onClose }) {
                   <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:'6px', width:'100%', minWidth:0 }}>
                     <div style={{ display:'flex', alignItems:'baseline', gap:'6px', minWidth:0, flex:1 }}>
                       <strong style={{ color: i < 3 ? '#facc15' : '#64748b', fontSize:'0.86rem', flexShrink:0 }}>#{r.trueRank}</strong>
-                      <strong style={{ color:'#fff', fontSize:'0.92rem', lineHeight:1.28, overflowWrap:'anywhere' }}>{r.Academy}</strong>
+                      <strong style={{ color:'#fff', fontSize:'0.92rem', lineHeight:1.28, overflowWrap:'anywhere' }}>{cleanAcademyName(r.Academy)}</strong>
                     </div>
                     <div style={{ display:'flex', alignItems:'center', gap:'5px', flexShrink:0 }}>
                       <span style={{ color:'#34d399', fontWeight:'bold', fontSize:'0.8rem', whiteSpace:'nowrap' }}>{r.Points.toLocaleString()} pts</span>
@@ -1125,7 +1125,7 @@ export function LeaderboardModal({ onClose }) {
           </div>
         )}
       </div>
-    {openAthTrophy && <div onClick={e=>e.stopPropagation()}><AthleteTrophyRoomModal athlete={openAthTrophy} onBack={() => setOpenAthTrophy(null)} backLabel="← Standings" onClose={() => { clearDirectUrlParams(); setOpenAthTrophy(null); if (onClose) onClose(); }} isWatching={Boolean(getPodiumWatch(openAthTrophy.name || openAthTrophy.n))} onWatch={(nm, ac) => setPodiumWatchPick({ event: { id: "", name: "All Upcoming Tournaments", link: "https://matdates.com/?athlete=" + encodeURIComponent(nm).replace(/%20/g, "+"), sort_date: "" }, comp: { Name: nm, Academy: ac || "", Division: "" }, division: "" })} onShareCard={(cd) => { setOpenAthTrophy(null); setTrophyCard(cd); }} /></div>}
+    {openAthTrophy && <div onClick={e=>e.stopPropagation()}><AthleteTrophyRoomModal athlete={openAthTrophy} onBack={() => setOpenAthTrophy(null)} backLabel="← Standings" onClose={() => { clearDirectUrlParams(); setOpenAthTrophy(null); if (onClose) onClose(); }} isWatching={Boolean(getPodiumWatch(openAthTrophy.name || openAthTrophy.n))} onWatch={(nm, ac) => setPodiumWatchPick({ event: { id: "", name: "All Upcoming Tournaments", link: "https://matdates.com/?athlete=" + encodeURIComponent(nm).replace(/%20/g, "+"), sort_date: "" }, comp: { Name: nm, Academy: cleanAcademyName(ac) || "", Division: "" }, division: "" })} onShareCard={(cd) => { setOpenAthTrophy(null); setTrophyCard(cd); }} /></div>}
       {podiumWatchPick && <div onClick={e=>e.stopPropagation()}><MatAlertModal event={podiumWatchPick.event} comp={podiumWatchPick.comp} division={podiumWatchPick.division} existingWatch={getPodiumWatch(podiumWatchPick.comp.Name)} onRemove={removePodiumWatch} onClose={()=>setPodiumWatchPick(null)}/></div>}</div>
   );
 }

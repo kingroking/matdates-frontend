@@ -673,6 +673,19 @@ export function getBeltVisualSpec(raw) {
 
 
 // Universal Academy Normalizer — merges 'HQ', 'Jiu-Jitsu', 'BJJ', 'Academy', 'MMA' variations cleanly across ALL gyms!
+export function cleanAcademyName(raw) {
+  if (!raw || typeof raw !== "string") return raw || "";
+  let s = raw.trim().replace(/\s+/g, " ");
+  // Normalize Carlson Gracie San Antonio Hq/HQ variations (preserving '/ TM Combat Academy' when present)
+  s = s.replace(
+    /\bcarlson\s+gracie(?:\s+(?:jiu[\s-]*jitsu|bjj))?\s+san\s+antonio(?:\s+(?:hq|headquarters))?\b/gi,
+    "Carlson Gracie San Antonio"
+  );
+  // Strip Smoothcomp/IBJJF mixed-case trailing ' Hq' export artifact
+  s = s.replace(/\s+Hq\b/g, "").trim();
+  return s;
+}
+
 export function universalGymKey(raw) {
   const s = foldStr(raw || "").replace(/[^a-z0-9\s]/g, " ");
   let toks = s.split(/\s+/).filter(Boolean);

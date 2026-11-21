@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { collection, doc, getDoc, getDocs, setDoc, query, where } from "firebase/firestore";
 import { db, auth } from "./firebase";
 import { addDoc } from "firebase/firestore";
-import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, matchesYouthInitial, computeEliteSpotlight, PRO_SUPERFIGHTS, BJJ_BELT_GROUPS, normalizeBeltValue, getBeltVisualSpec, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch } from "./proHubData";
+import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, matchesYouthInitial, computeEliteSpotlight, PRO_SUPERFIGHTS, BJJ_BELT_GROUPS, normalizeBeltValue, getBeltVisualSpec, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName } from "./proHubData";
 
 export function SuperFightsPanel({ fed, qStr, onOpenTrophy, onWatch, getWatch }) {
   const [subTab, setSubTab] = useState("PROS");
@@ -571,6 +571,15 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
     getDoc(doc(db, "mat_watches", docKey)).then(d => {
       if (d.exists() && d.data()?.kind === "athlete_bio") {
         const bd = d.data();
+        // Auto-heal academy Hq on claimed bio
+        if (bd.academy && cleanAcademyName(bd.academy) !== bd.academy) {
+          const fixedAc = cleanAcademyName(bd.academy);
+          bd.academy = fixedAc;
+          if (curUser && (bd.ownerUid === curUser.uid || (bd.coEmails || []).includes((curUser.email || "").toLowerCase()))) {
+            setDoc(doc(db, "mat_watches", docKey), { academy: fixedAc }, { merge: true }).catch(() => {});
+            setDoc(doc(db, "event_competitors", pubKey), { event_id: "__public_bios__", slug, academy: fixedAc }, { merge: true }).catch(() => {});
+          }
+        }
         // Auto-rescue: if this browser has a locally saved avatar photo that didn't reach Firestore earlier, push it up automatically!
         if (!bd.avatarData && cached?.avatarData && curUser && (bd.ownerUid === curUser.uid || (bd.coEmails || []).includes((curUser.email || "").toLowerCase()))) {
           bd.avatarData = cached.avatarData;
@@ -828,7 +837,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
       showWatchCount: Boolean(form.showWatchCount),
       coEmails: Array.from(new Set((form.coEmails || bio?.coEmails || []).map(x => String(x).trim().toLowerCase()).filter(x => x.includes("@")))),
       name: nm,
-      academy: cnt.acad || elite.pro?.academy || "",
+      academy: cleanAcademyName(cnt.acad || elite.pro?.academy || ""),
       updatedAt: new Date().toISOString()
     };
     if (foldStr(clean.nickname) === foldStr(nm)) clean.nickname = "";
@@ -861,7 +870,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
   const firstName = nameParts[0] || nm;
   const restName = nameParts.slice(1).join(" ");
 
-  const currentAcad = bio?.academy || cnt.acad || elite.pro?.academy || histEvs[0]?.a || "Independent";
+  const currentAcad = cleanAcademyName(bio?.academy || cnt.acad || elite.pro?.academy || histEvs[0]?.a || "Independent");
   const liveBelt = (editBio || claimStep)
     ? (form.belt || bio?.belt || elite.pro?.belt || "")
     : (bio?.belt || elite.pro?.belt || "");

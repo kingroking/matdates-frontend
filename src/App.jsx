@@ -1,6 +1,6 @@
 import { GuidedTourModal, MultiCategoryDropdown, AcademyProSuite, PromoterHomeDashboard } from "./proWorkspaces";
 import { EventPortalModal } from "./EventPortalModal";
-import { UPCOMING_UFC_SUPERFIGHTS, getEventGiTags, getDeadlineBadge } from "./proHubData";
+import { UPCOMING_UFC_SUPERFIGHTS, getEventGiTags, getDeadlineBadge, cleanAcademyName } from "./proHubData";
 import { EventPhotogModal, fetchPhotogCounts, getTotalPhotogCount } from "./photogModal";
 import { TaleOfTheTapeModal, WeekendWarRoomModal, SubmitEventModal } from "./proModals";
 import { formatEventLoc, resolveEventUrl } from './locationFmt';

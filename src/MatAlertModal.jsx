@@ -1,3 +1,4 @@
+import { cleanAcademyName } from './proHubData';
 import { isIosSafariBrowser, trackEvent } from './analytics';
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, query, where, onSnapshot, deleteDoc, doc, setDoc, updateDoc, increment } from 'firebase/firestore';
@@ -109,6 +110,14 @@ export function useWatchedAthletes() {
         const rows = snap.docs
           .map(d => ({ id: d.id, ...d.data() }))
           .filter(w => w.active !== false || w.followFuture === true);
+        rows.forEach(w => {
+          const ca = cleanAcademyName(w.academy || '');
+          if (w.id && w.academy && ca !== w.academy) {
+            w.academy = ca;
+            updateDoc(doc(db, 'mat_watches', w.id), { academy: ca }).catch(() => {});
+          }
+        });
+        // Auto-clean academy Hq suffix
         setUidDocs(rows);
         writeLocal(rows, u.uid);
       }, () => {});
@@ -152,7 +161,7 @@ export function useWatchedAthletes() {
       const dedupKey = `${w.eventId || ''}::${(w.athleteName || '').trim().toLowerCase()}`;
       const prev = merged.get(dedupKey);
       if (!prev || (!prev.id && w.id) || (!prev.uid && w.uid)) {
-        merged.set(dedupKey, w);
+        merged.set(dedupKey, w.academy ? { ...w, academy: cleanAcademyName(w.academy) } : w);
       }
     }
   });
@@ -299,7 +308,7 @@ export function MatAlertModal({ event, comp, division, existingWatch, onRemove, 
         eventLink: event.link || '',
         sortDate: event.sort_date || '',
         athleteName: comp.Name || '',
-        academy: comp.Academy || '',
+        academy: cleanAcademyName(comp.Academy || ''),
         division: division || comp.Division || '',
         profileUrl: comp.Profile || comp.JitsProfile || '',
         email: email.trim(),

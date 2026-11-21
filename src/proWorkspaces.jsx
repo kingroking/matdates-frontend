@@ -2,7 +2,7 @@ import { MatAlertModal, useWatchedAthletes } from "./MatAlertModal";
 import React, { useState, useEffect } from "react";
 import { collection, doc, getDoc, getDocs, setDoc, addDoc, query, where } from "firebase/firestore";
 import { db } from "./firebase";
-import { foldStr, strictVerifiedAthleteRowMatch, inferTargetGender } from "./proHubData";
+import { foldStr, strictVerifiedAthleteRowMatch, inferTargetGender, cleanAcademyName } from "./proHubData";
 
 function compressImageFile(file) {
   return new Promise((resolve, reject) => {
@@ -225,7 +225,7 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, meda
   const [ws, setWs] = useState(null);
   const [userRole, setUserRole] = useState("");
   const [newGymName, setNewGymName] = useState("");
-  const activeName = propGymName || ws?.gymName || "";
+  const activeName = cleanAcademyName(propGymName || ws?.gymName || "");
   const canonicalTargetKey = exactGymKey(propGymKey || activeName);
   const activeKey = propGymKey || ws?.gymKey || (activeName ? foldStr(activeName).replace(/[^a-z0-9]+/g, "_") : "");
 

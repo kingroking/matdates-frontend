@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { collection, addDoc, getDocs, query, where, doc, getDoc } from "firebase/firestore";
 import { db } from "./firebase";
 import { MatAlertModal, useWatchedAthletes } from "./MatAlertModal";
-import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, sameCompetitorCluster, findProAthlete, PRO_SUPERFIGHTS, UPCOMING_UFC_SUPERFIGHTS, getDeadlineBadge, computeEliteSpotlight, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch } from "./proHubData";
+import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, sameCompetitorCluster, findProAthlete, PRO_SUPERFIGHTS, UPCOMING_UFC_SUPERFIGHTS, getDeadlineBadge, computeEliteSpotlight, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName } from "./proHubData";
 import { AthleteTrophyRoomModal } from "./proTrophyModal";
 
 const MODAL_BG = { position:"fixed", inset:0, background:"rgba(0,0,0,0.86)", zIndex:10060, display:"flex", alignItems:"center", justifyContent:"center", padding:"12px", boxSizing:"border-box" };
@@ -121,11 +121,11 @@ export function WeekendWarRoomModal({ events, watches, onRemoveWatch, onWatchAth
       }
 
       if (!map.has(targetKey)) {
-        map.set(targetKey, { name: nm, academy: w.academy || "", items: [] });
+        map.set(targetKey, { name: nm, academy: cleanAcademyName(w.academy || ""), items: [] });
       }
       const entry = map.get(targetKey);
       if (nm.length > entry.name.length) entry.name = nm;
-      if (!entry.academy && w.academy) entry.academy = w.academy;
+      if (!entry.academy && w.academy) entry.academy = cleanAcademyName(w.academy);
       entry.items.push(w);
     });
     return Array.from(map.values());
@@ -633,9 +633,9 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
           if (!gk) return;
           let rec = byK.get(gk);
           if (!rec) {
-            rec = { key: gk, Academy: ac, _low: foldStr(ac), Gold: 0, Silver: 0, Bronze: 0 };
+            rec = { key: gk, Academy: cleanAcademyName(ac), _low: foldStr(cleanAcademyName(ac)), Gold: 0, Silver: 0, Bronze: 0 };
             byK.set(gk, rec);
-          } else if (ac.length > rec.Academy.length) {
+          } else if (cleanAcademyName(ac).length > rec.Academy.length && !(rec.Academy === 'Carlson Gracie San Antonio' && /carlson gracie/i.test(ac))) {
             rec.Academy = ac;
             rec._low = foldStr(ac);
           }
@@ -666,16 +666,16 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
       ]).then(([snPod, snHist, snComp, snReg]) => {
         const a = [], r = [];
         snPod.forEach(d => ((d.data() || {}).items || []).forEach(it => {
-          a.push({ ...it, _nf: foldStr(it.n), _af: foldStr(it.a) });
+          a.push({ ...it, a: cleanAcademyName(it.a), _nf: foldStr(it.n), _af: foldStr(it.a) });
         }));
         snHist.forEach(d => ((d.data() || {}).items || []).forEach(it => {
-          a.push({ ...it, isHist: true, _nf: foldStr(it.n), _af: foldStr(it.a) });
+          a.push({ ...it, a: cleanAcademyName(it.a), isHist: true, _nf: foldStr(it.n), _af: foldStr(it.a) });
         }));
         snComp.forEach(d => ((d.data() || {}).items || []).forEach(it => {
-          a.push({ ...it, isRosterEntry: true, _nf: foldStr(it.n), _af: foldStr(it.a) });
+          a.push({ ...it, a: cleanAcademyName(it.a), isRosterEntry: true, _nf: foldStr(it.n), _af: foldStr(it.a) });
         }));
         snReg.forEach(d => ((d.data() || {}).items || []).forEach(it => {
-          r.push({ ...it, _nf: foldStr(it.n), _af: foldStr(it.a) });
+          r.push({ ...it, a: cleanAcademyName(it.a), _nf: foldStr(it.n), _af: foldStr(it.a) });
         }));
         setPodShards(p => ({ ...p, [bkt]: a }));
         setRegShards(p => ({ ...p, [bkt]: r }));
@@ -707,7 +707,7 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
     getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__m2_" + topGymBucket + "__"))).then(sn => {
       const a = [];
       sn.forEach(d => ((d.data() || {}).items || []).forEach(it => {
-        if (!it.isEventSummary) a.push({ ...it, _nf: foldStr(it.n), _af: foldStr(it.a), _gk: universalGymKey(it.a) });
+        if (!it.isEventSummary) a.push({ ...it, a: cleanAcademyName(it.a), _nf: foldStr(it.n), _af: foldStr(it.a), _gk: universalGymKey(it.a) });
       }));
       setGymShards(p => ({ ...p, [topGymBucket]: a }));
     }).catch(() => {});
