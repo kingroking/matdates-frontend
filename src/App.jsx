@@ -1,7 +1,7 @@
 import { GuidedTourModal, MultiCategoryDropdown, AcademyProSuite, PromoterHomeDashboard } from "./proWorkspaces";
 import { EventPortalModal } from "./EventPortalModal";
 import { UPCOMING_UFC_SUPERFIGHTS, getEventGiTags, getDeadlineBadge } from "./proHubData";
-import { EventPhotogModal, fetchPhotogCounts } from "./photogModal";
+import { EventPhotogModal, fetchPhotogCounts, getTotalPhotogCount } from "./photogModal";
 import { TaleOfTheTapeModal, WeekendWarRoomModal, SubmitEventModal } from "./proModals";
 import { formatEventLoc, resolveEventUrl } from './locationFmt';
 import React, { useState, useEffect } from 'react';
@@ -1023,7 +1023,17 @@ function App() {
                     {ev.cost && (
                       <span style={{ color: '#2ecc71', fontWeight: 'bold' }}>
                         {isStreamOnly
-                          ? `📺 Stream: ${ev.cost.replace(/^Watch on\s+/i, '')}`
+                          ? ((streamUrl || extLink) ? (
+                            <a
+                              href={streamUrl || extLink}
+                              target="_blank"
+                              rel="noreferrer"
+                              title="Watch Live Broadcast"
+                              style={{ color: '#2ecc71', fontWeight: 'bold', textDecoration: 'none', borderBottom: '1px dashed #2ecc71', cursor: 'pointer' }}
+                            >
+                              📺 Stream: {ev.cost.replace(/^Watch on\s+/i, '')}{'\u00A0↗'}
+                            </a>
+                          ) : `📺 Stream: ${ev.cost.replace(/^Watch on\s+/i, '')}`)
                           : ev.type === 'Super Fight'
                             ? (/admission|spectator|ticket|free/i.test(ev.cost)
                                 ? `🎟️ Spectator: ${ev.cost}`
@@ -1083,7 +1093,7 @@ function App() {
                       style={{ flex: 1, backgroundColor: '#222', color: '#fff', border: '1px solid #444', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', minWidth: '120px' }}
                     >
                       ⏰ Remind Me
-                    </button> <button onClick={() => downloadIcs([ev], `${ev.id}.ics`)} title="Add to Calendar (.ics)" style={{ backgroundColor: '#222', color: '#ccc', border: '1px solid #444', padding: '8px 10px', borderRadius: '4px', cursor: 'pointer' }}>+ Cal</button> {(() => { const tc = getTipCount(ev); return (<button onClick={() => setSelectedCommentEvent(ev)} title="Venue & Event Intel" style={{ backgroundColor: tc > 0 ? '#162536' : '#222', color: tc > 0 ? '#38bdf8' : '#ccc', border: tc > 0 ? '1px solid #0284c7' : '1px solid #444', padding: '8px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: tc > 0 ? 'bold' : 'normal', whiteSpace: 'nowrap' }}>💬 Tips{tc > 0 ? ` (${tc})` : ''}</button>); })()} {!isStreamOnly && (<button onClick={() => setPhotogEvent(ev)} title="Book or list event photography & highlight reels" style={{ backgroundColor: photogCounts[ev.id] ? '#14261c' : '#222', color: photogCounts[ev.id] ? '#4ade80' : '#38bdf8', border: photogCounts[ev.id] ? '1px solid #22c55e' : '1px solid #0284c7', padding: '8px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', whiteSpace: 'nowrap' }}>📸 Photogs{photogCounts[ev.id] ? ` (${photogCounts[ev.id]})` : ''}</button>)}
+                    </button> <button onClick={() => downloadIcs([ev], `${ev.id}.ics`)} title="Add to Calendar (.ics)" style={{ backgroundColor: '#222', color: '#ccc', border: '1px solid #444', padding: '8px 10px', borderRadius: '4px', cursor: 'pointer' }}>+ Cal</button> {(() => { const tc = getTipCount(ev); return (<button onClick={() => setSelectedCommentEvent(ev)} title="Venue & Event Intel" style={{ backgroundColor: tc > 0 ? '#162536' : '#222', color: tc > 0 ? '#38bdf8' : '#ccc', border: tc > 0 ? '1px solid #0284c7' : '1px solid #444', padding: '8px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: tc > 0 ? 'bold' : 'normal', whiteSpace: 'nowrap' }}>💬 Tips{tc > 0 ? ` (${tc})` : ''}</button>); })()} {!isStreamOnly && (() => { const pCnt = getTotalPhotogCount(ev, photogCounts); return (<button onClick={() => setPhotogEvent(ev)} title="Book or list event photography & highlight reels" style={{ backgroundColor: pCnt ? '#14261c' : '#222', color: pCnt ? '#4ade80' : '#38bdf8', border: pCnt ? '1px solid #22c55e' : '1px solid #0284c7', padding: '8px 10px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', whiteSpace: 'nowrap' }}>📸 Photogs{pCnt ? ` (${pCnt})` : ''}</button>); })()}
 
                     {!isStreamOnly && extLink && (
                       <a href={extLink} target="_blank" rel="noreferrer" style={{ flex: 1, textAlign: 'center', color: '#fff', textDecoration: 'none', backgroundColor: '#333', padding: '8px 12px', borderRadius: '4px', fontWeight: 'bold', minWidth: '120px' }}>

@@ -4,6 +4,49 @@ import { db } from "./firebase";
 
 const MODAL_BG = { position:"fixed", inset:0, background:"rgba(0,0,0,0.88)", zIndex:10075, display:"flex", alignItems:"center", justifyContent:"center", padding:"12px", boxSizing:"border-box" };
 
+export function isVegasIbjjfDec2026(ev) {
+  if (!ev) return false;
+  const blob = `${ev.name || ""} ${ev.location || ""} ${ev.federation || ""} ${ev.date || ""} ${ev.sort_date || ""}`.toLowerCase();
+  const isIbjjf = blob.includes("ibjjf") || blob.includes("kids international") || (blob.includes("world") && (blob.includes("no-gi") || blob.includes("no gi")));
+  const isVegas = blob.includes("las vegas") || blob.includes("vegas");
+  const isDec = blob.includes("dec") || blob.includes("2026-12");
+  return isIbjjf && isVegas && isDec;
+}
+
+export function getCuratedEventPhotogs(ev) {
+  if (!isVegasIbjjfDec2026(ev)) return [];
+  return [
+    {
+      id: "curated_ashlyn_taulbee",
+      isCurated: true,
+      directOnly: true,
+      brand: "Ashlyn Taulbee Photography",
+      insta: "@ashlyntaulbee",
+      pkg: "Confirmed Dec 2026 Vegas Schedule (IBJJF No-Gi Worlds & Kids International) — Matside Action Stills & Division Pre-Booking.",
+      price: "",
+      spots: "Pre-Book Open",
+      bookUrl: "https://www.ashlyntaulbee.com/tournaments"
+    },
+    {
+      id: "curated_bjj_media_worldwide",
+      isCurated: true,
+      directOnly: true,
+      brand: "BJJ Media Worldwide",
+      insta: "@bjjmedia23",
+      pkg: "IBJJF No-Gi Worlds & Kids Divisions — 4K Highlight Reels + High-Res Matside Stills Packages.",
+      price: "300+",
+      spots: "Limited Mats",
+      bookUrl: "https://bjjmedia23.com"
+    }
+  ];
+}
+
+export function getTotalPhotogCount(ev, photogCounts = {}) {
+  const dbCount = (ev && ev.id && photogCounts[ev.id]) ? photogCounts[ev.id] : 0;
+  const curatedCount = getCuratedEventPhotogs(ev).length;
+  return dbCount + curatedCount;
+}
+
 export function EventPhotogModal({ event, onClose, onRefreshCounts }) {
   const [tab, setTab] = useState("BROWSE");
   const [photogs, setPhotogs] = useState([]);
@@ -65,6 +108,13 @@ export function EventPhotogModal({ event, onClose, onRefreshCounts }) {
     setBookPick(null);
   };
 
+  const curatedList = getCuratedEventPhotogs(event);
+  const dbBrands = new Set(photogs.map(p => ((p.insta || "") + "|" + (p.brand || "")).toLowerCase()));
+  const mergedPhotogs = [
+    ...photogs,
+    ...curatedList.filter(c => !Array.from(dbBrands).some(k => k.includes(c.insta.replace("@", "").toLowerCase()) || k.includes(c.brand.toLowerCase().slice(0, 10))))
+  ];
+
   const inp = { padding:"9px 11px", borderRadius:"6px", background:"#0f141e", color:"#fff", border:"1px solid #334155", fontSize:"0.88rem", width:"100%", boxSizing:"border-box" };
 
   return (
@@ -80,7 +130,7 @@ export function EventPhotogModal({ event, onClose, onRefreshCounts }) {
         </div>
 
         <div style={{ display:"flex", gap:"6px", marginBottom:"12px" }}>
-          <button type="button" onClick={() => setTab("BROWSE")} style={{ flex:1, padding:"8px", borderRadius:"7px", fontWeight:"800", fontSize:"0.8rem", cursor:"pointer", background: tab==="BROWSE" ? "#38bdf8" : "#182030", color: tab==="BROWSE" ? "#000" : "#cbd5e1", border: tab==="BROWSE" ? "none" : "1px solid #334155" }}>🛒 Book Event Photog ({photogs.length})</button>
+          <button type="button" onClick={() => setTab("BROWSE")} style={{ flex:1, padding:"8px", borderRadius:"7px", fontWeight:"800", fontSize:"0.8rem", cursor:"pointer", background: tab==="BROWSE" ? "#38bdf8" : "#182030", color: tab==="BROWSE" ? "#000" : "#cbd5e1", border: tab==="BROWSE" ? "none" : "1px solid #334155" }}>🛒 Book Event Photog ({mergedPhotogs.length})</button>
           <button type="button" onClick={() => setTab("LIST")} style={{ flex:1, padding:"8px", borderRadius:"7px", fontWeight:"800", fontSize:"0.8rem", cursor:"pointer", background: tab==="LIST" ? "#ff9f43" : "#182030", color: tab==="LIST" ? "#000" : "#cbd5e1", border: tab==="LIST" ? "none" : "1px solid #334155" }}>➕ I&apos;m a Photog (List Package)</button>
         </div>
 
@@ -88,22 +138,49 @@ export function EventPhotogModal({ event, onClose, onRefreshCounts }) {
 
         {tab === "BROWSE" ? (
           <div style={{ display:"grid", gap:"10px" }}>
-            {photogs.length === 0 ? (
+            {mergedPhotogs.length === 0 ? (
               <div style={{ background:"#182030", border:"1px dashed #475569", borderRadius:"9px", padding:"18px", textAlign:"center" }}>
                 <div style={{ fontSize:"0.92rem", fontWeight:"bold", marginBottom:"6px" }}>No photographers have listed packages for this card yet.</div>
                 <div style={{ fontSize:"0.8rem", color:"#94a3b8", marginBottom:"12px" }}>Shooting mats at {event?.name}? List your photo/reel packages for free so competitors and parents can pre-book you!</div>
                 <button onClick={() => setTab("LIST")} style={{ background:"#ff9f43", color:"#000", border:"none", borderRadius:"7px", padding:"8px 14px", fontWeight:"800", cursor:"pointer" }}>📸 List My Packages Here</button>
               </div>
-            ) : photogs.map(p => (
-              <div key={p.id} style={{ background:"#182030", border:"1px solid #334155", borderRadius:"9px", padding:"12px" }}>
+            ) : mergedPhotogs.map(p => (
+              <div key={p.id} style={{ background:"#182030", border: p.isCurated ? "1px solid rgba(46,204,113,0.55)" : "1px solid #334155", borderRadius:"9px", padding:"12px" }}>
                 <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:"8px", flexWrap:"wrap" }}>
                   <div>
-                    <div style={{ fontWeight:"800", fontSize:"1rem", color:"#fff" }}>{p.brand}</div>
-                    {p.insta && <a href={"https://instagram.com/" + p.insta} target="_blank" rel="noreferrer" style={{ color:"#38bdf8", fontSize:"0.78rem", fontWeight:"bold", textDecoration:"none" }}>@{p.insta} ↗</a>}
+                    <div style={{ display:"flex", alignItems:"center", gap:"6px", flexWrap:"wrap" }}>
+                      <strong style={{ fontSize:"0.96rem", color:"#fff" }}>{p.brand}</strong>
+                      {p.isCurated && (
+                        <span style={{ background:"rgba(34,197,94,0.16)", color:"#4ade80", border:"1px solid rgba(34,197,94,0.45)", borderRadius:"999px", padding:"1px 7px", fontSize:"0.66rem", fontWeight:"800" }}>
+                          ✓ Confirmed Schedule
+                        </span>
+                      )}
+                    </div>
+                    {p.insta && (
+                      <a
+                        href={"https://instagram.com/" + p.insta.replace(/^@+/, "").trim()}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color:"#38bdf8", fontSize:"0.78rem", fontWeight:"700", textDecoration:"none" }}
+                      >
+                        📸 @{p.insta.replace(/^@+/, "").trim()} ↗
+                      </a>
+                    )}
                   </div>
-                  <div style={{ display:"flex", gap:"6px", alignItems:"center" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:"6px", flexWrap:"wrap" }}>
                     {p.price && <span style={{ background:"#132a1c", color:"#4ade80", border:"1px solid #22c55e", borderRadius:"6px", padding:"4px 9px", fontWeight:"800", fontSize:"0.82rem" }}>${p.price}</span>}
-                    <button onClick={() => setBookPick(bookPick?.id === p.id ? null : p)} style={{ background:"#38bdf8", color:"#000", border:"none", borderRadius:"6px", padding:"6px 11px", fontWeight:"800", fontSize:"0.78rem", cursor:"pointer" }}>Book Coverage</button>
+                    {p.directOnly && p.bookUrl ? (
+                      <a
+                        href={p.bookUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ background:"#2ecc71", color:"#000", borderRadius:"6px", padding:"6px 11px", fontWeight:"800", fontSize:"0.78rem", textDecoration:"none", display:"inline-block" }}
+                      >
+                        View Packages &amp; Book ↗
+                      </a>
+                    ) : (
+                      <button onClick={() => setBookPick(bookPick?.id === p.id ? null : p)} style={{ background:"#38bdf8", color:"#000", border:"none", borderRadius:"6px", padding:"6px 11px", fontWeight:"800", fontSize:"0.78rem", cursor:"pointer" }}>Book Coverage</button>
+                    )}
                   </div>
                 </div>
                 <div style={{ fontSize:"0.82rem", color:"#e2e8f0", marginTop:"7px" }}>{p.pkg}</div>
@@ -122,6 +199,14 @@ export function EventPhotogModal({ event, onClose, onRefreshCounts }) {
                 )}
               </div>
             ))}
+            <div style={{ background:"#0f172a", border:"1px dashed #38bdf8", borderRadius:"9px", padding:"10px 12px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"10px", flexWrap:"wrap", marginTop:"2px" }}>
+              <div style={{ fontSize:"0.76rem", color:"#cbd5e1", flex:"1 1 220px", lineHeight:1.4 }}>
+                <strong style={{ color:"#38bdf8" }}>📸 Accredited Matside Photographer?</strong> List your packages free (0% fee) — plus athletes can tag your <b>@Instagram</b> directly on their Official Trophy Room!
+              </div>
+              <button type="button" onClick={() => setTab("LIST")} style={{ background:"#ff9f43", color:"#000", border:"none", borderRadius:"6px", padding:"6px 11px", fontSize:"0.75rem", fontWeight:"800", cursor:"pointer", flexShrink:0 }}>
+                ➕ Add My Link Free
+              </button>
+            </div>
           </div>
         ) : (
           <form onSubmit={submitListing} style={{ display:"grid", gap:"9px" }}>

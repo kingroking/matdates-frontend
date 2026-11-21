@@ -523,7 +523,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
   const emptyForm = {
     handle: "", nickname: "", spiritEmoji: "", songRepeat: "", songUrl: "", musicVibe: "",
     quote: "", currentRead: "", age: "", belt: "", coach: "", favMove: "",
-    cheatMeal: "", funFact: "", avatarData: "", openSf: false,
+    cheatMeal: "", funFact: "", avatarData: "", photoCredit: "", openSf: false,
     showWatchCount: false, coEmails: [], jitsUrl: ""
   };
   const [form, setForm] = useState(emptyForm);
@@ -557,14 +557,14 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
     let cached = null;
     try { const raw = localStorage.getItem(lsKey); cached = raw ? JSON.parse(raw) : null; } catch {}
     setBio(cached);
-    setForm(cached ? { ...emptyForm, ...cached, handle: cached.handle ? "@" + cached.handle.replace(/^@+/, "") : "" } : emptyForm);
+    setForm(cached ? { ...emptyForm, ...cached, photoCredit: cached.photoCredit ? (/^https?:\/\//i.test(cached.photoCredit) ? cached.photoCredit : "@" + cached.photoCredit.replace(/^@+/, "")) : "", handle: cached.handle ? "@" + cached.handle.replace(/^@+/, "") : "" } : emptyForm);
 
     const pubKey = "pubbio_" + slug;
     getDoc(doc(db, "event_competitors", pubKey)).then(pd => {
       if (pd.exists() && pd.data()?.event_id === "__public_bios__") {
         const pbd = pd.data();
         setBio(prev => ({ ...(prev || {}), ...pbd, avatarData: pbd.avatarData || prev?.avatarData || "" }));
-        setForm(prev => ({ ...emptyForm, ...prev, ...pbd, avatarData: pbd.avatarData || prev?.avatarData || "", belt: normalizeBeltValue(pbd.belt || prev.belt), handle: pbd.handle ? "@" + pbd.handle.replace(/^@+/, "") : "" }));
+        setForm(prev => ({ ...emptyForm, ...prev, ...pbd, avatarData: pbd.avatarData || prev?.avatarData || "", belt: normalizeBeltValue(pbd.belt || prev.belt), photoCredit: (pbd.photoCredit || prev.photoCredit) ? (/^https?:\/\//i.test(pbd.photoCredit || prev.photoCredit) ? (pbd.photoCredit || prev.photoCredit) : "@" + String(pbd.photoCredit || prev.photoCredit).replace(/^@+/, "")) : "", handle: pbd.handle ? "@" + pbd.handle.replace(/^@+/, "") : "" }));
       }
     }).catch(() => {});
 
@@ -582,7 +582,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
           try { localStorage.setItem(lsKey, JSON.stringify(merged)); } catch {}
           return merged;
         });
-        setForm(prev => ({ ...emptyForm, ...prev, ...bd, avatarData: bd.avatarData || prev?.avatarData || cached?.avatarData || "", belt: normalizeBeltValue(bd.belt || prev.belt), handle: bd.handle ? "@" + bd.handle.replace(/^@+/, "") : "" }));
+        setForm(prev => ({ ...emptyForm, ...prev, ...bd, avatarData: bd.avatarData || prev?.avatarData || cached?.avatarData || "", belt: normalizeBeltValue(bd.belt || prev.belt), photoCredit: (bd.photoCredit || prev.photoCredit) ? (/^https?:\/\//i.test(bd.photoCredit || prev.photoCredit) ? (bd.photoCredit || prev.photoCredit) : "@" + String(bd.photoCredit || prev.photoCredit).replace(/^@+/, "")) : "", handle: bd.handle ? "@" + bd.handle.replace(/^@+/, "") : "" }));
         try { localStorage.setItem(lsKey, JSON.stringify(bd)); } catch {}
       }
     }).catch(() => {});
@@ -823,6 +823,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
       cheatMeal: (form.cheatMeal || "").trim(),
       funFact: (form.funFact || "").trim(),
       avatarData: form.avatarData === "__REMOVE__" ? "" : (form.avatarData || bio?.avatarData || ""),
+      photoCredit: (form.photoCredit || "").trim().replace(/^@+/, ""),
       openSf: Boolean(form.openSf),
       showWatchCount: Boolean(form.showWatchCount),
       coEmails: Array.from(new Set((form.coEmails || bio?.coEmails || []).map(x => String(x).trim().toLowerCase()).filter(x => x.includes("@")))),
@@ -1068,6 +1069,32 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
                     </span>
                   )}
                 </div>
+                {bio?.photoCredit && bio.photoCredit.replace(/^@+/, "").trim() && (() => {
+                  const rawPc = bio.photoCredit.trim();
+                  const isUrl = /^https?:\/\//i.test(rawPc);
+                  const cleanH = rawPc.replace(/^@+/, "").replace(/\s+/g, "");
+                  const href = isUrl ? rawPc : ("https://instagram.com/" + encodeURIComponent(cleanH));
+                  const label = isUrl ? rawPc.replace(/^https?:\/\/(www\.)?/i, "").split("/")[0] : ("@" + rawPc.replace(/^@+/, ""));
+                  return (
+                    <div>
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={"Action photo by " + label}
+                        style={{
+                          display:"inline-flex", alignItems:"center", gap:"4px",
+                          background:"rgba(14,165,233,0.13)", color:"#7dd3fc",
+                          border:"1px solid rgba(56,189,248,0.38)", borderRadius:"999px",
+                          padding:"2px 8px", fontSize:"0.68rem", fontWeight:"800",
+                          textDecoration:"none"
+                        }}
+                      >
+                        📸 Photo: {label} ↗
+                      </a>
+                    </div>
+                  );
+                })()}
 
                 {/* Line 2: Current Academy + Instagram Handle right beside photo */}
                 <div style={{ display:"flex", alignItems:"center", gap:"7px", flexWrap:"wrap" }}>
@@ -1385,6 +1412,20 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
                     {(form.avatarData || bio?.avatarData) && (
                       <button type="button" onClick={() => setForm(p => ({ ...p, avatarData: "__REMOVE__" }))} style={{ background:"#2a1215", color:"#fca5a5", border:"1px solid #ef4444", borderRadius:"5px", padding:"4px 8px", fontSize:"0.72rem", cursor:"pointer" }}>Remove Pic</button>
                     )}
+                  <div style={{ flexBasis:"100%", marginTop:"2px" }}>
+                      <input
+                        placeholder="📸 Action Photo Credit @photographer (Optional — adds clickable @tag on Trophy Room!)"
+                        value={form.photoCredit || ""}
+                        onFocus={() => { if (!form.photoCredit) setForm(p => ({ ...p, photoCredit: "@" })); }}
+                        onChange={e => {
+                          const v = e.target.value;
+                          if (!v || v === "@") setForm(p => ({ ...p, photoCredit: "" }));
+                          else if (/^https?:\/\//i.test(v)) setForm(p => ({ ...p, photoCredit: v.trim() }));
+                          else setForm(p => ({ ...p, photoCredit: "@" + v.replace(/^@+/, "") }));
+                        }}
+                        style={{ ...inp, fontSize:"0.75rem", padding:"6px 9px" }}
+                      />
+                    </div>
                   </div>
 
                   <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(210px, 1fr))", gap:"7px" }}>
