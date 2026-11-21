@@ -611,7 +611,13 @@ export function LeaderboardModal({ onClose }) {
     const rawPool = [];
     bkts.forEach(b => { if (athShardMap[b]) rawPool.push(...athShardMap[b]); });
 
-    const hits = canonicalizeHits(standEra === '2026' ? rawPool.filter(r => !r.isHist) : rawPool).filter(m =>
+    const qFast = foldStr(trimmed);
+    const qParts = qFast.split(/\s+/).filter(Boolean);
+    const preFiltered = (standEra === '2026' ? rawPool.filter(r => !r.isHist) : rawPool).filter(r => {
+      const blob = foldStr((r.n || '') + ' ' + (r.a || ''));
+      return blob.includes(qFast) || qParts.every(t => blob.includes(t));
+    }).slice(0, 450);
+    const hits = canonicalizeHits(preFiltered).filter(m =>
       smartAthleteMatch(m.n, m.a, trimmed) &&
       (fed === "ALL" || (/ufc/i.test((m.ev || "") + " " + (m.f || "")) ? "UFC" : m.f) === fed) &&
       (age === "ALL" || !m.ag || m.ag === age)

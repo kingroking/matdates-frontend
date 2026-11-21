@@ -98,7 +98,7 @@ export function useWatchedAthletes() {
 
 const OVERLAY = {
   position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.86)',
-  zIndex: 10050, display: 'flex', alignItems: 'center', justifyContent: 'center',
+  zIndex: 20050, display: 'flex', alignItems: 'center', justifyContent: 'center',
   padding: '12px', boxSizing: 'border-box'
 };
 const BOX = {
@@ -167,7 +167,7 @@ export function MatAlertModal({ event, comp, division, existingWatch, onRemove, 
         : await Notification.requestPermission();
       if (perm === 'denied') { setPushStatus('denied'); return ''; }
       if (perm !== 'granted') { setPushStatus('idle'); return ''; }
-      const tok = await acquirePushToken();
+      const tok = await Promise.race([acquirePushToken(), new Promise(res => setTimeout(() => res(''), 2500))]);
       if (tok) { setFcmToken(tok); setPushStatus('ready'); return tok; }
       setPushStatus('email_only');
       return '';

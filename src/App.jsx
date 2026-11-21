@@ -329,6 +329,12 @@ function App() {
   const { watches: myWatches, removeWatch: removeMyWatch } = useWatchedAthletes();
   
   const [searchTerm, setSearchTerm] = useState('');
+  const [homeSearchInput, setHomeSearchInput] = useState('');
+  const [visibleLimit, setVisibleLimit] = useState(45);
+  useEffect(() => {
+    const t = setTimeout(() => { setSearchTerm(homeSearchInput); setVisibleLimit(45); }, 160);
+    return () => clearTimeout(t);
+  }, [homeSearchInput]);
   const deferredHomeSearch = React.useDeferredValue(searchTerm);
   const [federationFilter, setFederationFilter] = useState('All');
   const [selectedFeds, setSelectedFeds] = useState([]);
@@ -693,14 +699,14 @@ function App() {
     return matchesSearch && matchesFed && matchesAge && matchesMonth && (!showSavedOnly || savedIds.includes(ev.id));
   }), [mergedWithUfcCards, deferredHomeSearch, ageFilter, selectedFeds, federationFilter, monthFilter, showSavedOnly, savedIds]);
 
-  const calendarEvents = filteredEvents.map(ev => {
+  const calendarEvents = React.useMemo(() => filteredEvents.map(ev => {
     let startDate = new Date();
     if (ev.sort_date) {
       const [y, m, d] = ev.sort_date.split('-');
       startDate = new Date(y, m - 1, d);
     }
     return { title: `${ev.isKidsEvent ? '🐯 ' : ''}${ev.name}`, start: startDate, end: startDate, resource: ev };
-  });
+  }), [filteredEvents]);
 
   const isAdccEvent = selectedCalcEvent && (selectedCalcEvent.id.toLowerCase().includes('adcc') || selectedCalcEvent.name.toLowerCase().includes('adcc'));
 
@@ -869,7 +875,7 @@ function App() {
   </div>
   <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', alignItems:'center' }}>
     <button data-tour="nav-standings" onClick={() => { trackEvent('standingsOpens'); setShowLeaderboard(true); }} style={{ backgroundColor:'#141820', color:'#f8fafc', padding:'9px 14px', border:'1px solid #475569', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.88rem' }}>🏆 Standings</button>
-    <button data-tour="nav-lookup" onClick={() => setShowAthleteSearch(true)} style={{ backgroundColor:'#141820', color:'#38bdf8', padding:'9px 14px', border:'1px solid #0284c7', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.88rem' }}>🔍 Athlete Lookup</button>
+    <button data-tour="nav-lookup" onClick={() => setShowAthleteSearch(true)} style={{ backgroundColor:'#141820', color:'#38bdf8', padding:'9px 14px', border:'1px solid #0284c7', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.88rem' }}>🔍 Athlete &amp; Academy Lookup</button>
     <button data-tour="nav-warroom" onClick={() => setShowWarRoom(true)} style={{ backgroundColor: myWatches.length > 0 ? '#132a1c' : '#141820', color: myWatches.length > 0 ? '#4ade80' : '#cbd5e1', padding:'9px 14px', border: myWatches.length > 0 ? '1px solid #2ecc71' : '1px solid #334155', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.88rem' }}>🔥 War Room{myWatches.length > 0 ? ` (${myWatches.length})` : ''}</button>
     <button onClick={() => setShowSubmitModal(true)} style={{ backgroundColor:'#ff9f43', color:'#000', padding:'9px 14px', border:'none', borderRadius:'7px', fontWeight:'800', cursor:'pointer', fontSize:'0.88rem' }}>+ Submit</button>
     <button onClick={() => user ? signOut(auth) : setShowAuthModal(true)} style={{ backgroundColor:'transparent', color:'#94a3b8', padding:'8px 10px', border:'1px solid #262f3d', borderRadius:'7px', cursor:'pointer', fontSize:'0.8rem' }}>{user ? 'Sign Out' : 'Sign In'}</button>
@@ -917,7 +923,7 @@ function App() {
           <div style={{ color:'#94a3b8', fontSize:'0.7rem', fontWeight:'800', letterSpacing:'1.6px', textTransform:'uppercase', marginBottom:'7px' }}>Filter Events</div>
           <div className="md-filter-inputs" style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
           <div style={{ position: 'relative', flex: '1', minWidth: '200px' }}>
-            <input type="text" placeholder="Search events or locations..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '12px 35px 12px 12px', borderRadius: '5px', border: '1px solid #333', backgroundColor: '#111', color: '#fff', fontSize: '1rem' }} />
+            <input type="text" placeholder="Search events or locations..." value={homeSearchInput} onChange={(e) => setHomeSearchInput(e.target.value)} style={{ width: '100%', boxSizing: 'border-box', padding: '12px 35px 12px 12px', borderRadius: '5px', border: '1px solid #333', backgroundColor: '#111', color: '#fff', fontSize: '1rem' }} />
             {searchTerm && (
               <button onClick={() => setSearchTerm('')} style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: '#aaa', fontSize: '1.2rem', cursor: 'pointer', padding: '0 5px' }}>
                 &times;
@@ -946,7 +952,7 @@ function App() {
           </div>
         ) : (
           <div style={{ display: viewMode === 'grid' ? 'grid' : 'flex', flexDirection: viewMode === 'list' ? 'column' : 'row', gridTemplateColumns: viewMode === 'grid' ? 'repeat(auto-fill, minmax(300px, 1fr))' : 'none', gap: '20px' }}>
-            {filteredEvents.map((ev, evIdx) => {
+            {filteredEvents.slice(0, visibleLimit).map((ev, evIdx) => {
               const isJJWL = ev.id && ev.id.toLowerCase().startsWith('jjwl');
               const isADCC = (ev.id && ev.id.toLowerCase().includes('adcc')) || (ev.name && ev.name.toLowerCase().includes('adcc'));
               const isUFC = /\bufc\b/i.test((ev.id || '') + ' ' + (ev.name || ''));
@@ -1047,6 +1053,17 @@ function App() {
                 </div>
               )
             })}
+            {filteredEvents.length > visibleLimit && (
+              <div style={{ textAlign: 'center', margin: '16px 0 8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setVisibleLimit(v => v + 60)}
+                  style={{ background: '#172234', color: '#38bdf8', border: '1.5px solid #0284c7', borderRadius: '8px', padding: '11px 22px', fontWeight: '800', fontSize: '0.9rem', cursor: 'pointer' }}
+                >
+                  ▼ Show More Events ({filteredEvents.length - visibleLimit} more matching)
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

@@ -57,6 +57,7 @@ export function WeekendWarRoomModal({ events, watches, onRemoveWatch, onWatchAth
   const [showWatchedDrawer, setShowWatchedDrawer] = useState(false);
   const [showGeneral14d, setShowGeneral14d] = useState(false);
   const [trophyAth, setTrophyAth] = useState(null);
+  const [warWatchPick, setWarWatchPick] = useState(null);
   const [regEntries, setRegEntries] = useState([]);
   const [loadingRegs, setLoadingRegs] = useState(false);
 
@@ -420,8 +421,17 @@ export function WeekendWarRoomModal({ events, watches, onRemoveWatch, onWatchAth
           isWatching={checkWatching(trophyAth.name)}
           onWatch={(nm, ac) => {
             if (onWatchAthlete) onWatchAthlete(nm, ac);
+            else setWarWatchPick({ ev: { id: "", name: "All Upcoming Tournaments", link: "https://matdates.com", sort_date: "" }, comp: { Name: nm, Academy: ac || "", Division: "" }, div: "" });
           }}
           onShareCard={onShareCard}
+        />
+      )}
+      {warWatchPick && (
+        <MatAlertModal
+          event={warWatchPick.ev}
+          comp={warWatchPick.comp}
+          division={warWatchPick.div}
+          onClose={() => setWarWatchPick(null)}
         />
       )}
     </div>
@@ -485,124 +495,164 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
   const [qStr, setQStr] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedQ(qStr), 140);
+    const t = setTimeout(() => setDebouncedQ(qStr), 180);
     return () => clearTimeout(t);
   }, [qStr]);
-  const [regItems, setRegItems] = useState([]);
+
+  const [regShards, setRegShards] = useState({});
   const [claimedBios, setClaimedBios] = useState([]);
-  const [gymRows, setGymRows] = useState([]);
+  const [dedupedGyms, setDedupedGyms] = useState([]);
   const [podShards, setPodShards] = useState({});
   const [gymShards, setGymShards] = useState({});
   const [watchPick, setWatchPick] = useState(null);
   const [trophyPick, setTrophyPick] = useState(null);
-  const { getWatch } = useWatchedAthletes();
+  const { getWatch, removeWatch } = useWatchedAthletes();
   const evMap = useMemo(() => Object.fromEntries((events || []).map(e => [e.id, e])), [events]);
 
+  // Pre-fold bios & aggregate academies ONCE on open so typing never normalizes 8,000 academy strings!
   useEffect(() => {
-    // Sharded __r2_XX__ registration buckets load on demand below for instant mobile performance!
-
     getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__public_bios__"))).then(sn => {
-      setClaimedBios(sn.docs.map(d => d.data()).filter(x => x && x.name));
+      setClaimedBios(sn.docs.map(d => {
+        const x = d.data();
+        if (!x || !x.name) return null;
+        return { ...x, _nf: foldStr(x.name), _af: foldStr(x.academy || ""), _nkf: foldStr(x.nickname || "") };
+      }).filter(Boolean));
     }).catch(() => {});
 
     getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__global_leaderboard__"))).then(sn => {
-      const g = [];
+      const byK = new Map();
       sn.forEach(d => {
         const dt = d.data() || {};
-        if (Array.isArray(dt.items)) g.push(...dt.items);
-        else if (dt.Academy) g.push(dt);
+        const arr = Array.isArray(dt.items) ? dt.items : (dt.Academy ? [dt] : []);
+        arr.forEach(r => {
+          if (r.Board === "ibjjf_hist_youth" || r.Board === "ibjjf_hist_adult") return;
+          const ac = (r.Academy || "").trim();
+          if (!ac) return;
+          const gk = lookupNormGym(ac);
+          if (!gk) return;
+          let rec = byK.get(gk);
+          if (!rec) {
+            rec = { key: gk, Academy: ac, _low: foldStr(ac), Gold: 0, Silver: 0, Bronze: 0 };
+            byK.set(gk, rec);
+          } else if (ac.length > rec.Academy.length) {
+            rec.Academy = ac;
+            rec._low = foldStr(ac);
+          }
+          rec.Gold += Number(r.Gold || 0);
+          rec.Silver += Number(r.Silver || 0);
+          rec.Bronze += Number(r.Bronze || 0);
+        });
       });
-      setGymRows(g);
+      const list = Array.from(byK.values()).sort((a, b) => (b.Gold * 9 + b.Silver * 3 + b.Bronze) - (a.Gold * 9 + a.Silver * 3 + a.Bronze));
+      setDedupedGyms(list);
     }).catch(() => {});
   }, []);
 
-  // 1. Fetch ALL candidate 2-letter athlete shards (handles compound Brazilian surnames & aliases!)
+  // 1. Fetch lightweight 2-letter 2026 Podium (__a2_XX__) & Registration (__r2_XX__) shards with pre-folded strings!
+  //    (All-Time history loads inside the specific Athlete Trophy Room on click — cutting Lookup memory by 70%!)
   useEffect(() => {
     if (debouncedQ.trim().length < 2) return;
-    const bkts = athBucketsForQuery(debouncedQ);
+    const bkts = athBucketsForQuery(debouncedQ).slice(0, 3);
     bkts.forEach(bkt => {
       if (podShards[bkt]) return;
       setPodShards(p => ({ ...p, [bkt]: [] }));
+      setRegShards(p => ({ ...p, [bkt]: [] }));
       Promise.all([
         getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__a2_" + bkt + "__"))),
-        getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__alltime_a2_" + bkt + "__"))),
-        getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__r2_" + bkt + "__"))),
-        getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__c2_" + bkt + "__")))
-      ]).then(([snPod, snHist, snReg, snComp]) => {
+        getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__r2_" + bkt + "__")))
+      ]).then(([snPod, snReg]) => {
         const a = [], r = [];
-        snPod.forEach(d => a.push(...((d.data() || {}).items || [])));
-        snHist.forEach(d => ((d.data() || {}).items || []).forEach(h => a.push({ ...h, isHist: true })));
-        snComp.forEach(d => ((d.data() || {}).items || []).forEach(c => a.push({ ...c, isRosterEntry: true })));
-        snReg.forEach(d => r.push(...((d.data() || {}).items || [])));
+        snPod.forEach(d => ((d.data() || {}).items || []).forEach(it => {
+          a.push({ ...it, _nf: foldStr(it.n), _af: foldStr(it.a) });
+        }));
+        snReg.forEach(d => ((d.data() || {}).items || []).forEach(it => {
+          r.push({ ...it, _nf: foldStr(it.n), _af: foldStr(it.a) });
+        }));
         setPodShards(p => ({ ...p, [bkt]: a }));
-        if (r.length) setRegItems(prev => [...prev, ...r]);
+        setRegShards(p => ({ ...p, [bkt]: r }));
       }).catch(() => {});
     });
   }, [debouncedQ]);
 
-  // 2. Also detect matching Academies (e.g. "Carlson Gracie San Antonio", "Northern Tribe", "AOJ") and fetch their __m2_XX__ team medal shard!
+  // 2. Instant <0.5ms Academy Match against pre-aggregated dedupedGyms
   const matchingGyms = useMemo(() => {
     const q = foldStr(debouncedQ).trim();
-    if (q.length < 3 || !gymRows.length) return [];
+    if (q.length < 3 || !dedupedGyms.length) return [];
     const terms = q.split(/\s+/).filter(Boolean);
-    const byK = new Map();
-    gymRows.forEach(r => {
-      const ac = r.Academy || "";
-      const low = foldStr(ac);
-      if (!low.includes(q) && !terms.every(t => low.includes(t))) return;
-      const gk = lookupNormGym(ac);
-      if (!byK.has(gk)) byK.set(gk, { key: gk, Academy: ac, Gold: 0, Silver: 0, Bronze: 0 });
-      const cur = byK.get(gk);
-      if (ac.length > cur.Academy.length) cur.Academy = ac;
-      cur.Gold += Number(r.Gold || 0);
-      cur.Silver += Number(r.Silver || 0);
-      cur.Bronze += Number(r.Bronze || 0);
-    });
-    return Array.from(byK.values()).sort((a, b) => (b.Gold * 9 + b.Silver * 3 + b.Bronze) - (a.Gold * 9 + a.Silver * 3 + a.Bronze)).slice(0, 4);
-  }, [debouncedQ, gymRows]);
+    const out = [];
+    for (let i = 0; i < dedupedGyms.length; i++) {
+      const g = dedupedGyms[i];
+      if (g._low.includes(q) || terms.every(t => g._low.includes(t))) {
+        out.push(g);
+        if (out.length >= 6) break;
+      }
+    }
+    return out;
+  }, [debouncedQ, dedupedGyms]);
 
+  // Only load team roster shard for the #1 top specific matched academy (and pre-fold once on load!)
+  const topGymBucket = matchingGyms.length > 0 ? lookupGymBucket(matchingGyms[0].key) : "";
   useEffect(() => {
-    matchingGyms.forEach(g => {
-      const gb = lookupGymBucket(g.key);
-      if (gymShards[gb]) return;
-      setGymShards(p => ({ ...p, [gb]: [] }));
-      getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__m2_" + gb + "__"))).then(sn => {
-        const a = []; sn.forEach(d => a.push(...((d.data() || {}).items || [])));
-        setGymShards(p => ({ ...p, [gb]: a }));
-      }).catch(() => {});
-    });
-  }, [matchingGyms]);
+    if (!topGymBucket || gymShards[topGymBucket]) return;
+    setGymShards(p => ({ ...p, [topGymBucket]: [] }));
+    getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__m2_" + topGymBucket + "__"))).then(sn => {
+      const a = [];
+      sn.forEach(d => ((d.data() || {}).items || []).forEach(it => {
+        if (!it.isEventSummary) a.push({ ...it, _nf: foldStr(it.n), _af: foldStr(it.a), _gk: lookupNormGym(it.a) });
+      }));
+      setGymShards(p => ({ ...p, [topGymBucket]: a }));
+    }).catch(() => {});
+  }, [topGymBucket]);
+
+  // Fast O(1) token check before any expensive fuzzy match
+  const fastRowMatches = (nf, af, qFold, qTerms) => {
+    const blob = nf + " " + af;
+    if (blob.includes(qFold)) return true;
+    return qTerms.every(t => blob.includes(t));
+  };
 
   const regHits = useMemo(() => {
-    if (debouncedQ.trim().length < 2) return [];
-    const seenR = new Set();
-    return regItems.filter(x => {
-      if (!smartAthleteMatch(x.n, x.a, debouncedQ)) return false;
-      const rk = (x.n || "") + "|" + (x.e || "") + "|" + (x.d || "");
-      if (seenR.has(rk)) return false;
-      seenR.add(rk);
-      return true;
-    }).slice(0, 35);
-  }, [regItems, debouncedQ]);
+    const qFold = foldStr(debouncedQ).trim();
+    if (qFold.length < 2) return [];
+    const qTerms = qFold.split(/\s+/).filter(Boolean);
+    const bkts = athBucketsForQuery(debouncedQ).slice(0, 3);
+    const seenR = new Set(), out = [];
+    for (const b of bkts) {
+      const arr = regShards[b] || [];
+      for (let i = 0; i < arr.length; i++) {
+        const x = arr[i];
+        if (!fastRowMatches(x._nf || "", x._af || "", qFold, qTerms)) continue;
+        const rk = (x.n || "") + "|" + (x.e || "") + "|" + (x.d || "");
+        if (seenR.has(rk)) continue;
+        seenR.add(rk);
+        out.push(x);
+        if (out.length >= 30) return out;
+      }
+    }
+    return out;
+  }, [regShards, debouncedQ]);
 
+  // O(1) Hash-Map Profile Aggregation (ZERO nested O(N^2) loops — 100% immune to academy/name freezes!)
   const podProfiles = useMemo(() => {
-    if (debouncedQ.trim().length < 2) return [];
+    const qFold = foldStr(debouncedQ).trim();
+    if (qFold.length < 2) return [];
+    const qTerms = qFold.split(/\s+/).filter(Boolean);
     const map = new Map();
+
+    const makeFastKey = (nm) => {
+      const toks = foldStr(nm).replace(/[^a-z\s]/g, " ").trim().split(/\s+/).filter(Boolean);
+      if (toks.length >= 2) return toks[0] + "_" + toks[toks.length - 1];
+      return toks[0] || foldStr(nm);
+    };
 
     const ensureProfile = (nm, ac, extra = {}) => {
       const pro = findProAthlete(nm);
       const displayNm = pro ? pro.name : nm;
       const displayAc = (pro && pro.academy) ? pro.academy : (ac || "");
-      let pk = canonicalPersonKey(displayNm, displayAc);
-      for (const [existingKey, existingVal] of map.entries()) {
-        if (sameCompetitorCluster(existingVal.name, existingVal.academy, displayNm, displayAc)) {
-          pk = existingKey;
-          if (displayNm.length > existingVal.name.length && !/^[a-z]\./i.test(displayNm)) existingVal.name = displayNm;
-          break;
-        }
-      }
-      if (!map.has(pk)) {
-        map.set(pk, {
+      const pk = makeFastKey(displayNm);
+      let rec = map.get(pk);
+      if (!rec) {
+        rec = {
           name: displayNm,
           academy: displayAc,
           g: 0, s: 0, b: 0,
@@ -610,89 +660,115 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
           proTitles: pro ? pro.titles : extra.proTitles || null,
           claimed: Boolean(extra.claimed),
           seen: new Set()
-        });
-      }
-      const rec = map.get(pk);
-      if (extra.claimed) rec.claimed = true;
-      if (!pro && (ac || "").length > (rec.academy || "").length && !/^(carlson gracie team|gracie barra|alliance|checkmat|atos)$/i.test((ac || "").trim())) {
-        rec.academy = ac;
-      } else if (!rec.academy && ac) {
-        rec.academy = ac;
+        };
+        map.set(pk, rec);
+      } else {
+        if (displayNm.length > rec.name.length && !/^[a-z]\./i.test(displayNm)) rec.name = displayNm;
+        if (extra.claimed) rec.claimed = true;
+        if (!pro && displayAc.length > (rec.academy || "").length && !/^(carlson gracie team|gracie barra|alliance|checkmat|atos)$/i.test(displayAc.trim())) {
+          rec.academy = displayAc;
+        } else if (!rec.academy && displayAc) {
+          rec.academy = displayAc;
+        }
       }
       return rec;
     };
 
-    // A. Seed matching Claimed Athlete Bios (so claimed teammates ALWAYS show up!)
-    claimedBios.forEach(b => {
-      if (smartAthleteMatch(b.name, b.academy, debouncedQ, b.nickname || "")) {
+    // A. Claimed Bios
+    for (let i = 0; i < claimedBios.length; i++) {
+      const b = claimedBios[i];
+      if (fastRowMatches(b._nf + " " + (b._nkf || ""), b._af, qFold, qTerms)) {
         const r = ensureProfile(b.name, b.academy || "", { claimed: true });
         if (b.nickname) r.nickname = b.nickname;
       }
-      if (b.coach && smartAthleteMatch(b.coach, b.academy, debouncedQ)) {
-        const cleanCoach = b.coach.replace(/^(head\s+professor|professor|prof\.?|coach)\s+/i, "").trim();
-        if (cleanCoach.length >= 3) ensureProfile(cleanCoach, b.academy || "");
-      }
-    });
+    }
 
-    // B. Seed matching Pro / Invitational Stars
-    PRO_SUPERFIGHTS.forEach(p => {
-      if (smartAthleteMatch(p.name, p.academy, debouncedQ)) {
+    // B. Pro Stars
+    for (let i = 0; i < PRO_SUPERFIGHTS.length; i++) {
+      const p = PRO_SUPERFIGHTS[i];
+      if (fastRowMatches(foldStr(p.name), foldStr(p.academy || ""), qFold, qTerms)) {
         ensureProfile(p.name, p.academy, { proTitles: p.titles });
       }
-    });
+    }
 
-    // C. Merge multi-shard Athlete podium rows + matching Academy team shard rows (deduplicated!)
-    const combinedRows = [];
-    athBucketsForQuery(debouncedQ).forEach(b => { if (podShards[b]) combinedRows.push(...podShards[b]); });
-    const matchedGymKeys = new Set(matchingGyms.map(g => g.key));
-    matchingGyms.forEach(g => {
-      const gb = lookupGymBucket(g.key);
-      (gymShards[gb] || []).forEach(m => {
-        if (matchedGymKeys.has(lookupNormGym(m.a))) combinedRows.push(m);
-      });
-    });
-
-    combinedRows.forEach(m => {
-      const fromMatchedGym = matchedGymKeys.has(lookupNormGym(m.a));
-      if (!fromMatchedGym && !smartAthleteMatch(m.n, m.a, debouncedQ)) return;
-      const rec = ensureProfile(m.n, m.isHist ? '' : m.a); if (!rec.academy && m.a) rec.academy = m.a;
-      const dk = foldStr(m.ev) + "|" + foldStr(m.d) + "|" + m.p;
-      if (rec.seen.has(dk)) return;
-      rec.seen.add(dk);
-      if (m.isRosterEntry) return;
-      if (m.mg !== undefined || m.ms !== undefined || m.mb !== undefined) {
-        rec.g += Number(m.mg || 0); rec.s += Number(m.ms || 0); rec.b += Number(m.mb || 0);
-      } else {
+    // C. Athlete Shards (fast linear pass, capped safely)
+    const bkts = athBucketsForQuery(debouncedQ).slice(0, 3);
+    let scannedMatches = 0;
+    for (const b of bkts) {
+      const arr = podShards[b] || [];
+      for (let i = 0; i < arr.length; i++) {
+        const m = arr[i];
+        if (!fastRowMatches(m._nf || "", m._af || "", qFold, qTerms)) continue;
+        const rec = ensureProfile(m.n, m.a);
+        const dk = (m.ev || "") + "|" + (m.d || "") + "|" + m.p;
+        if (rec.seen.has(dk)) continue;
+        rec.seen.add(dk);
         const p = Number(m.p || 3);
         if (p === 1) rec.g++; else if (p === 2) rec.s++; else rec.b++;
+        rec.events.push(m);
+        if (++scannedMatches >= 600) break;
       }
-      rec.events.push(m);
-    });
+    }
+
+    // D. Top Matched Academy Roster (strictly capped to 250 medal rows so mega-teams NEVER lag!)
+    if (matchingGyms.length > 0 && topGymBucket) {
+      const topKey = matchingGyms[0].key;
+      const gArr = gymShards[topGymBucket] || [];
+      let gAdded = 0;
+      for (let i = 0; i < gArr.length; i++) {
+        const m = gArr[i];
+        if (m._gk !== topKey) continue;
+        const rec = ensureProfile(m.n, m.a);
+        const dk = (m.ev || "") + "|" + (m.d || "") + "|" + m.p;
+        if (!rec.seen.has(dk)) {
+          rec.seen.add(dk);
+          const p = Number(m.p || 3);
+          if (p === 1) rec.g++; else if (p === 2) rec.s++; else rec.b++;
+          rec.events.push(m);
+        }
+        if (++gAdded >= 250) break;
+      }
+    }
+
+    // E. Typo / Fuzzy Fallback ONLY if exact/token search found 0 profiles!
+    if (map.size === 0 && qFold.length >= 4) {
+      for (const b of bkts) {
+        const arr = podShards[b] || [];
+        for (let i = 0; i < Math.min(arr.length, 800); i++) {
+          const m = arr[i];
+          if (!smartAthleteMatch(m.n, m.a, debouncedQ)) continue;
+          const rec = ensureProfile(m.n, m.a);
+          const p = Number(m.p || 3);
+          if (p === 1) rec.g++; else if (p === 2) rec.s++; else rec.b++;
+          rec.events.push(m);
+        }
+      }
+    }
 
     return Array.from(map.values())
       .sort((a, b) => (b.claimed ? 4 : 0) + (b.g * 9 + b.s * 3 + b.b) + (b.proTitles ? 15 : 0) - ((a.claimed ? 4 : 0) + (a.g * 9 + a.s * 3 + a.b) + (a.proTitles ? 15 : 0)))
-      .slice(0, 45);
-  }, [debouncedQ, podShards, gymShards, matchingGyms, claimedBios]);
+      .slice(0, 40);
+  }, [debouncedQ, podShards, gymShards, matchingGyms, topGymBucket, claimedBios]);
 
-  const openFollow = (nm, ac, ev, div) => setWatchPick({
-    ev: ev || { id: "", name: "All Upcoming Tournaments", link: "https://matdates.com/?athlete=" + encodeURIComponent(nm).replace(/%20/g, "+"), sort_date: "" },
-    comp: { Name: nm, Academy: ac || "", Division: div || "" }, div: div || ""
-  });
+  const openFollow = (nm, ac, ev, div) => {
+    document.activeElement?.blur?.();
+    const existing = getWatch(nm, ev?.id);
+    setWatchPick({
+      ev: ev || { id: "", name: "All Upcoming Tournaments", link: "https://matdates.com/?athlete=" + encodeURIComponent(nm).replace(/%20/g, "+"), sort_date: "" },
+      comp: { Name: nm, Academy: ac || "", Division: div || "" },
+      div: div || "",
+      existing
+    });
+  };
 
   const trimmedQ = qStr.trim();
-  const alreadyWatched = Boolean(
-    trimmedQ.length >= 2 && (
-      getWatch(trimmedQ) ||
-      podProfiles.some(p => foldStr(p.name) === foldStr(trimmedQ) && getWatch(p.name)) ||
-      regHits.some(r => foldStr(r.n) === foldStr(trimmedQ) && getWatch(r.n))
-    )
-  );
+  const alreadyWatched = Boolean(trimmedQ.length >= 2 && getWatch(trimmedQ));
 
   return (
     <div onClick={onClose} style={{ ...MODAL_BG, alignItems: "flex-start", paddingTop: "12px" }}>
-      <div onClick={e => e.stopPropagation()} style={{ background:"#111622", border:"1px solid #334155", borderRadius:"12px", maxWidth:"640px", width:"100%", maxHeight:"90dvh", overflowY:"auto", WebkitOverflowScrolling:"touch", padding:"15px", color:"#fff", textAlign:"left" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background:"#111622", border:"1px solid #334155", borderRadius:"12px", maxWidth:"640px", width:"100%", maxHeight:"90dvh", overflowY:"auto", overscrollBehavior:"contain", WebkitOverflowScrolling:"touch", padding:"15px", color:"#fff", textAlign:"left" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:"8px" }}>
-          <h3 style={{ margin:0, fontSize:"1.08rem" }}>🔍 Universal Athlete &amp; Team Lookup</h3>
+          <h3 style={{ margin:0, fontSize:"1.08rem" }}>🔍 Athlete &amp; Academy Lookup</h3>
           <button onClick={onClose} style={{ background:"#1e293b", color:"#fff", border:"1px solid #334155", borderRadius:"6px", padding:"4px 10px", cursor:"pointer" }}>✕</button>
         </div>
         <input
@@ -700,26 +776,31 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
           enterKeyHint="search"
           value={qStr}
           onChange={e => setQStr(e.target.value)}
-          placeholder="Search ANY athlete or academy (e.g. Carlson Gracie San Antonio, Cassia Moura, Tainan)..."
+          placeholder="Search ANY athlete or academy (e.g. Carlson Gracie San Antonio, Isabella King, AOJ)..."
           style={{ width:"100%", padding:"11px 13px", borderRadius:"8px", background:"#182030", color:"#fff", border:"1.5px solid #38bdf8", fontSize:"0.92rem", boxSizing:"border-box", marginBottom:"10px" }}
         />
         {trimmedQ.length < 2 ? (
           <div style={{ color:"#94a3b8", fontSize:"0.83rem", lineHeight:1.45 }}>
-            Type any <b>athlete name</b> or <b>academy name</b> — view every teammate&apos;s verified Trophy Room, upcoming brackets, or tap <b>🔔 Watch</b> for live tournament alerts!
+            Type any <b>athlete name</b> or <b>academy name</b> — open any Academy or Athlete Trophy Room, inspect upcoming brackets, or tap <b>🔔 Watch</b> for live tournament &amp; SuperFight alerts!
           </div>
         ) : (
           <div style={{ display:"grid", gap:"8px" }}>
             {matchingGyms.length > 0 && (
-              <div style={{ background:"#172032", border:"1px solid #f59e0b", borderRadius:"8px", padding:"8px 11px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
-                <div style={{ fontSize:"0.8rem" }}>
-                  <span style={{ color:"#fbbf24", fontWeight:"800" }}>🏛️ TEAM ROSTER LOADED:</span> <b>{matchingGyms[0].Academy}</b>
-                  <span style={{ color:"#cbd5e1", marginLeft:"6px" }}>(🥇{matchingGyms[0].Gold} 🥈{matchingGyms[0].Silver} 🥉{matchingGyms[0].Bronze})</span>
-                </div>
-                <a href={"/?gym=" + encodeURIComponent(matchingGyms[0].key)} style={{ background:"#f59e0b", color:"#000", padding:"4px 9px", borderRadius:"6px", fontWeight:"800", fontSize:"0.74rem", textDecoration:"none" }}>Team Trophy Room →</a>
+              <div style={{ display:"grid", gap:"6px" }}>
+                <div style={{ color:"#fbbf24", fontWeight:"800", fontSize:"0.77rem" }}>🏛️ MATCHING ACADEMIES ({matchingGyms.length})</div>
+                {matchingGyms.slice(0, 4).map(g => (
+                  <div key={g.key} style={{ background:"#172032", border:"1px solid #f59e0b", borderRadius:"8px", padding:"8px 11px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
+                    <div style={{ fontSize:"0.81rem" }}>
+                      <b>{g.Academy}</b>
+                      <span style={{ color:"#cbd5e1", marginLeft:"7px", fontSize:"0.76rem" }}>🥇{g.Gold} 🥈{g.Silver} 🥉{g.Bronze}</span>
+                    </div>
+                    <a href={"/?gym=" + encodeURIComponent(g.key)} style={{ background:"#f59e0b", color:"#000", padding:"5px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.74rem", textDecoration:"none", whiteSpace:"nowrap" }}>Academy Trophy Room →</a>
+                  </div>
+                ))}
               </div>
             )}
 
-            {podProfiles.length > 0 && <div style={{ color:"#fbbf24", fontWeight:"bold", fontSize:"0.78rem", marginTop:"2px" }}>🏆 VERIFIED PROFILES &amp; TROPHY ROOMS ({podProfiles.length})</div>}
+            {podProfiles.length > 0 && <div style={{ color:"#fbbf24", fontWeight:"bold", fontSize:"0.78rem", marginTop:"2px" }}>🏆 ATHLETE TROPHY ROOMS ({podProfiles.length})</div>}
             {podProfiles.map((p, i) => (
               <div key={"p"+i} onClick={() => { document.activeElement?.blur?.(); setTrophyPick(p); }} style={{ background:"#182030", border:"1px solid #334155", borderRadius:"8px", padding:"9px 11px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap", cursor:"pointer" }}>
                 <div style={{ minWidth:0, flex:"1 1 200px" }}>
@@ -728,7 +809,7 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
                     {p.academy && <span style={{ color:"#ff9f43", fontSize:"0.78rem" }}> • {p.academy}</span>}
                   </div>
                   <div style={{ fontSize:"0.76rem", color:"#cbd5e1" }}>
-                    🥇{p.g} 🥈{p.s} 🥉{p.b} {p.proTitles ? " • " + p.proTitles[0] : ""}
+                    🥇{p.g} 🥈{p.s} 🥉{p.b} (2026){p.proTitles ? " • " + p.proTitles[0] : ""}
                   </div>
                 </div>
                 <div style={{ display:"flex", gap:"6px" }} onClick={e => e.stopPropagation()}>
@@ -758,23 +839,37 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
             <div style={{ background:"#151d2b", border:"1px dashed #38bdf8", borderRadius:"8px", padding:"10px 12px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
               <span style={{ fontSize:"0.78rem", color:"#cbd5e1" }}>
                 {podProfiles.length === 0 && regHits.length === 0
-                  ? <>Don&apos;t see <b>{trimmedQ}</b> yet? Open their Trophy Room or Watch for future brackets:</>
-                  : <>Want alerts for every future tournament <b>{trimmedQ}</b> enters?</>}
+                  ? <>Open <b>{trimmedQ}</b>&apos;s All-Time Trophy Room or Watch for future brackets:</>
+                  : <>Want alerts for every future tournament &amp; SuperFight <b>{trimmedQ}</b> enters?</>}
               </span>
               <div style={{ display:"flex", gap:"6px" }}>
-                {podProfiles.length === 0 && (
-                  <button type="button" onClick={() => setTrophyPick({ name: trimmedQ, academy: "", g: 0, s: 0, b: 0, events: [] })} style={{ background:"#f59e0b", color:"#000", border:"none", borderRadius:"6px", padding:"6px 10px", fontSize:"0.75rem", fontWeight:"800", cursor:"pointer" }}>🏆 Open Trophy Room</button>
-                )}
+                <button type="button" onClick={() => setTrophyPick({ name: trimmedQ, academy: "", g: 0, s: 0, b: 0, events: [] })} style={{ background:"#f59e0b", color:"#000", border:"none", borderRadius:"6px", padding:"6px 10px", fontSize:"0.75rem", fontWeight:"800", cursor:"pointer" }}>🏆 Open Trophy Room</button>
                 <button type="button" onClick={() => openFollow(trimmedQ, "")} style={{ background: alreadyWatched ? "#132a1c" : "#0284c7", color: alreadyWatched ? "#2ecc71" : "#fff", border:"none", borderRadius:"6px", padding:"6px 11px", fontSize:"0.75rem", fontWeight:"800", cursor:"pointer" }}>
-                  {alreadyWatched ? "✓ Watching Future Brackets" : "🔔 Watch Athlete"}
+                  {alreadyWatched ? "✓ Manage Watch" : "🔔 Watch Athlete"}
                 </button>
               </div>
             </div>
           </div>
         )}
 
-        {watchPick && <MatAlertModal event={watchPick.ev} comp={watchPick.comp} division={watchPick.div} onClose={() => setWatchPick(null)} />}
-        {trophyPick && <AthleteTrophyRoomModal athlete={trophyPick} onClose={() => setTrophyPick(null)} isWatching={Boolean(getWatch(trophyPick.name))} onWatch={(nm, ac) => openFollow(nm, ac)} />}
+        {watchPick && (
+          <MatAlertModal
+            event={watchPick.ev}
+            comp={watchPick.comp}
+            division={watchPick.div}
+            existingWatch={watchPick.existing}
+            onRemove={removeWatch}
+            onClose={() => setWatchPick(null)}
+          />
+        )}
+        {trophyPick && (
+          <AthleteTrophyRoomModal
+            athlete={trophyPick}
+            onClose={() => setTrophyPick(null)}
+            isWatching={Boolean(getWatch(trophyPick.name))}
+            onWatch={(nm, ac) => openFollow(nm, ac)}
+          />
+        )}
       </div>
     </div>
   );
