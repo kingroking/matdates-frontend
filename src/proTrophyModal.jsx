@@ -265,46 +265,111 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
   const [showMusicPicker, setShowMusicPicker] = useState(false);
   const [playingVibe, setPlayingVibe] = useState(false);
   const [previewArt, setPreviewArt] = useState("");
+  const [previewTrackUrl, setPreviewTrackUrl] = useState("");
   const [loadingPreview, setLoadingPreview] = useState(false);
-  const previewAudioRef = { current: null };
+  const audioElRef = useRef(null);
+  const previewUrlRef = useRef("");
+
   useEffect(() => {
     return () => {
+      if (audioElRef.current) {
+        try { audioElRef.current.pause(); audioElRef.current.currentTime = 0; } catch {}
+      }
       if (window.__mdActiveAudio) {
         try { window.__mdActiveAudio.pause(); window.__mdActiveAudio = null; } catch {}
       }
     };
   }, []);
 
-  const toggleSongPreview = async (e) => {
+  // Pre-fetch 30s preview URL & artwork when Trophy Room opens so iPhone tap plays synchronously!
+  useEffect(() => {
+    let cancelled = false;
+    setPreviewTrackUrl("");
+    previewUrlRef.current = "";
+    setPreviewArt("");
+    setPlayingVibe(false);
+    const q = (bio?.songRepeat || "").trim();
+    if (!q) return;
+    fetch("https://itunes.apple.com/search?term=" + encodeURIComponent(q) + "&media=music&entity=song&limit=1")
+      .then(r => r.json())
+      .then(data => {
+        if (cancelled) return;
+        const track = data?.results?.[0];
+        if (track?.artworkUrl60) setPreviewArt(track.artworkUrl60);
+        if (track?.previewUrl) {
+          previewUrlRef.current = track.previewUrl;
+          setPreviewTrackUrl(track.previewUrl);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [bio?.songRepeat]);
+
+  const toggleSongPreview = (e) => {
     e.stopPropagation();
-    if (playingVibe && window.__mdActiveAudio) {
-      try { window.__mdActiveAudio.pause(); window.__mdActiveAudio = null; } catch {}
+    const el = audioElRef.current;
+
+    // Allow playback even if iPhone Silent / Ringer switch is muted (iOS 17+ Safari)
+    try {
+      if (navigator.audioSession && navigator.audioSession.type !== "playback") {
+        navigator.audioSession.type = "playback";
+      }
+    } catch {}
+
+    if (playingVibe) {
+      if (el) {
+        try { el.pause(); el.currentTime = 0; } catch {}
+      }
+      if (window.__mdActiveAudio) {
+        try { window.__mdActiveAudio.pause(); window.__mdActiveAudio = null; } catch {}
+      }
       setPlayingVibe(false);
       return;
     }
-    if (!bio?.songRepeat) return;
-    setLoadingPreview(true);
-    try {
-      const res = await fetch("https://itunes.apple.com/search?term=" + encodeURIComponent(bio.songRepeat) + "&media=music&entity=song&limit=1");
-      const data = await res.json();
-      const track = data?.results?.[0];
-      if (track?.artworkUrl60) setPreviewArt(track.artworkUrl60);
-      if (track?.previewUrl) {
-        if (window.__mdActiveAudio) { try { window.__mdActiveAudio.pause(); } catch {} }
-        const audio = new Audio(track.previewUrl);
-        audio.volume = 0.85;
-        window.__mdActiveAudio = audio;
-        audio.onended = () => { setPlayingVibe(false); window.__mdActiveAudio = null; };
-        await audio.play();
-        setPlayingVibe(true);
-        setLoadingPreview(false);
-        return;
+
+    if (!bio?.songRepeat || !el) return;
+
+    // Case A: Pre-fetched URL is ready -> play 100% synchronously inside the iOS tap gesture!
+    if (previewUrlRef.current) {
+      if (el.src !== previewUrlRef.current) el.src = previewUrlRef.current;
+      el.volume = 0.9;
+      setPlayingVibe(true);
+      const p = el.play();
+      if (p && typeof p.catch === "function") {
+        p.catch(() => {
+          setPlayingVibe(false);
+        });
       }
-    } catch {}
-    setLoadingPreview(false);
-    setPlayingVibe(true);
-    playBioMusicVibe(bio?.musicVibe || bio?.songRepeat);
-    setTimeout(() => setPlayingVibe(false), 500);
+      return;
+    }
+
+    // Case B: Tapped within the first instant before pre-fetch completed -> unlock <audio> synchronously first!
+    el.load();
+    setLoadingPreview(true);
+    fetch("https://itunes.apple.com/search?term=" + encodeURIComponent(bio.songRepeat) + "&media=music&entity=song&limit=1")
+      .then(r => r.json())
+      .then(data => {
+        setLoadingPreview(false);
+        const track = data?.results?.[0];
+        if (track?.artworkUrl60) setPreviewArt(track.artworkUrl60);
+        if (track?.previewUrl) {
+          previewUrlRef.current = track.previewUrl;
+          setPreviewTrackUrl(track.previewUrl);
+          el.src = track.previewUrl;
+          el.volume = 0.9;
+          setPlayingVibe(true);
+          const p = el.play();
+          if (p && typeof p.catch === "function") {
+            p.catch(() => setPlayingVibe(false));
+          }
+        } else {
+          handleSongClick();
+        }
+      })
+      .catch(() => {
+        setLoadingPreview(false);
+        setPlayingVibe(false);
+      });
   };
 
   const emptyForm = {
@@ -680,7 +745,13 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
         overscrollBehavior:"none"
       , flexShrink: 0, marginLeft: "auto"}}
     >
-      <style>{`@keyframes matdatesNeonGold { 0%, 100% { box-shadow: 0 0 10px rgba(250,204,21,0.55), 0 0 22px rgba(245,158,11,0.35); } 50% { box-shadow: 0 0 16px rgba(250,204,21,0.9), 0 0 32px rgba(245,158,11,0.55); } }`}</style>
+      <style>{`.md-tr-close-mobile { display: none !important; }
+      .md-tr-close-desktop { display: inline-flex !important; }
+      @media (max-width: 640px) {
+        .md-tr-close-mobile { display: flex !important; }
+        .md-tr-close-desktop { display: none !important; }
+      }
+      @keyframes matdatesNeonGold { 0%, 100% { box-shadow: 0 0 10px rgba(250,204,21,0.55), 0 0 22px rgba(245,158,11,0.35); } 50% { box-shadow: 0 0 16px rgba(250,204,21,0.9), 0 0 32px rgba(245,158,11,0.55); } }`}</style>
       <div
         onClick={e => e.stopPropagation()}
         style={{ position: "relative", 
@@ -693,7 +764,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close Trophy Room"
+            className="md-tr-close-mobile" aria-label="Close Trophy Room"
             style={{
               position: "absolute", top: "10px", right: "10px", zIndex: 45,
               width: "32px", height: "32px", borderRadius: "50%",
@@ -845,6 +916,20 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
                     {IG_ICON}
                     {bio?.handle ? "@" + bio.handle : "IG"}
                   </button>
+                  <button
+                    type="button"
+                    className="md-tr-close-desktop"
+                    onClick={onClose}
+                    aria-label="Close"
+                    style={{
+                      background: "#1e293b", color: "#cbd5e1", border: "1px solid #334155",
+                      borderRadius: "8px", padding: "5px 10px", fontSize: "0.82rem",
+                      fontWeight: "800", cursor: "pointer", alignItems: "center",
+                      justifyContent: "center", flexShrink: 0
+                    }}
+                  >
+                    ✕
+                  </button>
                 </div>
               </div>
             </div>
@@ -867,6 +952,14 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
                     borderRadius: "14px", padding: "4px 9px 4px 6px", maxWidth: "100%"
                   }}>
                     <style>{`@keyframes mdEqBar { 0%, 100% { height: 4px; } 50% { height: 13px; } }`}</style>
+                    <audio
+                      ref={audioElRef}
+                      src={previewTrackUrl || undefined}
+                      playsInline
+                      preload="auto"
+                      onEnded={() => setPlayingVibe(false)}
+                      style={{ display: "none" }}
+                    />
                     {previewArt ? (
                       <img src={previewArt} alt="" style={{ width: "24px", height: "24px", borderRadius: "6px", objectFit: "cover", flexShrink: 0 }} />
                     ) : (
