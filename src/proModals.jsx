@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { collection, addDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "./firebase";
 import { MatAlertModal, useWatchedAthletes } from "./MatAlertModal";
-import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, sameCompetitorCluster, findProAthlete, PRO_SUPERFIGHTS, UPCOMING_UFC_SUPERFIGHTS, getDeadlineBadge, computeEliteSpotlight } from "./proHubData";
+import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, sameCompetitorCluster, findProAthlete, PRO_SUPERFIGHTS, UPCOMING_UFC_SUPERFIGHTS, getDeadlineBadge, computeEliteSpotlight, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch } from "./proHubData";
 import { AthleteTrophyRoomModal } from "./proTrophyModal";
 
 const MODAL_BG = { position:"fixed", inset:0, background:"rgba(0,0,0,0.86)", zIndex:10060, display:"flex", alignItems:"center", justifyContent:"center", padding:"12px", boxSizing:"border-box" };
@@ -196,8 +196,8 @@ export function WeekendWarRoomModal({ events, watches, onRemoveWatch, onWatchAth
                 gap:"8px", cursor:"pointer", textAlign:"left"
               }}
             >
-              <div style={{ display:"flex", alignItems:"center", gap:"8px", flexWrap:"wrap", minWidth:0 }}>
-                <span style={{ color:"#4ade80", fontWeight:"900", fontSize:"0.8rem", letterSpacing:"0.5px" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:"8px", flexWrap:"nowrap", minWidth:0, overflow:"hidden" }}>
+                <span style={{ color:"#4ade80", fontWeight:"900", fontSize:"0.79rem", letterSpacing:"0.4px", whiteSpace:"nowrap", flexShrink:0 }}>
                   🔔 MY WATCHED ATHLETES ({groupedWatches.length})
                 </span>
                 {!showWatchedDrawer && groupedWatches.length > 0 && (
@@ -478,13 +478,7 @@ export function SubmitEventModal({ onClose }) {
   );
 }
 
-const lookupNormGym = (raw) => {
-  const k = foldStr(raw || "").replace(/[^a-z0-9]/g, "");
-  if (k.startsWith("aoj") || k.startsWith("artofjiujitsu")) return "artofjiujitsu";
-  if (k.startsWith("atoshq") || k === "atosjiujitsuhq" || k === "atosjiujitsu") return "atos";
-  if (k === "tmcombat" || k === "thiagomendescombatacademy" || k === "carlsongraciejiujitsusanantonio" || k === "carlsongraciesanantoniotx") return "carlsongraciesanantonio";
-  return k;
-};
+const lookupNormGym = (raw) => universalGymKey(raw);
 const lookupGymBucket = (gk) => {
   const c = (gk || "").replace(/[^a-z0-9]/g, "");
   return (c.slice(0, 2) || "00").padEnd(2, "0");
@@ -559,11 +553,19 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
       setRegShards(p => ({ ...p, [bkt]: [] }));
       Promise.all([
         getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__a2_" + bkt + "__"))),
+        getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__alltime_a2_" + bkt + "__"))),
+        getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__c2_" + bkt + "__"))),
         getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__r2_" + bkt + "__")))
-      ]).then(([snPod, snReg]) => {
+      ]).then(([snPod, snHist, snComp, snReg]) => {
         const a = [], r = [];
         snPod.forEach(d => ((d.data() || {}).items || []).forEach(it => {
           a.push({ ...it, _nf: foldStr(it.n), _af: foldStr(it.a) });
+        }));
+        snHist.forEach(d => ((d.data() || {}).items || []).forEach(it => {
+          a.push({ ...it, isHist: true, _nf: foldStr(it.n), _af: foldStr(it.a) });
+        }));
+        snComp.forEach(d => ((d.data() || {}).items || []).forEach(it => {
+          a.push({ ...it, isRosterEntry: true, _nf: foldStr(it.n), _af: foldStr(it.a) });
         }));
         snReg.forEach(d => ((d.data() || {}).items || []).forEach(it => {
           r.push({ ...it, _nf: foldStr(it.n), _af: foldStr(it.a) });
@@ -700,12 +702,19 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
         const m = arr[i];
         if (!fastRowMatches(m._nf || "", m._af || "", qFold, qTerms)) continue;
         const rec = ensureProfile(m.n, m.a);
-        const dk = (m.ev || "") + "|" + (m.d || "") + "|" + m.p;
+        if (m.isRosterEntry) continue;
+        const gTarget = inferTargetGender(rec.name, rec.events);
+        if (!strictVerifiedAthleteRowMatch(m.n, m.a, m.d, rec.name, rec.academy || m.a, gTarget)) continue;
+        const dk = foldStr(m.ev) + "|" + foldStr(m.d) + "|" + m.p;
         if (rec.seen.has(dk)) continue;
         rec.seen.add(dk);
-        const p = Number(m.p || 3);
-        if (p === 1) rec.g++; else if (p === 2) rec.s++; else rec.b++;
-        rec.events.push(m);
+        if (!m.isHist) {
+          const p = Number(m.p || 3);
+          if (p === 1) rec.g++; else if (p === 2) rec.s++; else rec.b++;
+          rec.events.push(m);
+        } else {
+          rec.histCount = (rec.histCount || 0) + 1;
+        }
         if (++scannedMatches >= 600) break;
       }
     }
@@ -809,7 +818,7 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
                     {p.academy && <span style={{ color:"#ff9f43", fontSize:"0.78rem" }}> • {p.academy}</span>}
                   </div>
                   <div style={{ fontSize:"0.76rem", color:"#cbd5e1" }}>
-                    🥇{p.g} 🥈{p.s} 🥉{p.b} (2026){p.proTitles ? " • " + p.proTitles[0] : ""}
+                    🥇{p.g} 🥈{p.s} 🥉{p.b} (2026){p.histCount ? ` • +${p.histCount} Prior-Yr` : ""}{p.proTitles ? " • " + p.proTitles[0] : ""}
                   </div>
                 </div>
                 <div style={{ display:"flex", gap:"6px" }} onClick={e => e.stopPropagation()}>

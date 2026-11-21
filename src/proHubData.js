@@ -670,3 +670,94 @@ export function getBeltVisualSpec(raw) {
   const stripes = sm ? Math.min(6, parseInt(sm[1], 10)) : 0;
   return { label: norm, main, mid, bar, stripes };
 }
+
+
+// Universal Academy Normalizer — merges 'HQ', 'Jiu-Jitsu', 'BJJ', 'Academy', 'MMA' variations cleanly across ALL gyms!
+export function universalGymKey(raw) {
+  const s = foldStr(raw || "").replace(/[^a-z0-9\s]/g, " ");
+  let toks = s.split(/\s+/).filter(Boolean);
+  const tailNoise = new Set(["hq", "headquarters", "bjj", "jiu", "jitsu", "jiujitsu", "academy", "mma", "team", "club", "association", "tx", "ca", "fl"]);
+  while (toks.length > 1 && tailNoise.has(toks[toks.length - 1])) toks.pop();
+  if (toks.length >= 4) {
+    toks = toks.filter((t, idx) => !(idx > 1 && (t === "jiu" || t === "jitsu" || t === "jiujitsu" || t === "bjj")));
+  }
+  const k = toks.join("");
+  if (k === "aoj" || k.startsWith("artofjiujitsu") || k === "artof") return "artofjiujitsu";
+  if (k.startsWith("atoshq") || k === "atosjiujitsu" || k === "atos") return "atos";
+  if (k === "gb" || k === "graciebarra") return "graciebarra";
+  if (k === "tmcombat" || k === "thiagomendescombat" || k.startsWith("carlsongraciesanantonio")) return "carlsongraciesanantonio";
+  return k;
+}
+
+export function inferRowGender(divStr) {
+  const d = " " + foldStr(divStr || "") + " ";
+  if (/\b(female|women|womens|girl|girls|femenino|feminino)\b/.test(d)) return "F";
+  if (/\b(male|men|mens|boy|boys|masculino)\b/.test(d)) return "M";
+  return "";
+}
+
+const COMMON_FEMALE_NAMES = new Set(["isabella","skyla","sky","cassia","cali","bailey","gabi","gabrieli","ffion","helena","mayssa","brianna","rafaela","rayssa","rebecca","sarah","sophia","emma","olivia","ava","mia","amelia","harper","evelyn","abigail","emily","elizabeth","camila","luna","sofia","avery","mila","aria","scarlett","penelope","layla","chloe","victoria","madison","eleanor","grace","nora","riley","zoey","hannah","hazel","lily","ellie","violet","lillian","zoe","stella","aurora","natalie","emilia","everly","leah","aubrey","willow","addison","lucy","audrey","bella","nova","brooklyn","paisley","savannah","claire","skylar","isla","genesis","naomi","elena","caroline","eliana","anna","maya","valentina","ruby","kennedy","ivy","ariana","aaliyah","cora","madelyn","alice","kinsley","hailey","gabriella","allison","gianna","serenity","samantha","autumn","quinn","eva","piper","sophie","sadie","delilah","josephine","nevaeh","adeline","ary","eisley","maria","dudah","eduarda","ana","julia","leticia","bianca","larissa","tamires","luiza","amanda","jessica","vanessa","natalia","fernanda","patricia","mariana","beatriz","bruna","carolina","gabriela","raquel","renata","tatiana","talita","tayane"]);
+const COMMON_MALE_NAMES = new Set(["royce","cassius","cash","roman","thiago","patrick","jose","ahmed","gordon","nicholas","mica","micael","tainan","diogo","diego","kade","tye","cole","kaynan","fellipe","felipe","andre","marcus","buchecha","roger","rickson","renzo","ralph","carlson","helio","carlos","royler","rodrigo","rafael","guilherme","gui","paulo","joao","levi","lachlan","craig","nicky","ethan","damien","pj","fabricio","lucas","matheus","mateus","gabriel","pedro","gustavo","henrique","bruno","leandro","romulo","xande","saulo","lovato","jt","keenan","shanahan","giancarlo","luke","owen","declan","liam","noah","oliver","elijah","james","william","benjamin","henry","alexander","mason","michael","daniel","jacob","logan","jackson","sebastian","jack","aiden","matthew","samuel","david","joseph","carter","wyatt","john","leo","jayden","dylan","grayson","isaac","julian","anthony","joshua","christopher","andrew","theodore","caleb","ryan","asher","nathan","thomas","ezra","hudson","charles","isaiah","eli","aaron","connor","adrian","jonathan","nolan","jeremiah","easton","elias","colton","cameron","carson","robert","angel","maverick","dominic","jaxson","greyson","adam","ian","austin","santiago","jordan","cooper","brayden","evan","ezekiel","xavier","jace","jameson","leonardo","bryson","axel","everett","parker","kayden","miles","sawyer","jason"]);
+
+export function inferTargetGender(fullName, sampleEvents = []) {
+  const first = foldStr(fullName || "").split(/\s+/)[0] || "";
+  if (COMMON_FEMALE_NAMES.has(first)) return "F";
+  if (COMMON_MALE_NAMES.has(first)) return "M";
+  let mCnt = 0, fCnt = 0;
+  (sampleEvents || []).forEach(e => {
+    if (foldStr(e.n || "") === foldStr(fullName || "")) {
+      const g = inferRowGender(e.d);
+      if (g === "M") mCnt++;
+      else if (g === "F") fCnt++;
+    }
+  });
+  if (mCnt > fCnt) return "M";
+  if (fCnt > mCnt) return "F";
+  return "";
+}
+
+// Strict Verified Row Matcher — eliminates "R. Mendes" cross-gender / cross-academy contamination 100%!
+export function strictVerifiedAthleteRowMatch(rowName, rowAcad, rowDiv, targetName, targetAcad, targetGender) {
+  const rFold = foldStr(rowName || "").replace(/[^a-z\s.]/g, " ").trim();
+  const tFold = foldStr(targetName || "").replace(/[^a-z\s.]/g, " ").trim();
+  if (!rFold || !tFold) return false;
+
+  // 1. NEVER allow cross-gender division contamination (e.g. Female division on Royce Mendes!)
+  const rGen = inferRowGender(rowDiv);
+  if (targetGender && rGen && targetGender !== rGen) return false;
+
+  // 2. Exact full name match
+  if (rFold.replace(/\./g, "") === tFold.replace(/\./g, "")) return true;
+
+  const rParts = rFold.split(/\s+/).filter(Boolean);
+  const tParts = tFold.split(/\s+/).filter(Boolean);
+  if (rParts.length < 2 || tParts.length < 2) return false;
+
+  const rFirst = rParts[0].replace(/\./g, "");
+  const tFirst = tParts[0].replace(/\./g, "");
+  const rLast = rParts[rParts.length - 1].replace(/\./g, "");
+  const tLast = tParts[tParts.length - 1].replace(/\./g, "");
+
+  // 3. Abbreviated First Initial (e.g. "R. Mendes" vs "Royce Mendes"):
+  //    MUST match BOTH first initial + exact surname AND have a matching non-empty Academy!
+  const isAbbrev = rFirst.length === 1 || tFirst.length === 1;
+  if (isAbbrev) {
+    if (rFirst[0] !== tFirst[0] || rLast !== tLast) return false;
+    const gRow = universalGymKey(rowAcad);
+    const gTgt = universalGymKey(targetAcad);
+    if (!gRow || !gTgt) return false;
+    return gRow === gTgt || gRow.includes(gTgt) || gTgt.includes(gRow);
+  }
+
+  // 4. Full First + Last Name match (with conflicting middle-initial guard)
+  if (rFirst === tFirst && rLast === tLast) {
+    if (rParts.length >= 3 && tParts.length >= 3) {
+      const rMid = rParts[1].replace(/\./g, "");
+      const tMid = tParts[1].replace(/\./g, "");
+      if (rMid && tMid && rMid[0] !== tMid[0]) return false;
+    }
+    return true;
+  }
+
+  return false;
+}

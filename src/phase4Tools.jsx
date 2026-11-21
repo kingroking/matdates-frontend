@@ -1,4 +1,4 @@
-import { athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, sameCompetitorCluster, findProAthlete, PRO_SUPERFIGHTS } from "./proHubData";
+import { athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, sameCompetitorCluster, findProAthlete, PRO_SUPERFIGHTS, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch } from './proHubData';
 import { AcademyProSuite } from "./proWorkspaces";
 import { auth } from "./firebase";
 import { computeEliteSpotlight } from "./proHubData";
@@ -820,7 +820,14 @@ export function LeaderboardModal({ onClose }) {
                         <div key={idx} style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:'8px', background:'#151b24', border:'1px solid #222b3a', borderRadius:'6px', padding:'8px 10px', fontSize:'0.82rem' }}>
                           <div style={{ minWidth:0 }}>
                             <div
-                              onClick={() => setOpenAthTrophy({ name: m.n, academy: activeGym.Academy, g: 0, s: 0, b: 0, events: [] })}
+                              onClick={() => {
+                                const tGen = inferTargetGender(m.n, indivList);
+                                const myEvs = indivList.filter(x => strictVerifiedAthleteRowMatch(x.n, activeGym.Academy, x.d, m.n, activeGym.Academy, tGen));
+                                const gC = myEvs.filter(x => Number(x.p) === 1).length;
+                                const sC = myEvs.filter(x => Number(x.p) === 2).length;
+                                const bC = myEvs.filter(x => Number(x.p) >= 3).length;
+                                setOpenAthTrophy({ name: m.n, academy: activeGym.Academy, g: gC, s: sC, b: bC, events: myEvs });
+                              }}
                               style={{ color:'#fff', fontWeight:'bold', wordBreak:'break-word', cursor:'pointer' }}
                               title="View full athlete podium record"
                             >
@@ -917,7 +924,7 @@ export function LeaderboardModal({ onClose }) {
                 : 'Search any competitor across 90,000+ verified 2026 IBJJF, ADCC, AGF, AJP & Smoothcomp podiums.'}
             </p>}
           </div>
-          <button onClick={onClose} style={{ background:'#1e293b', color:'#fff', border:'1px solid #475569', borderRadius:'6px', padding:'6px 11px', cursor:'pointer', fontWeight:'bold', fontSize:'0.84rem', flexShrink:0 }}>✕ Close</button>
+          <button onClick={onClose} title="Close" style={{ background:'#1e293b', color:'#fff', border:'1px solid #475569', borderRadius:'7px', width:'30px', height:'30px', display:'flex', alignItems:'center', justifyContent:'center', cursor:'pointer', fontWeight:'bold', fontSize:'0.9rem', flexShrink:0, marginLeft:'auto' }}>✕</button>
         </div>
 
         {/* Mode Toggle: Academy Standings vs Individual Athlete Podium Search */}

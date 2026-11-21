@@ -1,7 +1,8 @@
+import { MatAlertModal, useWatchedAthletes } from "./MatAlertModal";
 import React, { useState, useEffect } from "react";
 import { collection, doc, getDoc, getDocs, setDoc, addDoc, query, where } from "firebase/firestore";
 import { db } from "./firebase";
-import { foldStr } from "./proHubData";
+import { foldStr, strictVerifiedAthleteRowMatch, inferTargetGender } from "./proHubData";
 
 function compressImageFile(file) {
   return new Promise((resolve, reject) => {
@@ -233,6 +234,16 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, meda
   const [publicBios, setPublicBios] = useState([]);
   const [staffInput, setStaffInput] = useState("");
   const [coachNameInput, setCoachNameInput] = useState("");
+  const [rosterWatchPick, setRosterWatchPick] = useState(null);
+  const { getWatch, removeWatch } = useWatchedAthletes();
+  const openRosterWatch = (personName, e) => {
+    if (e) e.stopPropagation();
+    setRosterWatchPick({
+      ev: { id: "", name: "All Upcoming Tournaments", link: "https://matdates.com/?athlete=" + encodeURIComponent(personName).replace(/%20/g, "+"), sort_date: "" },
+      comp: { Name: personName, Academy: activeName || "", Division: "" },
+      existing: getWatch(personName)
+    });
+  };
   const [showTour, setShowTour] = useState(false);
   const [upForm, setUpForm] = useState({ athlete: "", eventName: "", medal: "🥇 Gold", insta: "", fileData: "" });
   const [uploading, setUploading] = useState(false);
@@ -309,21 +320,41 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, meda
   // Build unified, deduplicated Team Roster (Claimed Athletes + 2026 Medalists + Upcoming Squad)
   const teamRoster = React.useMemo(() => {
     const map = new Map();
-    const addMember = (nm, badge) => {
-      if (!nm || nm.trim().length < 2) return;
-      const k = foldStr(nm.trim());
-      if (!map.has(k)) map.set(k, { name: nm.trim(), g: 0, s: 0, b: 0, belt: "", upcoming: 0, claimed: false });
-      const rec = map.get(k);
-      if (badge?.belt && !rec.belt) rec.belt = badge.belt;
-      if (badge?.claimed) rec.claimed = true;
-      if (badge?.p === 1) rec.g++; else if (badge?.p === 2) rec.s++; else if (badge?.p === 3) rec.b++;
-      if (badge?.upcoming) rec.upcoming++;
+    const ensure = (rawNm, beltStr) => {
+      const nm = (rawNm || "").trim();
+      if (!nm) return null;
+      const rGen = inferTargetGender(nm, medalists || []);
+      for (const ex of map.values()) {
+        if (strictVerifiedAthleteRowMatch(nm, activeName, "", ex.name, activeName, ex.gender || rGen)) {
+          if (nm.length > ex.name.length && !/^[a-z]\./i.test(nm)) ex.name = nm;
+          if (beltStr && !ex.belt) ex.belt = beltStr;
+          return ex;
+        }
+      }
+      const k = foldStr(nm);
+      const item = { name: nm, belt: beltStr || "", gender: rGen, g: 0, s: 0, b: 0, events: [], seen: new Set() };
+      map.set(k, item);
+      return item;
     };
-    publicBios.forEach(b => addMember(b.name, { belt: b.belt, claimed: Boolean(b.isClaimed || b.ownerUid) }));
-    (medalists || []).forEach(m => addMember(m.n, { p: Number(m.p || 3) }));
-    upcomingSquad.forEach(u => addMember(u.n, { upcoming: 1 }));
-    return Array.from(map.values()).sort((a, b) => (b.claimed ? 3 : 0) + (b.g * 5 + b.s * 2 + b.b) - ((a.claimed ? 3 : 0) + (a.g * 5 + a.s * 2 + a.b)));
-  }, [publicBios, medalists, upcomingSquad]);
+
+    publicBios.forEach(b => { if (b.name) ensure(b.name, b.belt || ""); });
+    (medalists || []).forEach(m => {
+      if (m.isEventSummary || m.isRosterEntry) return;
+      const rec = ensure(m.n, "");
+      if (!rec) return;
+      const rowGen = inferTargetGender(rec.name, [m]);
+      if (rec.gender && rowGen && rec.gender !== rowGen) return;
+      const dk = foldStr(m.ev) + "|" + foldStr(m.d) + "|" + m.p;
+      if (rec.seen.has(dk)) return;
+      rec.seen.add(dk);
+      const p = Number(m.p || 3);
+      if (p === 1) rec.g++; else if (p === 2) rec.s++; else rec.b++;
+      rec.events.push({ ...m, a: activeName });
+    });
+    upcomingSquad.forEach(u => { if (u.n) ensure(u.n, ""); });
+
+    return Array.from(map.values()).sort((a, b) => (b.g * 9 + b.s * 3 + b.b) - (a.g * 9 + a.s * 3 + a.b) || a.name.localeCompare(b.name));
+  }, [publicBios, medalists, upcomingSquad, activeName]);
 
   // Build clickable Professors & Coaches directory for this Academy!
   const gymCoaches = React.useMemo(() => {
@@ -341,10 +372,12 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, meda
   }, [ws, publicBios, canonicalTargetKey]);
 
   const openPersonTrophy = (personName) => {
-    if (onOpenAthlete) {
-      onOpenAthlete({ name: personName, academy: activeName, g: 0, s: 0, b: 0, events: [] });
+    if (!onOpenAthlete) return;
+    const hit = teamRoster.find(r => foldStr(r.name) === foldStr(personName));
+    if (hit) {
+      onOpenAthlete({ name: hit.name, academy: activeName, g: hit.g || 0, s: hit.s || 0, b: hit.b || 0, events: hit.events || [] });
     } else {
-      window.location.href = "/?trophy=" + encodeURIComponent(personName).replace(/%20/g, "+");
+      onOpenAthlete({ name: personName, academy: activeName, g: 0, s: 0, b: 0, events: [] });
     }
   };
 
@@ -442,18 +475,30 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, meda
           {teamRoster.length === 0 ? (
             <div style={{ color:"#94a3b8", fontSize:"0.78rem" }}>Athletes appear here automatically as they claim profiles, register for upcoming events, or earn verified podiums!</div>
           ) : (
-            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(225px, 1fr))", gap:"6px", maxHeight:"240px", overflowY:"auto" }}>
-              {teamRoster.map((m, i) => (
-                <div key={i} onClick={() => openPersonTrophy(m.name)} style={{ background:"#182030", border:"1px solid #283548", padding:"7px 10px", borderRadius:"7px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"6px", fontSize:"0.79rem", cursor:"pointer" }}>
-                  <span style={{ minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
-                    <b style={{ color:"#fff", textDecoration:"underline", textDecorationColor:"rgba(56,189,248,0.5)" }}>{m.name}</b>
-                    {m.belt ? <span style={{ color:"#94a3b8", fontSize:"0.71rem" }}> • {m.belt}</span> : null}
-                  </span>
-                  <span style={{ fontSize:"0.73rem", color:"#fbbf24", fontWeight:"bold", flexShrink:0 }}>
-                    {(m.g + m.s + m.b) > 0 ? `🥇${m.g} 🥈${m.s} 🥉${m.b}` : "🏆 View →"}
-                  </span>
-                </div>
-              ))}
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(255px, 1fr))", gap:"6px", maxHeight:"260px", overflowY:"auto" }}>
+              {teamRoster.map((m, i) => {
+                const watching = Boolean(getWatch(m.name));
+                return (
+                  <div key={i} onClick={() => openPersonTrophy(m.name)} style={{ background:"#182030", border:"1px solid #283548", padding:"7px 9px", borderRadius:"7px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"6px", fontSize:"0.78rem", cursor:"pointer" }}>
+                    <span style={{ minWidth:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                      <b style={{ color:"#fff", textDecoration:"underline", textDecorationColor:"rgba(56,189,248,0.5)" }}>{m.name}</b>
+                      {m.belt ? <span style={{ color:"#94a3b8", fontSize:"0.7rem" }}> • {m.belt}</span> : null}
+                    </span>
+                    <span style={{ display:"inline-flex", alignItems:"center", gap:"5px", flexShrink:0 }}>
+                      <span style={{ fontSize:"0.72rem", color:"#fbbf24", fontWeight:"bold", whiteSpace:"nowrap" }}>
+                        {(m.g + m.s + m.b) > 0 ? `🥇${m.g} 🥈${m.s} 🥉${m.b}` : "🏆"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => openRosterWatch(m.name, e)}
+                        style={{ background: watching ? "#132a1c" : "#162536", color: watching ? "#2ecc71" : "#38bdf8", border: watching ? "1px solid #2ecc71" : "1px solid #0284c7", borderRadius:"5px", padding:"2px 6px", fontSize:"0.68rem", fontWeight:"800", cursor:"pointer", whiteSpace:"nowrap" }}
+                      >
+                        {watching ? "✓ Watching" : "🔔 Watch"}
+                      </button>
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -510,6 +555,17 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, meda
         </div>
       )}
 
+      {rosterWatchPick && (
+        <MatAlertModal
+          event={rosterWatchPick.ev}
+          comp={rosterWatchPick.comp}
+          division=""
+          existingWatch={rosterWatchPick.existing}
+          onRemove={removeWatch}
+          onClose={() => setRosterWatchPick(null)}
+        />
+      )}
+
       {/* PROFESSORS & COACHES DIRECTORY (Clickable to Trophy Rooms for all users; Staff Editor ONLY for Academy Accounts!) */}
       {sub === "STAFF" && (
         <div style={{ display:"grid", gap:"8px" }}>
@@ -518,15 +574,33 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, meda
             <div style={{ color:"#94a3b8", fontSize:"0.78rem" }}>No Professors or Coaches listed yet — populates as Academy owners add coaches or athletes list their Head Professor!</div>
           ) : (
             <div style={{ display:"grid", gap:"6px" }}>
-              {gymCoaches.map((c, idx) => (
-                <div key={idx} onClick={() => openPersonTrophy(c.name)} style={{ background:"#182030", border:"1px solid #2d3b52", borderRadius:"7px", padding:"8px 11px", display:"flex", justifyContent:"space-between", alignItems:"center", cursor:"pointer" }}>
-                  <div>
-                    <b style={{ color:"#fff", fontSize:"0.84rem", textDecoration:"underline", textDecorationColor:"rgba(74,222,128,0.5)" }}>{c.name}</b>
-                    <div style={{ color:"#94a3b8", fontSize:"0.73rem" }}>{c.displayTitle}</div>
+              {gymCoaches.map((c, idx) => {
+                const watchingCoach = Boolean(getWatch(c.name));
+                return (
+                  <div key={idx} onClick={() => openPersonTrophy(c.name)} style={{ background:"#182030", border:"1px solid #2d3b52", borderRadius:"7px", padding:"8px 11px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap", cursor:"pointer" }}>
+                    <div>
+                      <b style={{ color:"#fff", fontSize:"0.84rem", textDecoration:"underline", textDecorationColor:"rgba(74,222,128,0.5)" }}>{c.name}</b>
+                      <div style={{ color:"#94a3b8", fontSize:"0.73rem" }}>{c.displayTitle}</div>
+                    </div>
+                    <div style={{ display:"flex", alignItems:"center", gap:"6px" }} onClick={e => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={(e) => openRosterWatch(c.name, e)}
+                        style={{ background: watchingCoach ? "#132a1c" : "#162536", color: watchingCoach ? "#2ecc71" : "#38bdf8", border: watchingCoach ? "1px solid #2ecc71" : "1px solid #0284c7", borderRadius:"6px", padding:"4px 9px", fontSize:"0.72rem", fontWeight:"800", cursor:"pointer", whiteSpace:"nowrap" }}
+                      >
+                        {watchingCoach ? "✓ Watching" : "🔔 Watch"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openPersonTrophy(c.name)}
+                        style={{ background:"#f59e0b", color:"#000", border:"none", borderRadius:"6px", padding:"4px 9px", fontSize:"0.73rem", fontWeight:"800", cursor:"pointer", whiteSpace:"nowrap" }}
+                      >
+                        🏆 Trophy Room →
+                      </button>
+                    </div>
                   </div>
-                  <span style={{ background:"#f59e0b", color:"#000", borderRadius:"6px", padding:"4px 9px", fontSize:"0.73rem", fontWeight:"800" }}>🏆 Trophy Room →</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 

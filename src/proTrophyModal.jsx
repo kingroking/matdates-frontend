@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import { collection, doc, getDoc, getDocs, setDoc, query, where } from "firebase/firestore";
 import { db, auth } from "./firebase";
 import { addDoc } from "firebase/firestore";
-import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, matchesYouthInitial, computeEliteSpotlight, PRO_SUPERFIGHTS, BJJ_BELT_GROUPS, normalizeBeltValue, getBeltVisualSpec } from "./proHubData";
+import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, matchesYouthInitial, computeEliteSpotlight, PRO_SUPERFIGHTS, BJJ_BELT_GROUPS, normalizeBeltValue, getBeltVisualSpec, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch } from "./proHubData";
 
 export function SuperFightsPanel({ fed, qStr, onOpenTrophy, onWatch, getWatch }) {
   const [subTab, setSubTab] = useState("PROS");
@@ -93,40 +93,51 @@ export function SuperFightsPanel({ fed, qStr, onOpenTrophy, onWatch, getWatch })
 }
 
 
-function resizeAvatarFile(file) {
-  return new Promise((resolve, reject) => {
+async function resizeAvatarFile(file) {
+  if (!file) return "";
+  try {
+    if (typeof createImageBitmap === "function") {
+      const bmp = await createImageBitmap(file);
+      const maxDim = 320;
+      const scale = Math.min(1, maxDim / Math.max(bmp.width || 1, bmp.height || 1));
+      const w = Math.max(1, Math.round(bmp.width * scale));
+      const h = Math.max(1, Math.round(bmp.height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(bmp, 0, 0, w, h);
+      if (bmp.close) bmp.close();
+      const out = canvas.toDataURL("image/jpeg", 0.84);
+      if (out && out.length > 200) return out;
+    }
+  } catch {}
+  return new Promise((resolve) => {
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = () => {
+      const rawUrl = String(reader.result || "");
       const img = new Image();
       img.onload = () => {
-        const size = 240;
-        const c = document.createElement("canvas");
-        c.width = size; c.height = size;
-        const ctx = c.getContext("2d");
-        const minSide = Math.min(img.width, img.height);
-        const sx = Math.floor((img.width - minSide) / 2);
-        const sy = Math.floor((img.height - minSide) / 2);
-        ctx.drawImage(img, sx, sy, minSide, minSide, 0, 0, size, size);
-        resolve(c.toDataURL("image/jpeg", 0.74));
+        const maxDim = 320;
+        const scale = Math.min(1, maxDim / Math.max(img.width || 1, img.height || 1));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const jpg = canvas.toDataURL("image/jpeg", 0.84);
+        resolve(jpg && jpg.length > 200 ? jpg : "");
       };
-      img.onerror = reject;
-      img.src = ev.target.result;
+      img.onerror = () => {
+        alert("iPhone HEIC photo format couldn't be decoded directly by this browser — take a quick screenshot of the photo or pick a JPG/PNG and it will lock right in!");
+        resolve("");
+      };
+      img.src = rawUrl;
     };
-    reader.onerror = reject;
+    reader.onerror = () => resolve("");
     reader.readAsDataURL(file);
   });
 }
-
-const IG_ICON = (
-  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" style={{ display:"block" }}>
-    <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
-    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
-    <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
-  </svg>
-);
-
-const WATCH_GLOW_MIN = 100;
-const NEON_GOLD_KEYFRAMES = "@keyframes mdNeonGoldPulse { 0%, 100% { box-shadow: 0 0 10px #fde047, 0 0 24px rgba(250, 204, 21, 0.9), inset 0 0 6px #fef08a; border-color: #fef08a; } 50% { box-shadow: 0 0 18px #facc15, 0 0 36px rgba(234, 179, 8, 1), inset 0 0 10px #fde047; border-color: #ffffff; } }";
 
 function limitSpiritEmojis(raw) {
   const segs = (typeof Intl !== "undefined" && Intl.Segmenter)
@@ -196,6 +207,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
   const [evs, setEvs] = useState(activeAth?.events || []);
   const [histEvs, setHistEvs] = useState([]);
   const [promBouts, setPromBouts] = useState([]);
+  const [fedRanks, setFedRanks] = useState([]);
   const [eraView, setEraView] = useState("2026");
   const [cnt, setCnt] = useState({ g: activeAth?.g || 0, s: activeAth?.s || 0, b: activeAth?.b || 0, acad: activeAth?.academy || activeAth?.a || "" });
   const [bio, setBio] = useState(null);
@@ -256,8 +268,8 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
     getDoc(doc(db, "event_competitors", pubKey)).then(pd => {
       if (pd.exists() && pd.data()?.event_id === "__public_bios__") {
         const pbd = pd.data();
-        setBio(prev => ({ ...(prev || {}), ...pbd }));
-        setForm(prev => ({ ...emptyForm, ...prev, ...pbd, belt: normalizeBeltValue(pbd.belt || prev.belt), handle: pbd.handle ? "@" + pbd.handle.replace(/^@+/, "") : "" }));
+        setBio(prev => ({ ...(prev || {}), ...pbd, avatarData: pbd.avatarData || prev?.avatarData || "" }));
+        setForm(prev => ({ ...emptyForm, ...prev, ...pbd, avatarData: pbd.avatarData || prev?.avatarData || "", belt: normalizeBeltValue(pbd.belt || prev.belt), handle: pbd.handle ? "@" + pbd.handle.replace(/^@+/, "") : "" }));
       }
     }).catch(() => {});
 
@@ -270,8 +282,12 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
           setDoc(doc(db, "mat_watches", docKey), { avatarData: cached.avatarData }, { merge: true }).catch(() => {});
           setDoc(doc(db, "event_competitors", pubKey), { event_id: "__public_bios__", slug, avatarData: cached.avatarData }, { merge: true }).catch(() => {});
         }
-        setBio(bd);
-        setForm({ ...emptyForm, ...bd, belt: normalizeBeltValue(bd.belt), handle: bd.handle ? "@" + bd.handle.replace(/^@+/, "") : "" });
+        setBio(prev => {
+          const merged = { ...(prev || {}), ...bd, avatarData: bd.avatarData || prev?.avatarData || cached?.avatarData || "" };
+          try { localStorage.setItem(lsKey, JSON.stringify(merged)); } catch {}
+          return merged;
+        });
+        setForm(prev => ({ ...emptyForm, ...prev, ...bd, avatarData: bd.avatarData || prev?.avatarData || cached?.avatarData || "", belt: normalizeBeltValue(bd.belt || prev.belt), handle: bd.handle ? "@" + bd.handle.replace(/^@+/, "") : "" }));
         try { localStorage.setItem(lsKey, JSON.stringify(bd)); } catch {}
       }
     }).catch(() => {});
@@ -311,61 +327,73 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
       if (myBouts.length) setPromBouts(myBouts);
     }).catch(() => {});
 
-    const histBkts = athBucketsForQuery(nm);
-    if (!histBkts.length && athBucket(nm) !== "__") histBkts.push(athBucket(nm));
-    Promise.all(histBkts.map(b => getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__alltime_a2_" + b + "__"))))).then(snaps => {
-      const tgt = foldStr(nm), qWords = tgt.split(/\s+/).filter(Boolean), seenH = new Set(), outH = [];
+    const knownAcad = activeAth?.academy || activeAth?.a || cached?.academy || "";
+    const seedGender = inferTargetGender(nm, passedEvs);
+    setFedRanks([]);
+
+    const bkts = athBucketsForQuery(nm);
+    if (!bkts.length && athBucket(nm) !== "__") bkts.push(athBucket(nm));
+
+    // Fetch Daily Official Federation #Rank Standings (__f2_XX__) for this athlete!
+    Promise.all(bkts.map(b => getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__f2_" + b + "__"))))).then(snaps => {
+      const fHits = [], seenF = new Set();
       snaps.forEach(s => s.forEach(d => ((d.data() || {}).items || []).forEach(it => {
-        const cFold = foldStr(it.n);
-        let ok = cFold === tgt || (it.ag === "YOUTH" && matchesYouthInitial(it.n, nm));
-        if (!ok && qWords.length >= 2) {
-          const cw = cFold.split(/\s+/).filter(Boolean);
-          if (cw.length >= 2 && cw[0] === qWords[0] && cw[cw.length - 1] === qWords[qWords.length - 1]) ok = true;
-        }
-        if (!ok) return;
+        if (!strictVerifiedAthleteRowMatch(it.n, it.a || knownAcad, it.cat || "", nm, knownAcad, seedGender)) return;
+        const fk = it.fed + "|" + it.cat;
+        if (seenF.has(fk)) return;
+        seenF.add(fk);
+        fHits.push(it);
+      })));
+      fHits.sort((a, b) => parseInt(String(a.rank || "9999").replace(/\D/g, ""), 10) - parseInt(String(b.rank || "9999").replace(/\D/g, ""), 10));
+      setFedRanks(fHits);
+    }).catch(() => {});
+
+    // Fetch Prior-Year All-Time Career Podiums (__alltime_a2_XX__) with strict gender + academy guard!
+    Promise.all(bkts.map(b => getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__alltime_a2_" + b + "__"))))).then(snaps => {
+      const seenH = new Set(), outH = [];
+      snaps.forEach(s => s.forEach(d => ((d.data() || {}).items || []).forEach(it => {
+        if (!strictVerifiedAthleteRowMatch(it.n, it.a, it.d, nm, knownAcad, seedGender)) return;
         const dk = foldStr(it.ev) + "|" + foldStr(it.d) + "|" + it.p;
         if (seenH.has(dk)) return;
         seenH.add(dk);
         outH.push(it);
       })));
-      if (outH.length) setHistEvs(outH);
+      setHistEvs(outH);
     }).catch(() => {});
 
-    // Always merge full __a2_XX__ shards with any passedEvs so 2026 & All-Time counts are 100% complete!
-    const bkts = athBucketsForQuery(nm);
-    if (!bkts.length && athBucket(nm) !== "__") bkts.push(athBucket(nm));
+    // Fetch 2026 Season Podiums (__a2_XX__) with strict gender + academy guard!
     Promise.all(bkts.map(b => getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__a2_" + b + "__"))))).then(snaps => {
-      const allDocs = []; snaps.forEach(s => s.forEach(d => allDocs.push(d)));
-      const sn = allDocs;
-      const tgt = foldStr(nm);
-      const qWords = tgt.split(/\s+/).filter(Boolean);
-      const seen = new Set(), out = [...passedEvs];
-      passedEvs.forEach(pe => seen.add(foldStr(pe.ev) + "|" + foldStr(pe.d) + "|" + pe.p));
-      let g = 0, s = 0, b = 0, acad = activeAth?.academy || activeAth?.a || "";
-      sn.forEach(d => ((d.data() || {}).items || []).forEach(it => {
-        const cFold = foldStr(it.n);
-        let isMatch = cFold.includes(tgt) || tgt.includes(cFold) || (it.ag === 'YOUTH' && matchesYouthInitial(it.n, nm));
-        if (!isMatch && qWords.length >= 2) {
-          const cWords = cFold.split(/\s+/).filter(Boolean);
-          if (cWords.length >= 2 && cWords[0] === qWords[0] && cWords[cWords.length - 1] === qWords[qWords.length - 1]) {
-            isMatch = true;
-          }
-        }
-        if (!isMatch) return;
+      const rawItems = [];
+      snaps.forEach(s => s.forEach(d => ((d.data() || {}).items || []).forEach(it => rawItems.push(it))));
+      const resolvedGen = seedGender || inferTargetGender(nm, rawItems);
+      let resolvedAcad = knownAcad;
+      if (!resolvedAcad) {
+        const exactHit = rawItems.find(it => foldStr(it.n) === foldStr(nm) && it.a);
+        if (exactHit) resolvedAcad = exactHit.a;
+      }
+
+      const seen = new Set(), out = [];
+      passedEvs.forEach(pe => {
+        if (!strictVerifiedAthleteRowMatch(pe.n || nm, pe.a || resolvedAcad, pe.d, nm, resolvedAcad, resolvedGen)) return;
+        const dk = foldStr(pe.ev) + "|" + foldStr(pe.d) + "|" + pe.p;
+        if (!seen.has(dk)) { seen.add(dk); out.push(pe); }
+      });
+
+      rawItems.forEach(it => {
+        if (it.isEventSummary || it.isRosterEntry) return;
+        if (!strictVerifiedAthleteRowMatch(it.n, it.a, it.d, nm, resolvedAcad, resolvedGen)) return;
         const dk = foldStr(it.ev) + "|" + foldStr(it.d) + "|" + it.p;
         if (seen.has(dk)) return;
-        seen.add(dk); out.push(it);
-        if (!acad || (it.a || "").length > acad.length) acad = it.a || acad;
-        const p = Number(it.p || 3);
-        if (p === 1) g++; else if (p === 2) s++; else b++;
-      }));
-      if (out.length) {
-        const gTot = out.reduce((a, x) => a + (x.mg !== undefined ? Number(x.mg) : (Number(x.p) === 1 ? 1 : 0)), 0);
-        const sTot = out.reduce((a, x) => a + (x.ms !== undefined ? Number(x.ms) : (Number(x.p) === 2 ? 1 : 0)), 0);
-        const bTot = out.reduce((a, x) => a + (x.mb !== undefined ? Number(x.mb) : (Number(x.p) >= 3 ? 1 : 0)), 0);
-        setEvs(out);
-        setCnt({ g: gTot, s: sTot, b: bTot, acad });
-      }
+        seen.add(dk);
+        out.push(it);
+        if (!resolvedAcad && it.a) resolvedAcad = it.a;
+      });
+
+      const gTot = out.reduce((a, x) => a + (x.mg !== undefined ? Number(x.mg) : (Number(x.p) === 1 ? 1 : 0)), 0);
+      const sTot = out.reduce((a, x) => a + (x.ms !== undefined ? Number(x.ms) : (Number(x.p) === 2 ? 1 : 0)), 0);
+      const bTot = out.reduce((a, x) => a + (x.mb !== undefined ? Number(x.mb) : (Number(x.p) >= 3 ? 1 : 0)), 0);
+      setEvs(out);
+      setCnt({ g: gTot, s: sTot, b: bTot, acad: resolvedAcad });
     }).catch(() => {});
   }, [nm]);
 
@@ -492,7 +520,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
       favMove: (form.favMove || "").trim(),
       cheatMeal: (form.cheatMeal || "").trim(),
       funFact: (form.funFact || "").trim(),
-      avatarData: form.avatarData !== undefined ? form.avatarData : (bio?.avatarData || ""),
+      avatarData: form.avatarData === "__REMOVE__" ? "" : (form.avatarData || bio?.avatarData || ""),
       openSf: Boolean(form.openSf),
       showWatchCount: Boolean(form.showWatchCount),
       coEmails: Array.from(new Set((form.coEmails || bio?.coEmails || []).map(x => String(x).trim().toLowerCase()).filter(x => x.includes("@")))),
@@ -687,8 +715,8 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
                   cursor: isOwner ? "pointer" : "default", boxShadow:"0 6px 18px rgba(0,0,0,0.5)"
                 }}
               >
-                {(editBio && form.avatarData) || bio?.avatarData ? (
-                  <img src={(editBio && form.avatarData !== undefined) ? form.avatarData : bio.avatarData} alt={nm} style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }} />
+                {((editBio ? (form.avatarData !== "__REMOVE__" && (form.avatarData || bio?.avatarData)) : bio?.avatarData)) ? (
+                  <img src={editBio ? (form.avatarData && form.avatarData !== "__REMOVE__" ? form.avatarData : bio?.avatarData) : bio?.avatarData} alt={nm} style={{ width:"100%", height:"100%", objectFit:"cover", display:"block" }} />
                 ) : (
                   <span style={{ color:"#fbbf24", fontWeight:"900", fontSize:"1.32rem" }}>{initials}</span>
                 )}
@@ -945,10 +973,10 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
                     )}
                     <div style={{ flex:1, minWidth:"180px" }}>
                       <div style={{ fontSize:"0.75rem", color:"#fbbf24", fontWeight:"bold", marginBottom:"3px" }}>📸 Athlete Profile Photo (Glows Neon Gold at {WATCH_GLOW_MIN}+ Watchers • Now {watcherCount})</div>
-                      <input type="file" accept="image/*" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { const d = await resizeAvatarFile(f); setForm(p => ({ ...p, avatarData: d })); } }} style={{ fontSize:"0.75rem", color:"#cbd5e1", width:"100%" }} />
+                      <input type="file" accept="image/*" onChange={async (e) => { const f = e.target.files?.[0]; if (f) { const d = await resizeAvatarFile(f); if (d) setForm(p => ({ ...p, avatarData: d })); } }} style={{ fontSize:"0.75rem", color:"#cbd5e1", width:"100%" }} />
                     </div>
                     {(form.avatarData || bio?.avatarData) && (
-                      <button type="button" onClick={() => setForm(p => ({ ...p, avatarData: "" }))} style={{ background:"#2a1215", color:"#fca5a5", border:"1px solid #ef4444", borderRadius:"5px", padding:"4px 8px", fontSize:"0.72rem", cursor:"pointer" }}>Remove Pic</button>
+                      <button type="button" onClick={() => setForm(p => ({ ...p, avatarData: "__REMOVE__" }))} style={{ background:"#2a1215", color:"#fca5a5", border:"1px solid #ef4444", borderRadius:"5px", padding:"4px 8px", fontSize:"0.72rem", cursor:"pointer" }}>Remove Pic</button>
                     )}
                   </div>
 
@@ -1051,6 +1079,124 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
               {elite.pro.bouts.map((b, i) => <div key={i} style={{ background:"#131a26", border:"1px solid #1e293b", padding:"7px 10px", borderRadius:"7px", fontSize:"0.77rem", marginBottom:"4px" }}>🥊 <b>{b.ev}</b> — <b style={{ color:"#4ade80" }}>{b.res}</b> ({b.sub})</div>)}
             </div>
           )}
+
+          {/* 5B. CURRENT FEDERATION RANKINGS & STANDINGS (Daily Official #Ranks — Jits Strictly Youth-Only!) */}
+          {(() => {
+            // STRICT GUARD: Jits NEVER shows on an Adult Trophy Room!
+            const showYouthJits = Boolean(isYouthCompetitor && (bio?.jitsRating || bio?.jitsOverallRank || bio?.jitsRecord));
+
+            // Filter official __f2_XX__ federation ranks so Youth vs Adult categories match the athlete cleanly
+            const validFedRanks = fedRanks.filter(r => isYouthCompetitor ? r.ag !== "ADULT" || !/adult|master/i.test(r.cat || "") : r.ag !== "YOUTH");
+
+            // Also summarize verified medals by federation for circuits where athlete competed
+            const sourcePool = eraView === "ALLTIME" ? allCombinedEvs : s26Evs;
+            const fedMedalMap = new Map();
+            const classifyFed = (m) => {
+              const blob = ((m.f || "") + " " + (m.ev || "")).toLowerCase();
+              if (blob.includes("ibjjf")) return "IBJJF";
+              if (blob.includes("jjwl") || blob.includes("world league")) return "JJWL";
+              if (blob.includes("adcc")) return "ADCC";
+              if (blob.includes("ufc")) return "UFC BJJ";
+              if (blob.includes("agf")) return "AGF";
+              if (blob.includes("ajp") || blob.includes("abu dhabi")) return "AJP";
+              if (blob.includes("naga")) return "NAGA";
+              if (blob.includes("grappling industries")) return "Grappling Ind.";
+              return "Smoothcomp";
+            };
+            sourcePool.forEach(m => {
+              const fk = classifyFed(m);
+              if (!fedMedalMap.has(fk)) fedMedalMap.set(fk, { fed: fk, g: 0, s: 0, b: 0 });
+              const rec = fedMedalMap.get(fk);
+              const p = Number(m.p || 3);
+              if (p === 1) rec.g++; else if (p === 2) rec.s++; else rec.b++;
+            });
+
+            // Attach official #Rank(s) onto each federation card!
+            const combinedCards = [];
+            const usedFeds = new Set();
+            validFedRanks.forEach(rk => {
+              const med = fedMedalMap.get(rk.fed);
+              usedFeds.add(rk.fed);
+              combinedCards.push({
+                key: rk.fed + "_" + rk.cat,
+                fed: rk.fed,
+                rank: rk.rank,
+                cat: rk.cat,
+                pts: rk.pts,
+                medals: med ? `🥇${med.g} 🥈${med.s} 🥉${med.b}` : "",
+                updated: rk.u || "Daily Sync"
+              });
+            });
+            Array.from(fedMedalMap.values()).forEach(m => {
+              if (usedFeds.has(m.fed)) return;
+              combinedCards.push({
+                key: m.fed,
+                fed: m.fed,
+                rank: "",
+                cat: eraView === "ALLTIME" ? "Verified Career Record" : "2026 Verified Record",
+                pts: "",
+                medals: `🥇${m.g} 🥈${m.s} 🥉${m.b}`,
+                updated: "Live"
+              });
+            });
+
+            if (!showYouthJits && combinedCards.length === 0) return null;
+
+            return (
+              <div style={{ marginBottom:"13px", background:"#111827", border:"1px solid #283548", borderRadius:"11px", padding:"11px 12px" }}>
+                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:"6px", flexWrap:"wrap", marginBottom:"8px" }}>
+                  <span style={{ color:"#fbbf24", fontWeight:"900", fontSize:"0.75rem", letterSpacing:"0.5px" }}>
+                    📊 CURRENT FEDERATION RANKINGS &amp; STANDINGS
+                  </span>
+                  <span style={{ color:"#4ade80", fontSize:"0.66rem", fontWeight:"800" }}>
+                    ● Daily Sync{validFedRanks[0]?.u ? ` (${validFedRanks[0].u})` : ""}
+                  </span>
+                </div>
+
+                {/* YOUTH ONLY: Official Jits P4P, Gi & No-Gi National/Global Standing */}
+                {showYouthJits && (
+                  <div style={{ background:"linear-gradient(90deg,#162238,#0f172a)", border:"1px solid rgba(56,189,248,0.45)", borderRadius:"9px", padding:"8px 10px", marginBottom: combinedCards.length ? "8px" : 0, display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:"7px", flexWrap:"wrap" }}>
+                      <span style={{ background:"#0284c7", color:"#fff", borderRadius:"5px", padding:"2px 7px", fontSize:"0.67rem", fontWeight:"900" }}>JITS YOUTH STANDING</span>
+                      {bio.jitsOverallRank && <span style={{ color:"#fde047", fontWeight:"900", fontSize:"0.86rem" }}>P4P {bio.jitsOverallRank}</span>}
+                      {bio.jitsRating && <span style={{ color:"#f8fafc", fontWeight:"800", fontSize:"0.79rem" }}>• {bio.jitsRating} Rating {bio.jitsTier ? `(${bio.jitsTier})` : ""}</span>}
+                      {bio.jitsPercentile && <span style={{ color:"#38bdf8", fontSize:"0.72rem", fontWeight:"700" }}>• {bio.jitsPercentile}</span>}
+                    </div>
+                    <div style={{ display:"flex", alignItems:"center", gap:"8px", flexWrap:"wrap", fontSize:"0.74rem", color:"#cbd5e1", fontWeight:"700" }}>
+                      {bio.jitsGiRank && <span>🥋 Gi <b style={{ color:"#fff" }}>{bio.jitsGiRank}</b></span>}
+                      {bio.jitsNoGiRank && <span>⚡ No-Gi <b style={{ color:"#fff" }}>{bio.jitsNoGiRank}</b></span>}
+                      {bio.jitsRecord && <span style={{ color:"#4ade80" }}>• <b>{bio.jitsRecord}</b> {bio.jitsWinRate ? `(${bio.jitsWinRate})` : ""}</span>}
+                    </div>
+                  </div>
+                )}
+
+                {/* Per-Federation Official #Rank & Verified Circuit Standings */}
+                {combinedCards.length > 0 && (
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(152px, 1fr))", gap:"6px" }}>
+                    {combinedCards.slice(0, 8).map(c => (
+                      <div key={c.key} style={{ background:"#0b101b", border: c.rank ? "1px solid rgba(250,204,21,0.45)" : "1px solid #1e293b", borderRadius:"8px", padding:"7px 9px", display:"flex", flexDirection:"column", gap:"3px" }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:"4px" }}>
+                          <span style={{ color:"#93c5fd", fontWeight:"900", fontSize:"0.73rem" }}>{c.fed}</span>
+                          {c.rank ? (
+                            <span style={{ background:"rgba(250,204,21,0.16)", color:"#fde047", border:"1px solid rgba(250,204,21,0.45)", borderRadius:"5px", padding:"1px 6px", fontWeight:"900", fontSize:"0.72rem" }}>
+                              Rank {c.rank}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div style={{ fontSize:"0.68rem", color:"#94a3b8", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }} title={c.cat}>
+                          {c.cat}
+                        </div>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:"4px", fontSize:"0.73rem", fontWeight:"800", color:"#f8fafc", whiteSpace:"nowrap" }}>
+                          <span>{c.medals || "Ranked"}</span>
+                          {c.pts && <span style={{ color:"#34d399", fontSize:"0.7rem" }}>{c.pts}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* 6. VERIFIED TOURNAMENT PODIUMS & SUPERFIGHTS + SECOND SYNCED 2026 / ALL-TIME MINI TOGGLE */}
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap", marginBottom:"8px", paddingTop:"4px" }}>
