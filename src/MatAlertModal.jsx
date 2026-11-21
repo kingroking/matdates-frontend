@@ -5,13 +5,22 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { getMessaging, getToken, isSupported, onMessage } from 'firebase/messaging';
 import { db, auth } from './firebase';
 
-const LS_KEY = 'md_watches_v1';
-const readLocal = () => {
-  try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); }
-  catch { return []; }
+const GUEST_LS_KEY = 'md_watches_guest_v2';
+const userLsKey = (uid) => (uid ? `md_watches_u_${uid}` : GUEST_LS_KEY);
+
+const readLocal = (uid = (auth.currentUser && auth.currentUser.uid) || '') => {
+  try {
+    const raw = JSON.parse(localStorage.getItem(userLsKey(uid)) || '[]');
+    return Array.isArray(raw) ? raw : [];
+  } catch {
+    return [];
+  }
 };
-const writeLocal = (arr) => {
-  localStorage.setItem(LS_KEY, JSON.stringify(arr));
+
+const writeLocal = (arr, uid = (auth.currentUser && auth.currentUser.uid) || '') => {
+  try {
+    localStorage.setItem(userLsKey(uid), JSON.stringify(arr));
+  } catch {}
   window.dispatchEvent(new Event('md-watches-updated'));
 };
 
@@ -36,36 +45,88 @@ function bindForegroundPush() {
 }
 
 export function useWatchedAthletes() {
-  const [fsList, setFsList] = useState([]);
-  const [locList, setLocList] = useState(readLocal);
+  const [curUid, setCurUid] = useState(() => (auth.currentUser && auth.currentUser.uid) || '');
+  const [uidDocs, setUidDocs] = useState([]);
+  const [emailDocs, setEmailDocs] = useState([]);
+  const [locList, setLocList] = useState(() => readLocal((auth.currentUser && auth.currentUser.uid) || ''));
 
   useEffect(() => {
     bindForegroundPush();
-    const sync = () => setLocList(readLocal());
+    // Clean up legacy shared v1 key if signed in so stranger/test entries never bleed across accounts!
+    const sync = () => setLocList(readLocal((auth.currentUser && auth.currentUser.uid) || ''));
     window.addEventListener('md-watches-updated', sync);
-    let unsubFs = null;
+
+    let unsubUid = null;
+    let unsubEmail = null;
+
     const unsubAuth = onAuthStateChanged(auth, (u) => {
-      if (unsubFs) { unsubFs(); unsubFs = null; }
-      if (!u) { setFsList([]); return; }
-      const q = query(collection(db, 'mat_watches'), where('uid', '==', u.uid));
-      unsubFs = onSnapshot(q, (snap) => {
-        setFsList(
-          snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(w => w.active !== false || w.followFuture === true)
-        );
+      if (unsubUid) { unsubUid(); unsubUid = null; }
+      if (unsubEmail) { unsubEmail(); unsubEmail = null; }
+
+      const nextUid = u ? u.uid : '';
+      setCurUid(nextUid);
+      setLocList(readLocal(nextUid));
+
+      if (!u) {
+        setUidDocs([]);
+        setEmailDocs([]);
+        return;
+      }
+
+      // Remove legacy unscoped shared localStorage list so old test watches never pollute signed-in accounts
+      try { localStorage.removeItem('md_watches_v1'); } catch {}
+
+      // 1) Live subscription to watches owned by this Firebase UID
+      const qUid = query(collection(db, 'mat_watches'), where('uid', '==', u.uid));
+      unsubUid = onSnapshot(qUid, (snap) => {
+        const rows = snap.docs
+          .map(d => ({ id: d.id, ...d.data() }))
+          .filter(w => w.active !== false || w.followFuture === true);
+        setUidDocs(rows);
+        writeLocal(rows, u.uid);
       }, () => {});
+
+      // 2) Live subscription to watches created under this user's email BEFORE signing in (auto-claims them to uid!)
+      const cleanEmail = (u.email || '').trim();
+      if (cleanEmail) {
+        const qEmail = query(collection(db, 'mat_watches'), where('email', '==', cleanEmail));
+        unsubEmail = onSnapshot(qEmail, (snap) => {
+          const rows = snap.docs
+            .map(d => ({ id: d.id, ...d.data() }))
+            .filter(w => (!w.uid || w.uid === u.uid) && (w.active !== false || w.followFuture === true));
+          setEmailDocs(rows);
+          // Permanently link pre-login email watches to u.uid so future logins on any device find them immediately!
+          rows.forEach(w => {
+            if (!w.uid && w.id) {
+              updateDoc(doc(db, 'mat_watches', w.id), { uid: u.uid }).catch(() => {});
+            }
+          });
+        }, () => {});
+      }
     });
+
     return () => {
       window.removeEventListener('md-watches-updated', sync);
-      if (unsubFs) unsubFs();
+      if (unsubUid) unsubUid();
+      if (unsubEmail) unsubEmail();
       unsubAuth();
     };
   }, []);
 
   const merged = new Map();
-  [...locList, ...fsList].forEach(w => {
+  // Signed-in users trust Firestore (uidDocs + emailDocs) + their own uid-scoped cache; never leak other users' local items!
+  const sourceItems = curUid
+    ? [...locList.filter(w => !w.uid || w.uid === curUid), ...emailDocs, ...uidDocs]
+    : locList;
+
+  sourceItems.forEach(w => {
     if (w && (w.active !== false || w.followFuture === true) && w.athleteName) {
-      const k = w.id || `${w.eventId || ''}::${w.athleteName.toLowerCase()}`;
-      merged.set(k, w);
+      // Deduplicate by eventId + athleteName so email-claimed + uid-synced copies never double-count!
+      const dedupKey = `${w.eventId || ''}::${(w.athleteName || '').trim().toLowerCase()}`;
+      const prev = merged.get(dedupKey);
+      if (!prev || (!prev.id && w.id) || (!prev.uid && w.uid)) {
+        merged.set(dedupKey, w);
+      }
     }
   });
   const watches = Array.from(merged.values());
@@ -81,13 +142,23 @@ export function useWatchedAthletes() {
 
   const removeWatch = async (w) => {
     if (!w) return;
-    writeLocal(readLocal().filter(x =>
-      x.id !== w.id && !(x.athleteName === w.athleteName && x.eventId === w.eventId)
-    ));
-    if (w.id) {
-      try { await deleteDoc(doc(db, 'mat_watches', w.id)); }
+    const activeUid = (auth.currentUser && auth.currentUser.uid) || '';
+    const targetName = (w.athleteName || '').trim().toLowerCase();
+    writeLocal(
+      readLocal(activeUid).filter(x =>
+        x.id !== w.id && !((x.athleteName || '').trim().toLowerCase() === targetName && (x.eventId || '') === (w.eventId || ''))
+      ),
+      activeUid
+    );
+    // Remove ALL matching Firestore watch docs for this athlete/event under this user so it never ghosts back!
+    const matchingDocs = watches.filter(x =>
+      x.id && (x.id === w.id || ((x.athleteName || '').trim().toLowerCase() === targetName && (!w.eventId || (x.eventId || '') === (w.eventId || ''))))
+    );
+    const idsToRemove = matchingDocs.length ? matchingDocs.map(x => x.id) : (w.id ? [w.id] : []);
+    for (const docId of idsToRemove) {
+      try { await deleteDoc(doc(db, 'mat_watches', docId)); }
       catch {
-        try { await updateDoc(doc(db, 'mat_watches', w.id), { active: false, followFuture: false }); }
+        try { await updateDoc(doc(db, 'mat_watches', docId), { active: false, followFuture: false }); }
         catch (e) { console.warn('Remove watch warn:', e); }
       }
     }
@@ -213,7 +284,8 @@ export function MatAlertModal({ event, comp, division, existingWatch, onRemove, 
         createdAt: new Date().toISOString()
       };
       const ref = await addDoc(collection(db, 'mat_watches'), payload);
-      writeLocal([...readLocal(), { id: ref.id, ...payload }]);
+      const saveUid = curUser ? curUser.uid : '';
+        writeLocal([...readLocal(saveUid), { id: ref.id, ...payload }], saveUid);
       trackEvent('matAlertsCreated');
       setDoc(doc(db, 'site_stats', '__totals__'), {
         activeWatches: increment(1),
