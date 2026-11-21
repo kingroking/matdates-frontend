@@ -264,9 +264,51 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
   });
   const [showMusicPicker, setShowMusicPicker] = useState(false);
   const [playingVibe, setPlayingVibe] = useState(false);
+  const [previewArt, setPreviewArt] = useState("");
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const previewAudioRef = { current: null };
+  useEffect(() => {
+    return () => {
+      if (window.__mdActiveAudio) {
+        try { window.__mdActiveAudio.pause(); window.__mdActiveAudio = null; } catch {}
+      }
+    };
+  }, []);
+
+  const toggleSongPreview = async (e) => {
+    e.stopPropagation();
+    if (playingVibe && window.__mdActiveAudio) {
+      try { window.__mdActiveAudio.pause(); window.__mdActiveAudio = null; } catch {}
+      setPlayingVibe(false);
+      return;
+    }
+    if (!bio?.songRepeat) return;
+    setLoadingPreview(true);
+    try {
+      const res = await fetch("https://itunes.apple.com/search?term=" + encodeURIComponent(bio.songRepeat) + "&media=music&entity=song&limit=1");
+      const data = await res.json();
+      const track = data?.results?.[0];
+      if (track?.artworkUrl60) setPreviewArt(track.artworkUrl60);
+      if (track?.previewUrl) {
+        if (window.__mdActiveAudio) { try { window.__mdActiveAudio.pause(); } catch {} }
+        const audio = new Audio(track.previewUrl);
+        audio.volume = 0.85;
+        window.__mdActiveAudio = audio;
+        audio.onended = () => { setPlayingVibe(false); window.__mdActiveAudio = null; };
+        await audio.play();
+        setPlayingVibe(true);
+        setLoadingPreview(false);
+        return;
+      }
+    } catch {}
+    setLoadingPreview(false);
+    setPlayingVibe(true);
+    playBioMusicVibe(bio?.musicVibe || bio?.songRepeat);
+    setTimeout(() => setPlayingVibe(false), 500);
+  };
 
   const emptyForm = {
-    handle: "", nickname: "", spiritEmoji: "", songRepeat: "", songUrl: "",
+    handle: "", nickname: "", spiritEmoji: "", songRepeat: "", songUrl: "", musicVibe: "",
     quote: "", currentRead: "", age: "", belt: "", coach: "", favMove: "",
     cheatMeal: "", funFact: "", avatarData: "", openSf: false,
     showWatchCount: false, coEmails: [], jitsUrl: ""
@@ -550,6 +592,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
       nickname: (form.nickname || "").replace(/^["']+|["']+$/g, "").trim(),
       spiritEmoji: limitSpiritEmojis(form.spiritEmoji || ""),
       songRepeat: (form.songRepeat || "").trim(),
+      musicVibe: (form.musicVibe || "").trim(),
       songUrl: (form.songUrl || "").trim(),
       quote: (form.quote || "").replace(/^["“”]+|["“”]+$/g, "").trim(),
       currentRead: (form.currentRead || "").trim(),
@@ -640,13 +683,28 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
       <style>{`@keyframes matdatesNeonGold { 0%, 100% { box-shadow: 0 0 10px rgba(250,204,21,0.55), 0 0 22px rgba(245,158,11,0.35); } 50% { box-shadow: 0 0 16px rgba(250,204,21,0.9), 0 0 32px rgba(245,158,11,0.55); } }`}</style>
       <div
         onClick={e => e.stopPropagation()}
-        style={{
+        style={{ position: "relative", 
           background:"#0b101b", border:"1.5px solid rgba(245,158,11,0.7)", borderRadius:"16px",
           maxWidth:"670px", width:"100%", maxHeight:"88dvh",
           display:"flex", flexDirection:"column", overflow:"visible",
           textAlign:"left", color:"#fff", boxShadow:"0 22px 55px rgba(0,0,0,0.9)"
         }}
       >
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close Trophy Room"
+            style={{
+              position: "absolute", top: "10px", right: "10px", zIndex: 45,
+              width: "32px", height: "32px", borderRadius: "50%",
+              background: "rgba(15,23,42,0.92)", color: "#cbd5e1",
+              border: "1px solid #334155", display: "flex", alignItems: "center",
+              justifyContent: "center", fontSize: "0.95rem", fontWeight: "800",
+              cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.45)"
+            }}
+          >
+            ✕
+          </button>
         {/* PINNED TOP BAR: Official Trophy Room + Verified (Left) • Watch + Jits/Smoothcomp + Close (Right) */}
         <div style={{
           display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap",
@@ -694,18 +752,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
               {externalRecordLabel}
             </a>
 
-            <button
-              type="button"
-              onClick={onClose}
-              title="Close"
-              style={{
-                background:"#1e293b", color:"#e2e8f0", border:"1px solid #334155",
-                borderRadius:"7px", width:"29px", height:"29px", display:"flex",
-                alignItems:"center", justifyContent:"center", cursor:"pointer", fontWeight:"bold", flexShrink:0
-              }}
-            >
-              ✕
-            </button>
+            
           </div>
         </div>
 
@@ -812,27 +859,66 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
                   </span>
                 )}
                 {bio?.songRepeat && (
-                  <button
-                    type="button"
-                    onClick={handleSongClick}
-                    title="Listen to walkout / repeat track"
-                    style={{
-                      background:"rgba(14,165,233,0.12)", color:"#e0f2fe",
-                      border:"1px solid rgba(56,189,248,0.5)", borderRadius:"14px", padding:"3.5px 10px",
-                      fontSize:"0.72rem", fontWeight:"700", cursor:"pointer", display:"inline-flex", alignItems:"center", gap:"4px"
-                    }}
-                  >
-                    <span style={{ color:"#38bdf8" }}>🎵</span> <b>{bio.songRepeat}</b> <span style={{ color:"#38bdf8" }}>▶</span>
-                  </button>
-                )}
-                {bio?.songRepeat && !bio?.songUrl && (
-                  <button
-                    type="button"
-                    onClick={() => setShowMusicPicker(p => !p)}
-                    style={{ background:"#182030", color:"#94a3b8", border:"1px solid #334155", borderRadius:"10px", padding:"2.5px 7px", fontSize:"0.66rem", cursor:"pointer" }}
-                  >
-                    {musicPref === "apple" ? "Apple ⚙️" : musicPref === "ytmusic" ? "YT ⚙️" : musicPref === "spotify" ? "Spotify ⚙️" : "App 🎧"}
-                  </button>
+                  <div style={{
+                    display: "inline-flex", alignItems: "center", gap: "7px", flexWrap: "wrap",
+                    background: "linear-gradient(135deg, rgba(15,23,42,0.95), rgba(14,165,233,0.16))",
+                    border: playingVibe ? "1px solid #38bdf8" : "1px solid rgba(56,189,248,0.45)",
+                    boxShadow: playingVibe ? "0 0 14px rgba(56,189,248,0.35)" : "none",
+                    borderRadius: "14px", padding: "4px 9px 4px 6px", maxWidth: "100%"
+                  }}>
+                    <style>{`@keyframes mdEqBar { 0%, 100% { height: 4px; } 50% { height: 13px; } }`}</style>
+                    {previewArt ? (
+                      <img src={previewArt} alt="" style={{ width: "24px", height: "24px", borderRadius: "6px", objectFit: "cover", flexShrink: 0 }} />
+                    ) : (
+                      <span style={{ width: "24px", height: "24px", borderRadius: "6px", background: "rgba(56,189,248,0.18)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "0.78rem", flexShrink: 0 }}>🎵</span>
+                    )}
+                    {bio?.musicVibe && (
+                      <span style={{ background: "rgba(250,204,21,0.14)", color: "#fde047", border: "1px solid rgba(250,204,21,0.35)", borderRadius: "8px", padding: "1.5px 6px", fontSize: "0.64rem", fontWeight: "800" }}>
+                        {bio.musicVibe}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={toggleSongPreview}
+                      title="Play 30-second song preview"
+                      style={{
+                        background: playingVibe ? "#0284c7" : "#1e293b", color: "#f8fafc",
+                        border: "1px solid #38bdf8", borderRadius: "9px", padding: "2.5px 8px",
+                        fontSize: "0.69rem", fontWeight: "800", cursor: "pointer",
+                        display: "inline-flex", alignItems: "center", gap: "5px"
+                      }}
+                    >
+                      {loadingPreview ? "⏳" : playingVibe ? (
+                        <span style={{ display: "inline-flex", alignItems: "flex-end", gap: "2px", height: "13px" }}>
+                          <span style={{ width: "2.5px", background: "#fde047", animation: "mdEqBar 0.45s ease-in-out infinite" }} />
+                          <span style={{ width: "2.5px", background: "#38bdf8", animation: "mdEqBar 0.65s ease-in-out infinite 0.15s" }} />
+                          <span style={{ width: "2.5px", background: "#fde047", animation: "mdEqBar 0.55s ease-in-out infinite 0.3s" }} />
+                        </span>
+                      ) : "▶"}
+                      <span>{playingVibe ? "Stop" : "Preview"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSongClick}
+                      title="Open full track in music app"
+                      style={{
+                        background: "transparent", color: "#e0f2fe", border: "none",
+                        padding: "2px 3px", fontSize: "0.73rem", fontWeight: "800",
+                        cursor: "pointer", textAlign: "left"
+                      }}
+                    >
+                      {bio.songRepeat} <span style={{ color: "#38bdf8", fontSize: "0.68rem" }}>↗</span>
+                    </button>
+                    {!bio?.songUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setShowMusicPicker(p => !p)}
+                        style={{ background: "#0f172a", color: "#94a3b8", border: "1px solid #334155", borderRadius: "8px", padding: "2px 6px", fontSize: "0.64rem", cursor: "pointer" }}
+                      >
+                        {musicPref === "apple" ? "Apple ⚙️" : musicPref === "ytmusic" ? "YT ⚙️" : musicPref === "spotify" ? "Spotify ⚙️" : "App 🎧"}
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             )}
@@ -1048,7 +1134,14 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
                   </div>
 
                   <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(195px, 1fr))", gap:"7px" }}>
-                    <input placeholder="🎵 Walkout / Song on Repeat (Optional)" value={form.songRepeat || ""} onChange={e => setForm({...form, songRepeat: e.target.value})} style={inp} />
+                    <input placeholder="🎵 Walkout / Song on Repeat (e.g. Song - Artist)" value={form.songRepeat || ""} onChange={e => setForm({...form, songRepeat: e.target.value})} style={inp} />
+                    <select value={form.musicVibe || ""} onChange={e => setForm({...form, musicVibe: e.target.value})} style={inp}>
+                      <option value="">🎧 Song Vibe Badge (Optional)</option>
+                      <option value="🔥 Walkout">🔥 Walkout Anthem</option>
+                      <option value="⚡ On Repeat">⚡ On Repeat</option>
+                      <option value="🥋 Flow State">🥋 Flow State</option>
+                      <option value="🧊 Locked In">🧊 Locked In</option>
+                    </select>
                     <input type="url" placeholder="Direct Song Link (Optional — blank = Spotify/Apple/YT)" value={form.songUrl || ""} onChange={e => setForm({...form, songUrl: e.target.value})} style={inp} />
                   </div>
 
