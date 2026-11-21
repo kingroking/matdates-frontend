@@ -227,6 +227,34 @@ function playBioMusicVibe(vibeLabel = "") {
   }
 }
 
+function lookupItunesPreview(rawQuery) {
+  return new Promise((resolve) => {
+    const cleanQ = String(rawQuery || "").replace(/[""''()\[\]]/g, " ").replace(/\s+[-–—|•]\s+/g, " ").trim();
+    if (!cleanQ) return resolve(null);
+    const cbName = "__mdItunesCb_" + Math.random().toString(36).slice(2, 9);
+    let settled = false;
+    const script = document.createElement("script");
+    const finish = (val) => {
+      if (settled) return;
+      settled = true;
+      try { delete window[cbName]; } catch { window[cbName] = undefined; }
+      if (script.parentNode) script.parentNode.removeChild(script);
+      resolve(val);
+    };
+    const timer = setTimeout(() => finish(null), 4500);
+    window[cbName] = (data) => {
+      clearTimeout(timer);
+      finish(data?.results?.[0] || null);
+    };
+    script.onerror = () => {
+      clearTimeout(timer);
+      finish(null);
+    };
+    script.src = "https://itunes.apple.com/search?term=" + encodeURIComponent(cleanQ) + "&media=music&entity=song&limit=1&callback=" + cbName;
+    document.head.appendChild(script);
+  });
+}
+
 export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, onShareCard }) {
   useEffect(() => {
     const prevBodyOverflow = document.body.style.overflow;
@@ -281,7 +309,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
     };
   }, []);
 
-  // Pre-fetch 30s preview URL & artwork when Trophy Room opens so iPhone tap plays synchronously!
+  // Pre-fetch 30s preview URL & artwork via JSONP when Trophy Room opens so iPhone tap is 100% synchronous!
   useEffect(() => {
     let cancelled = false;
     setPreviewTrackUrl("");
@@ -290,18 +318,14 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
     setPlayingVibe(false);
     const q = (bio?.songRepeat || "").trim();
     if (!q) return;
-    fetch("https://itunes.apple.com/search?term=" + encodeURIComponent(q) + "&media=music&entity=song&limit=1")
-      .then(r => r.json())
-      .then(data => {
-        if (cancelled) return;
-        const track = data?.results?.[0];
-        if (track?.artworkUrl60) setPreviewArt(track.artworkUrl60);
-        if (track?.previewUrl) {
-          previewUrlRef.current = track.previewUrl;
-          setPreviewTrackUrl(track.previewUrl);
-        }
-      })
-      .catch(() => {});
+    lookupItunesPreview(q).then((track) => {
+      if (cancelled || !track) return;
+      if (track.artworkUrl60) setPreviewArt(track.artworkUrl60);
+      if (track.previewUrl) {
+        previewUrlRef.current = track.previewUrl;
+        setPreviewTrackUrl(track.previewUrl);
+      }
+    });
     return () => { cancelled = true; };
   }, [bio?.songRepeat]);
 
@@ -309,13 +333,14 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
     e.stopPropagation();
     const el = audioElRef.current;
 
-    // Allow playback even if iPhone Silent / Ringer switch is muted (iOS 17+ Safari)
+    // iOS 17+ Safari: allow audio playback even when physical Ringer switch is on Silent!
     try {
-      if (navigator.audioSession && navigator.audioSession.type !== "playback") {
+      if (navigator.audioSession) {
         navigator.audioSession.type = "playback";
       }
     } catch {}
 
+    // Stop if currently playing
     if (playingVibe) {
       if (el) {
         try { el.pause(); el.currentTime = 0; } catch {}
@@ -327,49 +352,73 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
       return;
     }
 
-    if (!bio?.songRepeat || !el) return;
+    if (!bio?.songRepeat) return;
 
-    // Case A: Pre-fetched URL is ready -> play 100% synchronously inside the iOS tap gesture!
-    if (previewUrlRef.current) {
-      if (el.src !== previewUrlRef.current) el.src = previewUrlRef.current;
-      el.volume = 0.9;
-      setPlayingVibe(true);
-      const p = el.play();
-      if (p && typeof p.catch === "function") {
-        p.catch(() => {
+    const startDirectPlayback = (url) => {
+      try {
+        if (window.__mdActiveAudio) {
+          try { window.__mdActiveAudio.pause(); } catch {}
+        }
+        // Use persistent <audio playsInline> element if available, else fresh Audio(url)
+        const player = el || new Audio();
+        if (player.src !== url) {
+          player.src = url;
+        }
+        player.muted = false;
+        player.volume = 1.0;
+        window.__mdActiveAudio = player;
+        player.onended = () => {
           setPlayingVibe(false);
-        });
+          window.__mdActiveAudio = null;
+        };
+        setPlayingVibe(true);
+        const playPromise = player.play();
+        if (playPromise && typeof playPromise.catch === "function") {
+          playPromise.catch(() => {
+            // Fallback: try fresh Audio instance inside gesture
+            try {
+              const fallbackAudio = new Audio(url);
+              fallbackAudio.playsInline = true;
+              window.__mdActiveAudio = fallbackAudio;
+              fallbackAudio.onended = () => { setPlayingVibe(false); window.__mdActiveAudio = null; };
+              fallbackAudio.play().catch(() => setPlayingVibe(false));
+            } catch {
+              setPlayingVibe(false);
+            }
+          });
+        }
+      } catch {
+        setPlayingVibe(false);
       }
+    };
+
+    // Case A: URL already pre-fetched -> 100% synchronous inside iPhone tap gesture!
+    if (previewUrlRef.current) {
+      startDirectPlayback(previewUrlRef.current);
       return;
     }
 
-    // Case B: Tapped within the first instant before pre-fetch completed -> unlock <audio> synchronously first!
-    el.load();
+    // Case B: Still loading -> unlock the <audio> element synchronously during the tap first, then set src when JSONP resolves!
+    if (el) {
+      try {
+        el.muted = false;
+        const unlock = el.play();
+        if (unlock && typeof unlock.catch === "function") unlock.catch(() => {});
+        el.pause();
+      } catch {}
+    }
     setLoadingPreview(true);
-    fetch("https://itunes.apple.com/search?term=" + encodeURIComponent(bio.songRepeat) + "&media=music&entity=song&limit=1")
-      .then(r => r.json())
-      .then(data => {
-        setLoadingPreview(false);
-        const track = data?.results?.[0];
-        if (track?.artworkUrl60) setPreviewArt(track.artworkUrl60);
-        if (track?.previewUrl) {
-          previewUrlRef.current = track.previewUrl;
-          setPreviewTrackUrl(track.previewUrl);
-          el.src = track.previewUrl;
-          el.volume = 0.9;
-          setPlayingVibe(true);
-          const p = el.play();
-          if (p && typeof p.catch === "function") {
-            p.catch(() => setPlayingVibe(false));
-          }
-        } else {
-          handleSongClick();
-        }
-      })
-      .catch(() => {
-        setLoadingPreview(false);
-        setPlayingVibe(false);
-      });
+    lookupItunesPreview(bio.songRepeat).then((track) => {
+      setLoadingPreview(false);
+      if (track?.artworkUrl60) setPreviewArt(track.artworkUrl60);
+      if (track?.previewUrl) {
+        previewUrlRef.current = track.previewUrl;
+        setPreviewTrackUrl(track.previewUrl);
+        startDirectPlayback(track.previewUrl);
+      } else {
+        handleSongClick();
+      }
+    });
   };
 
   const emptyForm = {
@@ -743,13 +792,9 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
         position:"fixed", inset:0, background:"rgba(4,8,18,0.92)", zIndex:10070,
         display:"flex", alignItems:"center", justifyContent:"center", padding:"10px",
         overscrollBehavior:"none"
-      , flexShrink: 0, marginLeft: "auto"}}
+      }}
     >
-      <style>{`.md-tr-close-mobile { display: none !important; }
-      .md-tr-close-desktop { display: inline-flex !important; }
-      @media (max-width: 640px) {
-        .md-tr-close-mobile { display: flex !important; }
-        .md-tr-close-desktop { display: none !important; }
+      <style>{`.md-tr-close-desktop { display: none !important; }
       }
       @keyframes matdatesNeonGold { 0%, 100% { box-shadow: 0 0 10px rgba(250,204,21,0.55), 0 0 22px rgba(245,158,11,0.35); } 50% { box-shadow: 0 0 16px rgba(250,204,21,0.9), 0 0 32px rgba(245,158,11,0.55); } }`}</style>
       <div
@@ -757,14 +802,14 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
         style={{ position: "relative", 
           background:"#0b101b", border:"1.5px solid rgba(245,158,11,0.7)", borderRadius:"16px",
           maxWidth:"670px", width:"100%", maxHeight:"88dvh",
-          display:"flex", flexDirection:"column", overflow:"visible",
+          display:"flex", flexDirection:"column", overflow:"hidden",
           textAlign:"left", color:"#fff", boxShadow:"0 22px 55px rgba(0,0,0,0.9)"
         }}
       >
           <button
             type="button"
             onClick={onClose}
-            className="md-tr-close-mobile" aria-label="Close Trophy Room"
+            aria-label="Close Trophy Room"
             style={{
               position: "absolute", top: "10px", right: "10px", zIndex: 45,
               width: "32px", height: "32px", borderRadius: "50%",
@@ -779,7 +824,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
         {/* PINNED TOP BAR: Official Trophy Room + Verified (Left) • Watch + Jits/Smoothcomp + Close (Right) */}
         <div style={{
           display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap",
-          padding:"10px 14px", background:"#101726", borderBottom:"1px solid #243044", flexShrink:0
+          padding:"10px 50px 10px 14px", borderRadius:"15px 15px 0 0", background:"#101726", borderBottom:"1px solid #243044", flexShrink:0
         }}>
           <div style={{ display:"flex", alignItems:"center", gap:"6px", flexWrap:"wrap" }}>
             <span style={{ color:"#fbbf24", fontSize:"0.71rem", fontWeight:"900", letterSpacing:"1.2px", textTransform:"uppercase" }}>
@@ -869,7 +914,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
                   border: hasNeonGoldRing ? "3px solid #fde047" : "2.5px solid #f59e0b",
                   animation: hasNeonGoldRing ? "mdNeonGoldPulse 2.2s ease-in-out infinite" : "none",
                   background:"linear-gradient(135deg,#1e293b,#090d16)",
-                  display:"flex", alignItems:"center", justifyContent:"center", overflow:"visible",
+                  display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden",
                   cursor: isOwner ? "pointer" : "default", boxShadow:"0 6px 18px rgba(0,0,0,0.5)"
                 }}
               >
@@ -916,20 +961,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
                     {IG_ICON}
                     {bio?.handle ? "@" + bio.handle : "IG"}
                   </button>
-                  <button
-                    type="button"
-                    className="md-tr-close-desktop"
-                    onClick={onClose}
-                    aria-label="Close"
-                    style={{
-                      background: "#1e293b", color: "#cbd5e1", border: "1px solid #334155",
-                      borderRadius: "8px", padding: "5px 10px", fontSize: "0.82rem",
-                      fontWeight: "800", cursor: "pointer", alignItems: "center",
-                      justifyContent: "center", flexShrink: 0
-                    }}
-                  >
-                    ✕
-                  </button>
+                  
                 </div>
               </div>
             </div>
