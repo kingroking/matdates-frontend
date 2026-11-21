@@ -1,5 +1,5 @@
 import { trackEvent } from "./analytics";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { collection, doc, getDoc, getDocs, setDoc, query, where } from "firebase/firestore";
 import { db, auth } from "./firebase";
 import { addDoc } from "firebase/firestore";
