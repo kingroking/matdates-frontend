@@ -598,7 +598,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
         overscrollBehavior:"none"
       }}
     >
-      <style>{NEON_GOLD_KEYFRAMES}</style>
+      <style>{`@keyframes matdatesNeonGold { 0%, 100% { box-shadow: 0 0 10px rgba(250,204,21,0.55), 0 0 22px rgba(245,158,11,0.35); } 50% { box-shadow: 0 0 16px rgba(250,204,21,0.9), 0 0 32px rgba(245,158,11,0.55); } }`}</style>
       <div
         onClick={e => e.stopPropagation()}
         style={{
