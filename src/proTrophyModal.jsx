@@ -227,10 +227,15 @@ function playBioMusicVibe(vibeLabel = "") {
   }
 }
 
-function lookupItunesPreview(rawQuery) {
+function lookupItunesPreview(rawQuery, directUrl = "") {
   return new Promise((resolve) => {
-    const cleanQ = String(rawQuery || "").replace(/[""''()\[\]]/g, " ").replace(/\s+[-–—|•]\s+/g, " ").trim();
-    if (!cleanQ) return resolve(null);
+    const raw = String(rawQuery || "").trim();
+    if (!raw && !directUrl) return resolve(null);
+
+    // If athlete pasted an Apple Music link with ?i=trackId or /song/.../id, look up exact Apple ID first!
+    const appleIdMatch = String(directUrl || "").match(/[?&]i=(\d+)|\/(\d{7,12})(?:[/?#]|$)/);
+    const exactId = appleIdMatch ? (appleIdMatch[1] || appleIdMatch[2]) : "";
+
     const cbName = "__mdItunesCb_" + Math.random().toString(36).slice(2, 9);
     let settled = false;
     const script = document.createElement("script");
@@ -241,16 +246,60 @@ function lookupItunesPreview(rawQuery) {
       if (script.parentNode) script.parentNode.removeChild(script);
       resolve(val);
     };
-    const timer = setTimeout(() => finish(null), 4500);
+    const timer = setTimeout(() => finish(null), 5000);
+
+    // Split "Song - Artist" or "Song by Artist" to score exact artist + title matches and reject karaoke/tribute covers
+    const parts = raw.split(/\s*(?:[-–—|•]|\bby\b)\s*/i).map(s => s.trim()).filter(Boolean);
+    const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+    const fullNorm = norm(raw);
+    const p0 = norm(parts[0] || raw);
+    const p1 = norm(parts[1] || "");
+
     window[cbName] = (data) => {
       clearTimeout(timer);
-      finish(data?.results?.[0] || null);
+      const list = Array.isArray(data?.results) ? data.results.filter(r => r && r.previewUrl) : [];
+      if (!list.length) return finish(null);
+      if (exactId) return finish(list[0]);
+
+      let best = list[0];
+      let bestScore = -999;
+      for (const item of list) {
+        const tName = norm(item.trackName);
+        const aName = norm(item.artistName);
+        const cName = norm(item.collectionName);
+        let score = 0;
+
+        // Penalize karaoke, tribute, instrumental, 8-bit, lullaby covers unless explicitly requested
+        if (!/karaoke|tribute|lullaby|instrumental|cover/.test(fullNorm)) {
+          if (/karaoke|tribute|originally performed|in the style of|8 bit|lullaby|piano version/.test(tName + " " + aName + " " + cName)) {
+            score -= 80;
+          }
+        }
+        if (parts.length >= 2) {
+          // Could be "Song - Artist" OR "Artist - Song"
+          if ((tName.includes(p0) && aName.includes(p1)) || (tName.includes(p1) && aName.includes(p0))) score += 60;
+          if (tName === p0 || tName === p1) score += 30;
+          if (aName === p1 || aName === p0) score += 30;
+        } else {
+          if (tName === p0) score += 45;
+          else if (tName.startsWith(p0)) score += 25;
+          else if (tName.includes(p0)) score += 12;
+          if (fullNorm.includes(aName) && aName.length > 2) score += 35;
+        }
+        if (score > bestScore) {
+          bestScore = score;
+          best = item;
+        }
+      }
+      finish(best);
     };
     script.onerror = () => {
       clearTimeout(timer);
       finish(null);
     };
-    script.src = "https://itunes.apple.com/search?term=" + encodeURIComponent(cleanQ) + "&media=music&entity=song&limit=1&callback=" + cbName;
+    script.src = exactId
+      ? "https://itunes.apple.com/lookup?id=" + encodeURIComponent(exactId) + "&entity=song&callback=" + cbName
+      : "https://itunes.apple.com/search?term=" + encodeURIComponent(raw) + "&media=music&entity=song&limit=8&callback=" + cbName;
     document.head.appendChild(script);
   });
 }
@@ -309,41 +358,72 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
     };
   }, []);
 
-  // Pre-fetch 30s preview URL & artwork via JSONP when Trophy Room opens so iPhone tap is 100% synchronous!
+  const [embedTrackUrl, setEmbedTrackUrl] = useState("");
+  const [showInlineEmbed, setShowInlineEmbed] = useState(false);
+  const readyAudioRef = useRef(null);
+
+  // Pre-fetch 30s preview URL & pre-stage Audio object so iPhone tap calls .play() with ZERO .src mutation!
   useEffect(() => {
     let cancelled = false;
     setPreviewTrackUrl("");
     previewUrlRef.current = "";
     setPreviewArt("");
+    setEmbedTrackUrl("");
+    setShowInlineEmbed(false);
     setPlayingVibe(false);
+    if (readyAudioRef.current) {
+      try { readyAudioRef.current.pause(); } catch {}
+      readyAudioRef.current = null;
+    }
     const q = (bio?.songRepeat || "").trim();
     if (!q) return;
-    lookupItunesPreview(q).then((track) => {
+
+    lookupItunesPreview(q, bio?.songUrl || "").then((track) => {
       if (cancelled || !track) return;
       if (track.artworkUrl60) setPreviewArt(track.artworkUrl60);
+      if (track.trackViewUrl) {
+        setEmbedTrackUrl(track.trackViewUrl.replace("https://music.apple.com/", "https://embed.music.apple.com/"));
+      }
       if (track.previewUrl) {
         previewUrlRef.current = track.previewUrl;
         setPreviewTrackUrl(track.previewUrl);
+        try {
+          const preloaded = new Audio(track.previewUrl);
+          preloaded.preload = "auto";
+          preloaded.playsInline = true;
+          preloaded.setAttribute("playsinline", "");
+          preloaded.setAttribute("webkit-playsinline", "");
+          preloaded.volume = 1.0;
+          readyAudioRef.current = preloaded;
+        } catch {}
       }
     });
-    return () => { cancelled = true; };
-  }, [bio?.songRepeat]);
+    return () => {
+      cancelled = true;
+      if (readyAudioRef.current) {
+        try { readyAudioRef.current.pause(); } catch {}
+        readyAudioRef.current = null;
+      }
+    };
+  }, [bio?.songRepeat, bio?.songUrl]);
 
   const toggleSongPreview = (e) => {
     e.stopPropagation();
-    const el = audioElRef.current;
 
-    // iOS 17+ Safari: allow audio playback even when physical Ringer switch is on Silent!
+    // iOS 17+ Safari: play through media channel even if iPhone physical Silent switch is on!
     try {
       if (navigator.audioSession) {
         navigator.audioSession.type = "playback";
       }
     } catch {}
 
-    // Stop if currently playing
+    // Stop if already playing
     if (playingVibe) {
-      if (el) {
-        try { el.pause(); el.currentTime = 0; } catch {}
+      if (readyAudioRef.current) {
+        try { readyAudioRef.current.pause(); readyAudioRef.current.currentTime = 0; } catch {}
+      }
+      if (audioElRef.current) {
+        try { audioElRef.current.pause(); audioElRef.current.currentTime = 0; } catch {}
       }
       if (window.__mdActiveAudio) {
         try { window.__mdActiveAudio.pause(); window.__mdActiveAudio = null; } catch {}
@@ -354,67 +434,60 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
 
     if (!bio?.songRepeat) return;
 
-    const startDirectPlayback = (url) => {
-      try {
-        if (window.__mdActiveAudio) {
-          try { window.__mdActiveAudio.pause(); } catch {}
-        }
-        // Use persistent <audio playsInline> element if available, else fresh Audio(url)
-        const player = el || new Audio();
-        if (player.src !== url) {
-          player.src = url;
-        }
-        player.muted = false;
-        player.volume = 1.0;
-        window.__mdActiveAudio = player;
-        player.onended = () => {
-          setPlayingVibe(false);
-          window.__mdActiveAudio = null;
-        };
-        setPlayingVibe(true);
-        const playPromise = player.play();
-        if (playPromise && typeof playPromise.catch === "function") {
-          playPromise.catch(() => {
-            // Fallback: try fresh Audio instance inside gesture
-            try {
-              const fallbackAudio = new Audio(url);
-              fallbackAudio.playsInline = true;
-              window.__mdActiveAudio = fallbackAudio;
-              fallbackAudio.onended = () => { setPlayingVibe(false); window.__mdActiveAudio = null; };
-              fallbackAudio.play().catch(() => setPlayingVibe(false));
-            } catch {
-              setPlayingVibe(false);
-            }
-          });
-        }
-      } catch {
-        setPlayingVibe(false);
+    // Synchronously play the pre-staged Audio object or visible <audio> element WITHOUT mutating .src!
+    const player = readyAudioRef.current || audioElRef.current;
+    if (player && previewUrlRef.current) {
+      if (window.__mdActiveAudio && window.__mdActiveAudio !== player) {
+        try { window.__mdActiveAudio.pause(); } catch {}
       }
-    };
-
-    // Case A: URL already pre-fetched -> 100% synchronous inside iPhone tap gesture!
-    if (previewUrlRef.current) {
-      startDirectPlayback(previewUrlRef.current);
+      window.__mdActiveAudio = player;
+      player.muted = false;
+      player.volume = 1.0;
+      player.onended = () => {
+        setPlayingVibe(false);
+        window.__mdActiveAudio = null;
+      };
+      setPlayingVibe(true);
+      const p = player.play();
+      if (p && typeof p.catch === "function") {
+        p.catch(() => {
+          setPlayingVibe(false);
+          // Fallback on strict iOS WebKit: open sleek inline Apple Music mini-player right below the song pill!
+          if (embedTrackUrl) setShowInlineEmbed(true);
+        });
+      }
       return;
     }
 
-    // Case B: Still loading -> unlock the <audio> element synchronously during the tap first, then set src when JSONP resolves!
-    if (el) {
-      try {
-        el.muted = false;
-        const unlock = el.play();
-        if (unlock && typeof unlock.catch === "function") unlock.catch(() => {});
-        el.pause();
-      } catch {}
-    }
+    // If user tapped within the first 300ms before lookup finished, toggle inline player or fetch immediately
+    const unlockedAudio = new Audio();
+    unlockedAudio.playsInline = true;
+    unlockedAudio.setAttribute("playsinline", "");
+    try {
+      const u = unlockedAudio.play();
+      if (u && typeof u.catch === "function") u.catch(() => {});
+      unlockedAudio.pause();
+    } catch {}
+
     setLoadingPreview(true);
-    lookupItunesPreview(bio.songRepeat).then((track) => {
+    lookupItunesPreview(bio.songRepeat, bio?.songUrl || "").then((track) => {
       setLoadingPreview(false);
       if (track?.artworkUrl60) setPreviewArt(track.artworkUrl60);
+      const emb = track?.trackViewUrl ? track.trackViewUrl.replace("https://music.apple.com/", "https://embed.music.apple.com/") : "";
+      if (emb) setEmbedTrackUrl(emb);
       if (track?.previewUrl) {
         previewUrlRef.current = track.previewUrl;
         setPreviewTrackUrl(track.previewUrl);
-        startDirectPlayback(track.previewUrl);
+        unlockedAudio.src = track.previewUrl;
+        unlockedAudio.volume = 1.0;
+        readyAudioRef.current = unlockedAudio;
+        window.__mdActiveAudio = unlockedAudio;
+        unlockedAudio.onended = () => { setPlayingVibe(false); window.__mdActiveAudio = null; };
+        setPlayingVibe(true);
+        unlockedAudio.play().catch(() => {
+          setPlayingVibe(false);
+          if (emb) setShowInlineEmbed(true);
+        });
       } else {
         handleSongClick();
       }
@@ -990,7 +1063,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
                       playsInline
                       preload="auto"
                       onEnded={() => setPlayingVibe(false)}
-                      style={{ display: "none" }}
+                      style={{ position: "absolute", width: 0, height: 0, opacity: 0, pointerEvents: "none" }}
                     />
                     {previewArt ? (
                       <img src={previewArt} alt="" style={{ width: "24px", height: "24px", borderRadius: "6px", objectFit: "cover", flexShrink: 0 }} />
@@ -1048,6 +1121,19 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
               </div>
             )}
 
+            {showInlineEmbed && embedTrackUrl && (
+              <div style={{ marginTop: "8px", position: "relative", maxWidth: "100%" }}>
+                <iframe
+                  allow="autoplay *; encrypted-media *; fullscreen *; clipboard-write"
+                  frameBorder="0"
+                  height="152"
+                  style={{ width: "100%", maxWidth: "460px", overflow: "hidden", borderRadius: "12px", background: "transparent", border: "1px solid #334155" }}
+                  sandbox="allow-forms allow-popups allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation-by-user-activation"
+                  src={embedTrackUrl + (embedTrackUrl.includes("?") ? "&theme=dark" : "?theme=dark")}
+                  title="Walkout Song Preview"
+                />
+              </div>
+            )}
             {showMusicPicker && bio?.songRepeat && (
               <div style={{ marginTop:"6px", background:"#0f172a", border:"1px solid #38bdf8", borderRadius:"8px", padding:"5px 8px", display:"inline-flex", gap:"6px", alignItems:"center", flexWrap:"wrap", fontSize:"0.71rem" }}>
                 <span style={{ color:"#cbd5e1", fontWeight:"bold" }}>Open in:</span>
