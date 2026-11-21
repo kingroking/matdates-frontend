@@ -176,7 +176,7 @@ function BeltRankBadge({ belt }) {
   if (!spec) return null;
   return (
     <span style={{ display:"inline-flex", alignItems:"center", gap:"8px", background:"rgba(15,23,42,0.9)", border:"1px solid #334155", borderRadius:"8px", padding:"3px 9px 3px 6px", fontSize:"0.75rem", fontWeight:"800", color:"#f8fafc", boxShadow:"0 2px 6px rgba(0,0,0,0.35)" }}>
-      <span style={{ position:"relative", width:"44px", height:"13px", borderRadius:"3px", background: spec.main, border:"1px solid rgba(255,255,255,0.42)", display:"inline-flex", alignItems:"center", justifyContent:"flex-end", overflow:"hidden", flexShrink:0, boxShadow:"inset 0 1px 2px rgba(255,255,255,0.25), inset 0 -1px 2px rgba(0,0,0,0.35)" }}>
+      <span style={{ position:"relative", width:"44px", height:"13px", borderRadius:"3px", background: spec.main, border:"1px solid rgba(255,255,255,0.42)", display:"inline-flex", alignItems:"center", justifyContent:"flex-end", overflow:"visible", flexShrink:0, boxShadow:"inset 0 1px 2px rgba(255,255,255,0.25), inset 0 -1px 2px rgba(0,0,0,0.35)" }}>
         {spec.mid && <span style={{ position:"absolute", left:0, right:"14px", top:"4px", height:"3.5px", background: spec.mid }} />}
         <span style={{ width:"14px", height:"100%", background: spec.bar, borderLeft:"1px solid rgba(255,255,255,0.22)", display:"inline-flex", alignItems:"center", justifyContent:"space-evenly", padding:"0 1.5px", boxSizing:"border-box", zIndex:1 }}>
           {Array.from({ length: spec.stripes }).map((_, i) => (
@@ -612,7 +612,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
         style={{
           background:"#0b101b", border:"1.5px solid rgba(245,158,11,0.7)", borderRadius:"16px",
           maxWidth:"670px", width:"100%", maxHeight:"88dvh",
-          display:"flex", flexDirection:"column", overflow:"hidden",
+          display:"flex", flexDirection:"column", overflow:"visible",
           textAlign:"left", color:"#fff", boxShadow:"0 22px 55px rgba(0,0,0,0.9)"
         }}
       >
@@ -640,7 +640,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
                 background: isWatching ? "#132a1c" : "#162536",
                 color: isWatching ? "#2ecc71" : "#38bdf8",
                 border: isWatching ? "1px solid #2ecc71" : "1px solid #0284c7",
-                borderRadius:"7px", padding:"5px 9px", fontWeight:"800", fontSize:"0.73rem", cursor:"pointer", whiteSpace:"nowrap"
+                borderRadius:"7px", padding:"5px 9px", fontWeight:"800", fontSize:"0.73rem", cursor:"pointer", whiteSpace:"normal"
               }}
             >
               {isWatching ? "✓ Watching" : "🔔 Watch"}
@@ -657,7 +657,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
                 color: isYouthCompetitor ? "#38bdf8" : "#ff9f43",
                 border: isYouthCompetitor ? "1px solid #0284c7" : "1px solid #d97706",
                 borderRadius:"7px", padding:"5px 9px", fontWeight:"800", fontSize:"0.73rem",
-                textDecoration:"none", display:"inline-flex", alignItems:"center", gap:"4px", whiteSpace:"nowrap"
+                textDecoration:"none", display:"inline-flex", alignItems:"center", gap:"4px", whiteSpace:"normal"
               }}
             >
               {externalRecordLabel}
@@ -720,7 +720,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
                   border: hasNeonGoldRing ? "3px solid #fde047" : "2.5px solid #f59e0b",
                   animation: hasNeonGoldRing ? "mdNeonGoldPulse 2.2s ease-in-out infinite" : "none",
                   background:"linear-gradient(135deg,#1e293b,#090d16)",
-                  display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden",
+                  display:"flex", alignItems:"center", justifyContent:"center", overflow:"visible",
                   cursor: isOwner ? "pointer" : "default", boxShadow:"0 6px 18px rgba(0,0,0,0.5)"
                 }}
               >
@@ -874,7 +874,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
               <button
                 type="button"
                 onClick={() => (trackEvent("shareStatsClicks"), onShareCard({ badge: elite.isElite ? elite.tierLabel : "OFFICIAL TROPHY ROOM", title: nm, subtitle: currentAcad + (liveBelt ? " • " + normalizeBeltValue(liveBelt) : ""), gold: dispG, silver: dispS, bronze: dispB, deepLink: bioUrl, lines: [...(elite.pro?.titles || []), ...(elite.isElite ? elite.facts.map(x => "★ " + x) : []), ...visibleEvents.slice(0, 5).map(m => (Number(m.p)===1?"🥇":Number(m.p)===2?"🥈":"🥉") + " " + m.ev)] }))}
-                style={{ background:"linear-gradient(90deg,#f59e0b,#fbbf24)", color:"#000", border:"none", borderRadius:"8px", padding:"7px 13px", fontWeight:"800", fontSize:"0.78rem", cursor:"pointer", whiteSpace:"nowrap" }}
+                style={{ background:"linear-gradient(90deg,#f59e0b,#fbbf24)", color:"#000", border:"none", borderRadius:"8px", padding:"7px 13px", fontWeight:"800", fontSize:"0.78rem", cursor:"pointer", whiteSpace:"normal" }}
               >
                 📲 Share Trophy Card
               </button>
@@ -955,7 +955,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
                               <div style={{ fontSize:"0.66rem", color:"#93c5fd", fontWeight:"800", textTransform:"uppercase", letterSpacing:"0.5px" }}>📖 Current Read</div>
                               <div style={{ color:"#f8fafc", fontWeight:"700", marginTop:"2px" }}>{bk.title}</div>
                             </div>
-                            <a href={bk.url} target="_blank" rel="noopener" style={{ background:"#ff9900", color:"#000", padding:"5px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.73rem", textDecoration:"none", whiteSpace:"nowrap" }}>
+                            <a href={bk.url} target="_blank" rel="noopener" style={{ background:"#ff9900", color:"#000", padding:"5px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.73rem", textDecoration:"none", whiteSpace:"normal" }}>
                               View on Amazon ↗
                             </a>
                           </div>
@@ -1181,7 +1181,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
 
                 {/* Per-Federation Official #Rank & Verified Circuit Standings */}
                 {combinedCards.length > 0 && (
-                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(152px, 1fr))", gap:"6px" }}>
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(190px, 1fr))", gap:"6px" }}>
                     {combinedCards.slice(0, 8).map(c => (
                       <div key={c.key} style={{ background:"#0b101b", border: c.rank ? "1px solid rgba(250,204,21,0.45)" : "1px solid #1e293b", borderRadius:"8px", padding:"7px 9px", display:"flex", flexDirection:"column", gap:"3px" }}>
                         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:"4px" }}>
@@ -1192,10 +1192,10 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
                             </span>
                           ) : null}
                         </div>
-                        <div style={{ fontSize:"0.68rem", color:"#94a3b8", whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }} title={c.cat}>
+                        <div style={{ fontSize:"0.68rem", color:"#94a3b8", whiteSpace:"normal", overflow:"visible", textOverflow:"clip" }} title={c.cat}>
                           {c.cat}
                         </div>
-                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:"4px", fontSize:"0.73rem", fontWeight:"800", color:"#f8fafc", whiteSpace:"nowrap" }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:"4px", fontSize:"0.73rem", fontWeight:"800", color:"#f8fafc", whiteSpace:"normal" }}>
                           <span>{c.medals || "Ranked"}</span>
                           {c.pts && <span style={{ color:"#34d399", fontSize:"0.7rem" }}>{c.pts}</span>}
                         </div>
