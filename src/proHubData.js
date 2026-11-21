@@ -699,10 +699,61 @@ export function inferRowGender(divStr) {
 const COMMON_FEMALE_NAMES = new Set(["isabella","skyla","sky","cassia","cali","bailey","gabi","gabrieli","ffion","helena","mayssa","brianna","rafaela","rayssa","rebecca","sarah","sophia","emma","olivia","ava","mia","amelia","harper","evelyn","abigail","emily","elizabeth","camila","luna","sofia","avery","mila","aria","scarlett","penelope","layla","chloe","victoria","madison","eleanor","grace","nora","riley","zoey","hannah","hazel","lily","ellie","violet","lillian","zoe","stella","aurora","natalie","emilia","everly","leah","aubrey","willow","addison","lucy","audrey","bella","nova","brooklyn","paisley","savannah","claire","skylar","isla","genesis","naomi","elena","caroline","eliana","anna","maya","valentina","ruby","kennedy","ivy","ariana","aaliyah","cora","madelyn","alice","kinsley","hailey","gabriella","allison","gianna","serenity","samantha","autumn","quinn","eva","piper","sophie","sadie","delilah","josephine","nevaeh","adeline","ary","eisley","maria","dudah","eduarda","ana","julia","leticia","bianca","larissa","tamires","luiza","amanda","jessica","vanessa","natalia","fernanda","patricia","mariana","beatriz","bruna","carolina","gabriela","raquel","renata","tatiana","talita","tayane"]);
 const COMMON_MALE_NAMES = new Set(["royce","cassius","cash","roman","thiago","patrick","jose","ahmed","gordon","nicholas","mica","micael","tainan","diogo","diego","kade","tye","cole","kaynan","fellipe","felipe","andre","marcus","buchecha","roger","rickson","renzo","ralph","carlson","helio","carlos","royler","rodrigo","rafael","guilherme","gui","paulo","joao","levi","lachlan","craig","nicky","ethan","damien","pj","fabricio","lucas","matheus","mateus","gabriel","pedro","gustavo","henrique","bruno","leandro","romulo","xande","saulo","lovato","jt","keenan","shanahan","giancarlo","luke","owen","declan","liam","noah","oliver","elijah","james","william","benjamin","henry","alexander","mason","michael","daniel","jacob","logan","jackson","sebastian","jack","aiden","matthew","samuel","david","joseph","carter","wyatt","john","leo","jayden","dylan","grayson","isaac","julian","anthony","joshua","christopher","andrew","theodore","caleb","ryan","asher","nathan","thomas","ezra","hudson","charles","isaiah","eli","aaron","connor","adrian","jonathan","nolan","jeremiah","easton","elias","colton","cameron","carson","robert","angel","maverick","dominic","jaxson","greyson","adam","ian","austin","santiago","jordan","cooper","brayden","evan","ezekiel","xavier","jace","jameson","leonardo","bryson","axel","everett","parker","kayden","miles","sawyer","jason"]);
 
-export function inferTargetGender(fullName, sampleEvents = []) {
-  const first = foldStr(fullName || "").split(/\s+/)[0] || "";
-  if (COMMON_FEMALE_NAMES.has(first)) return "F";
-  if (COMMON_MALE_NAMES.has(first)) return "M";
+const EXTRA_FEMALE_FIRST = new Set([
+  "cassia","anysa","isabella","bella","eisley","gabrieli","gabi","mayssa","ffion","helena",
+  "brianna","adele","bia","beatriz","bianca","tammi","thamires","tayane","elisabeth","elizabeth",
+  "maria","eduarda","duda","dudah","giovanna","rafaela","luiza","ana","anna","julia","juliana",
+  "camila","carolina","leticia","larissa","amanda","fernanda","natalia","vitoria","victoria",
+  "sophia","sofia","olivia","emma","ava","mia","chloe","zoey","lily","hannah","grace","sarah",
+  "sara","rachel","rebecca","jessica","ashley","emily","madison","abigail","ella","scarlett",
+  "aria","penelope","layla","riley","nora","aurora","hazel","violet","stella","maya","lucy",
+  "paisley","audrey","skylar","claire","savannah","isla","genesis","kennedy","kinsley","allison",
+  "gabriella","alice","cora","ruby","eva","serenity","autumn","adeline","hailey","gianna",
+  "valentina","isabelle","quinn","nevaeh","ivy","sadie","piper","lydia","alexa","josephine",
+  "emery","julia","delilah","arianna","vivian","kaylee","sophie","brielle","madeline","peyton",
+  "rylee","clara","hadley","melanie","mackenzie","reagan","adalynn","liliana","aubree","jade",
+  "katherine","isabela","natalie","raelynn","athena","ximena","aryanna","izabella","samantha",
+  "leilani","ayla","margaret","valeria","daniella","daniela","ariana","kendall","rose","leah",
+  "jennifer","nicole","stephanie","melissa","lauren","megan","amber","brittany","danielle",
+  "kayla","alexis","alyssa","courtney","vanessa","jasmine","kelsey","chelsea","brooke","paige",
+  "morgan","taylor","haley","destiny","sydney","jocelyn","adriana","alexandra","andrea","angela",
+  "brenda","carla","carmen","claudia","diana","elena","erica","erika","gabriela","karina",
+  "laura","liliana","lorena","lucia","marcela","mariana","monica","nadia","patricia","paula",
+  "priscila","priscilla","raquel","renata","roberta","sabrina","sandrine","silvia","tatiana",
+  "teresa","vanessa","veronica","viviane","yasmin","yasmim","zoe","maci","macy","charlotte","amelia"
+]);
+
+const EXTRA_MALE_FIRST = new Set([
+  "cassio","cassius","roman","jonathan","jon","thiago","patrick","jose","mica","micael","diogo",
+  "diego","fabricio","nicholas","nick","gordon","craig","felipe","andre","andrew","marcus",
+  "tainan","kaynan","fellipe","gutemberg","erberth","leandro","lucas","matheus","mateus","pedro",
+  "gabriel","rafael","gustavo","henrique","bruno","rodrigo","leonardo","eduardo","guilherme",
+  "daniel","david","davide","carlos","juan","luis","luiz","miguel","alejandro","alex","antonio",
+  "francisco","javier","jorge","manuel","marco","marcos","pablo","ricardo","roberto","sergio",
+  "victor","vitor","vinicius","caio","igor","yuri","arthur","artur","bernardo","enzo","heitor",
+  "lorenzo","theo","samuel","benjamin","elijah","liam","noah","oliver","james","william","henry",
+  "lucas","alexander","ethan","jacob","michael","logan","jackson","levi","sebastian","jack",
+  "aiden","owen","isaac","luke","jayden","dylan","grayson","wyatt","isaiah","julian","christopher",
+  "joshua","anthony","ryan","nathan","christian","hunter","cameron","connor","eli","ezra","colton",
+  "cole","adrian","jonah","nolan","easton","jeremiah","hudson","robert","brayden","nicholas",
+  "evan","austin","gavin","chase","jason","ian","adam","xavier","joseph","kevin","brandon",
+  "tyler","zachary","kyle","justin","eric","stephen","steven","kenneth","brian","mark","paul",
+  "royce","rickson","helio","carlson","ralph","renzo","roger","romulo","xande","saulo","braulio",
+  "marcelo","cobrinha","rubens","murilo","gui","keenan","garry","lachlan","kade","tye","cole",
+  "dorian","owen","declan","pj","dante","andy","giancarlo","roberto","ronaldo","kaue","kaua"
+]);
+
+export function inferTargetGender(fullName, sampleEvents = [], hintDiv = "") {
+  const first = foldStr(fullName || "").split(/\s+/)[0]?.replace(/\./g, "") || "";
+  if (COMMON_FEMALE_NAMES.has(first) || EXTRA_FEMALE_FIRST.has(first)) return "F";
+  if (COMMON_MALE_NAMES.has(first) || EXTRA_MALE_FIRST.has(first)) return "M";
+
+  // Check division hint from explicit watch if available
+  if (hintDiv) {
+    const hg = inferRowGender(hintDiv);
+    if (hg) return hg;
+  }
+
   let mCnt = 0, fCnt = 0;
   (sampleEvents || []).forEach(e => {
     if (foldStr(e.n || "") === foldStr(fullName || "")) {
@@ -716,18 +767,48 @@ export function inferTargetGender(fullName, sampleEvents = []) {
   return "";
 }
 
-// Strict Verified Row Matcher — eliminates "R. Mendes" cross-gender / cross-academy contamination 100%!
-export function strictVerifiedAthleteRowMatch(rowName, rowAcad, rowDiv, targetName, targetAcad, targetGender) {
+function isYouthDivisionOrEvent(divStr = "", evName = "") {
+  const blob = (" " + foldStr(divStr + " " + evName) + " ");
+  return /\b(kids|kid|pee wee|peewee|mighty mite|junior|teen|juvenile 0|youth|children|infantil|mirim|pre mirim|infanto juvenil|grey|gray|yellow|orange|green)\b/.test(blob);
+}
+
+function isAdultUpperBeltAthlete(targetName, targetBelt = "") {
+  const tFold = foldStr(targetName || "");
+  const bFold = foldStr(targetBelt || "");
+  if (/\b(blue|purple|brown|black)\b/.test(bFold)) return true;
+  // Check PRO_SUPERFIGHTS roster (all verified adult/elite superfight athletes like Cassia Moura!)
+  if (Array.isArray(PRO_SUPERFIGHTS)) {
+    const hitPro = PRO_SUPERFIGHTS.find(p => foldStr(p.name || "") === tFold);
+    if (hitPro) {
+      const pb = foldStr(hitPro.belt || "");
+      if (!/\b(grey|gray|yellow|orange|green)\b/.test(pb)) return true;
+    }
+  }
+  return false;
+}
+
+// Strict Verified Row Matcher — eliminates cross-gender, cross-age/belt & "C. Moura" / "R. Mendes" initial contamination 100%!
+export function strictVerifiedAthleteRowMatch(rowName, rowAcad, rowDiv, targetName, targetAcad, targetGender, opts = {}) {
   const rFold = foldStr(rowName || "").replace(/[^a-z\s.]/g, " ").trim();
   const tFold = foldStr(targetName || "").replace(/[^a-z\s.]/g, " ").trim();
   if (!rFold || !tFold) return false;
 
-  // 1. NEVER allow cross-gender division contamination (e.g. Female division on Royce Mendes!)
-  const rGen = inferRowGender(rowDiv);
+  // 1. NEVER allow cross-gender division contamination (e.g. Male division on Cassia Moura or Female on Royce Mendes!)
+  const rGen = inferRowGender((rowDiv || "") + " " + (opts.evName || ""));
   if (targetGender && rGen && targetGender !== rGen) return false;
 
-  // 2. Exact full name match
-  if (rFold.replace(/\./g, "") === tFold.replace(/\./g, "")) return true;
+  // 2. NEVER allow Adult Upper-Belt / Pro athletes (e.g. Black/Brown/Purple/Blue Belt) to match Kids/Youth/Yellow/Grey/Orange/Green brackets!
+  const targetIsAdultUpper = isAdultUpperBeltAthlete(targetName, opts.targetBelt || "");
+  if (targetIsAdultUpper && isYouthDivisionOrEvent(rowDiv, opts.evName || "")) {
+    return false;
+  }
+
+  // Conversely, if target athlete's known belt is a Kids belt (Grey/Yellow/Orange/Green), never match Master / Black / Brown divisions!
+  const tBeltFold = foldStr(opts.targetBelt || "");
+  if (/\b(grey|gray|yellow|orange|green)\b/.test(tBeltFold)) {
+    const rBlob = " " + foldStr((rowDiv || "") + " " + (opts.evName || "")) + " ";
+    if (/\b(master|black belt|brown belt|purple belt)\b/.test(rBlob)) return false;
+  }
 
   const rParts = rFold.split(/\s+/).filter(Boolean);
   const tParts = tFold.split(/\s+/).filter(Boolean);
@@ -738,8 +819,14 @@ export function strictVerifiedAthleteRowMatch(rowName, rowAcad, rowDiv, targetNa
   const rLast = rParts[rParts.length - 1].replace(/\./g, "");
   const tLast = tParts[tParts.length - 1].replace(/\./g, "");
 
-  // 3. Abbreviated First Initial (e.g. "R. Mendes" vs "Royce Mendes"):
-  //    MUST match BOTH first initial + exact surname AND have a matching non-empty Academy!
+  // 3. Exact full name match (all tokens match)
+  if (rFold.replace(/\./g, "") === tFold.replace(/\./g, "")) {
+    // If target has a known academy AND row has a known academy AND this is a common surname, still allow legitimate gym switches unless age/gender failed above
+    return true;
+  }
+
+  // 4. Abbreviated First Initial (e.g. "C. Moura" vs "Cassia Moura" or "R. Mendes" vs "Royce Mendes"):
+  //    MUST match first initial + exact surname AND have a matching non-empty Academy!
   const isAbbrev = rFirst.length === 1 || tFirst.length === 1;
   if (isAbbrev) {
     if (rFirst[0] !== tFirst[0] || rLast !== tLast) return false;
@@ -749,7 +836,7 @@ export function strictVerifiedAthleteRowMatch(rowName, rowAcad, rowDiv, targetNa
     return gRow === gTgt || gRow.includes(gTgt) || gTgt.includes(gRow);
   }
 
-  // 4. Full First + Last Name match (with conflicting middle-initial guard)
+  // 5. Full First + Last Name match (EXACT first name — NEVER fuzzy 1-char "Cassio" == "Cassia"!)
   if (rFirst === tFirst && rLast === tLast) {
     if (rParts.length >= 3 && tParts.length >= 3) {
       const rMid = rParts[1].replace(/\./g, "");

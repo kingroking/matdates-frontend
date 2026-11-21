@@ -78,12 +78,20 @@ export function WeekendWarRoomModal({ events, watches, onRemoveWatch, onWatchAth
     return Array.from(map.values());
   }, [watches]);
 
-  // Fetch tiny __r2_XX__ registration shards for all watched athletes so we know every upcoming event they entered!
+  // Create fast event lookup map so division + tournament title (e.g. "IBJJF Kids") are checked before matching!
+  const eventByIdMap = useMemo(() => {
+    const m = new Map();
+    (events || []).forEach(ev => { if (ev && ev.id) m.set(ev.id, ev); });
+    return m;
+  }, [events]);
+
+  // Fetch tiny __r2_XX__ registration shards + verified athlete_bios so War Room NEVER matches wrong gender/age/belt namesakes!
   useEffect(() => {
     if (!groupedWatches.length) {
       setRegEntries([]);
       return;
     }
+    let cancelled = false;
     const bktSet = new Set();
     groupedWatches.forEach(gw => {
       athBucketsForQuery(gw.name).forEach(b => bktSet.add(b));
@@ -91,20 +99,54 @@ export function WeekendWarRoomModal({ events, watches, onRemoveWatch, onWatchAth
     const bkts = Array.from(bktSet);
     if (!bkts.length) return;
     setLoadingRegs(true);
-    Promise.all(
-      bkts.map(b => getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__r2_" + b + "__"))))
-    ).then(snaps => {
+
+    const bioPromises = groupedWatches.map(gw => {
+      const slug = foldStr(gw.name).replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+      return slug ? getDoc(doc(db, "athlete_bios", slug)).then(s => (s.exists() ? s.data() : null)).catch(() => null) : Promise.resolve(null);
+    });
+
+    Promise.all([
+      Promise.all(bkts.map(b => getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__r2_" + b + "__"))))),
+      Promise.all(bioPromises)
+    ]).then(([snaps, bios]) => {
+      if (cancelled) return;
+      const enrichedTargets = groupedWatches.map((gw, idx) => {
+        const b = bios[idx] || null;
+        const proHit = Array.isArray(PRO_SUPERFIGHTS) ? PRO_SUPERFIGHTS.find(p => foldStr(p.name || "") === foldStr(gw.name)) : null;
+        const divHint = (gw.items || []).map(x => x.division || "").filter(Boolean).join(" ");
+        const knownBelt = b?.belt || proHit?.belt || "";
+        const knownAcad = gw.academy || b?.academy || proHit?.academy || "";
+        const knownGender = inferTargetGender(gw.name, [], divHint);
+        return { ...gw, knownBelt, knownAcad, knownGender };
+      });
+
       const found = [];
       snaps.forEach(sn => sn.forEach(d => {
         ((d.data() || {}).items || []).forEach(it => {
-          const hit = groupedWatches.find(gw => smartAthleteMatch(it.n, it.a, gw.name));
-          if (hit) found.push({ ...it, watchedName: hit.name, watchedAcad: it.a || hit.academy || "" });
+          const evObj = eventByIdMap.get(it.e);
+          const evTitle = evObj?.name || "";
+          const hit = enrichedTargets.find(gw =>
+            strictVerifiedAthleteRowMatch(
+              it.n,
+              it.a,
+              it.d,
+              gw.name,
+              gw.knownAcad,
+              gw.knownGender,
+              { targetBelt: gw.knownBelt, evName: evTitle }
+            )
+          );
+          if (hit) found.push({ ...it, watchedName: hit.name, watchedAcad: it.a || hit.knownAcad || "" });
         });
       }));
       setRegEntries(found);
       setLoadingRegs(false);
-    }).catch(() => setLoadingRegs(false));
-  }, [groupedWatches]);
+    }).catch(() => {
+      if (!cancelled) setLoadingRegs(false);
+    });
+
+    return () => { cancelled = true; };
+  }, [groupedWatches, eventByIdMap]);
 
   // Match upcoming events to watched athletes (via live __r2_XX__ registrations, explicit watch eventId, or SuperFight card banner!)
   const { watchedNext14d, watchedLater, generalNext14d } = useMemo(() => {
