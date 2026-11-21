@@ -367,6 +367,16 @@ function canonicalizeHits(hits) {
   return out;
 }
 
+function clearDirectUrlParams() {
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('athlete');
+    url.searchParams.delete('trophy');
+    url.searchParams.delete('gym');
+    window.history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash);
+  } catch {}
+}
+
 export function LeaderboardModal({ onClose }) {
   const [podiumWatchPick, setPodiumWatchPick] = useState(null);
   const { getWatch: getPodiumWatch, removeWatch: removePodiumWatch } = useWatchedAthletes();
@@ -401,7 +411,19 @@ export function LeaderboardModal({ onClose }) {
   const [loadingAthShard, setLoadingAthShard] = useState('');
   const [trophyCard, setTrophyCard] = useState(null);
   const [sortBy, setSortBy] = useState("MEDALS");
-  const [openAthTrophy, setOpenAthTrophy] = useState(() => { const t = new URLSearchParams(window.location.search).get("trophy"); return t ? { name: t, academy: "", g: 0, s: 0, b: 0, events: [] } : null; });
+  const [isDirectUrlTrophy, setIsDirectUrlTrophy] = useState(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      return Boolean((sp.get("trophy") || sp.get("athlete")) && !sp.get("gym"));
+    } catch { return false; }
+  });
+  const [openAthTrophy, setOpenAthTrophy] = useState(() => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const t = (sp.get("trophy") || (!sp.get("gym") ? sp.get("athlete") : "") || "").replace(/\+/g, " ").trim();
+      return t ? { name: t, academy: "", g: 0, s: 0, b: 0, events: [] } : null;
+    } catch { return null; }
+  });
   const [copiedToast, setCopiedToast] = useState('');
 
   const copyDirectLink = async (paramName, paramVal) => {
@@ -714,8 +736,8 @@ export function LeaderboardModal({ onClose }) {
       <div onClick={onClose} style={box}>
         <div onClick={e => e.stopPropagation()} style={card}>
           {trophyCard && <TrophyCardModal cardData={trophyCard} onClose={() => setTrophyCard(null)} />}
-          {podiumWatchPick && <div onClick={e=>e.stopPropagation()}><MatAlertModal event={podiumWatchPick.event} comp={podiumWatchPick.comp} division={podiumWatchPick.division} onClose={() => setPodiumWatchPick(null)} /></div>}
-          {openAthTrophy && <div onClick={e=>e.stopPropagation()}><AthleteTrophyRoomModal athlete={openAthTrophy} onBack={() => setOpenAthTrophy(null)} backLabel="← Academy" onClose={() => { setOpenAthTrophy(null); if (onClose) onClose(); }} isWatching={Boolean(getPodiumWatch(openAthTrophy.name))} onShareCard={setTrophyCard} onWatch={(nm, ac) => setPodiumWatchPick({ event: { id: "", name: "All Upcoming Tournaments", link: "https://matdates.com/?athlete=" + encodeURIComponent(nm).replace(/%20/g, "+"), sort_date: "" }, comp: { Name: nm, Academy: ac || "", Division: "" }, division: "" })} /></div>}
+          {podiumWatchPick && <div onClick={e=>e.stopPropagation()}><MatAlertModal event={podiumWatchPick.event} comp={podiumWatchPick.comp} division={podiumWatchPick.division} existingWatch={getPodiumWatch(podiumWatchPick.comp.Name)} onRemove={removePodiumWatch} onClose={() => setPodiumWatchPick(null)} /></div>}
+          {openAthTrophy && <div onClick={e=>e.stopPropagation()}><AthleteTrophyRoomModal athlete={openAthTrophy} onBack={() => setOpenAthTrophy(null)} backLabel="← Academy" onClose={() => { clearDirectUrlParams(); setOpenAthTrophy(null); if (onClose) onClose(); }} isWatching={Boolean(getPodiumWatch(openAthTrophy.name))} onShareCard={setTrophyCard} onWatch={(nm, ac) => setPodiumWatchPick({ event: { id: "", name: "All Upcoming Tournaments", link: "https://matdates.com/?athlete=" + encodeURIComponent(nm).replace(/%20/g, "+"), sort_date: "" }, comp: { Name: nm, Academy: ac || "", Division: "" }, division: "" })} /></div>}
           {copiedToast && <div style={{ background:'#064e3b', color:'#6ee7b7', border:'1px solid #10b981', borderRadius:'6px', padding:'6px 10px', fontSize:'0.76rem', fontWeight:'bold', marginBottom:'8px', textAlign:'center' }}>{copiedToast}</div>}
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:'6px', flexWrap:'wrap', marginBottom:'10px', flexShrink:0 }}>
             <button
@@ -1103,7 +1125,7 @@ export function LeaderboardModal({ onClose }) {
           </div>
         )}
       </div>
-    {openAthTrophy && <div onClick={e=>e.stopPropagation()}><AthleteTrophyRoomModal athlete={openAthTrophy} onBack={(() => { try { const sp = new URLSearchParams(window.location.search); return (sp.get('athlete') && !sp.get('gym')) ? null : () => setOpenAthTrophy(null); } catch { return () => setOpenAthTrophy(null); } })()} backLabel="← Standings" onClose={() => { setOpenAthTrophy(null); if (onClose) onClose(); }} isWatching={Boolean(getPodiumWatch(openAthTrophy.name || openAthTrophy.n))} onWatch={(nm, ac) => setPodiumWatchPick({ event: { id: "", name: "All Upcoming Tournaments", link: "https://matdates.com/?athlete=" + encodeURIComponent(nm).replace(/%20/g, "+"), sort_date: "" }, comp: { Name: nm, Academy: ac || "", Division: "" }, division: "" })} onShareCard={(cd) => { setOpenAthTrophy(null); setTrophyCard(cd); }} /></div>}
+    {openAthTrophy && <div onClick={e=>e.stopPropagation()}><AthleteTrophyRoomModal athlete={openAthTrophy} onBack={() => setOpenAthTrophy(null)} backLabel="← Standings" onClose={() => { clearDirectUrlParams(); setOpenAthTrophy(null); if (onClose) onClose(); }} isWatching={Boolean(getPodiumWatch(openAthTrophy.name || openAthTrophy.n))} onWatch={(nm, ac) => setPodiumWatchPick({ event: { id: "", name: "All Upcoming Tournaments", link: "https://matdates.com/?athlete=" + encodeURIComponent(nm).replace(/%20/g, "+"), sort_date: "" }, comp: { Name: nm, Academy: ac || "", Division: "" }, division: "" })} onShareCard={(cd) => { setOpenAthTrophy(null); setTrophyCard(cd); }} /></div>}
       {podiumWatchPick && <div onClick={e=>e.stopPropagation()}><MatAlertModal event={podiumWatchPick.event} comp={podiumWatchPick.comp} division={podiumWatchPick.division} existingWatch={getPodiumWatch(podiumWatchPick.comp.Name)} onRemove={removePodiumWatch} onClose={()=>setPodiumWatchPick(null)}/></div>}</div>
   );
 }

@@ -347,7 +347,18 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
     return () => { document.body.style.overflow = prevBodyOverflow; };
   }, []);
   const [activeAth, setActiveAth] = useState(athlete);
-  useEffect(() => { setActiveAth(athlete); }, [athlete]);
+  const [athHistory, setAthHistory] = useState([]);
+  useEffect(() => { setActiveAth(athlete); setAthHistory([]); }, [athlete]);
+  const effectiveOnBack = athHistory.length > 0
+    ? () => {
+        const prev = athHistory[athHistory.length - 1];
+        setAthHistory(h => h.slice(0, -1));
+        setActiveAth(prev);
+      }
+    : onBack;
+  const effectiveBackLabel = athHistory.length > 0
+    ? `← ${(athHistory[athHistory.length - 1]?.name || 'Back').split(' ')[0]}`
+    : backLabel;
 
   const nm = activeAth?.name || activeAth?.n || "";
   const slug = foldStr(nm).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -921,20 +932,30 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
           padding:"10px 50px 10px 14px", borderRadius:"15px 15px 0 0", background:"#101726", borderBottom:"1px solid #243044", flexShrink:0
         }}>
           <div style={{ display:"flex", alignItems:"center", gap:"6px", flexWrap:"wrap" }}>
-            {onBack && (
-              <button
-                type="button"
-                onClick={onBack}
-                aria-label="Go Back"
-                style={{
-                  background:"#1e293b", color:"#38bdf8", border:"1px solid #0284c7",
-                  borderRadius:"7px", padding:"4px 9px", fontSize:"0.73rem", fontWeight:"800",
-                  cursor:"pointer", display:"inline-flex", alignItems:"center", gap:"4px"
-                }}
-              >
-                {backLabel}
-              </button>
-            )}
+            {effectiveOnBack && (
+                <button
+                  type="button"
+                  onClick={effectiveOnBack}
+                  aria-label="Go Back"
+                  style={{
+                    background:"linear-gradient(135deg,#0284c7,#0369a1)",
+                    color:"#ffffff",
+                    border:"1px solid #38bdf8",
+                    borderRadius:"8px",
+                    padding:"6px 12px",
+                    fontSize:"0.78rem",
+                    fontWeight:"900",
+                    cursor:"pointer",
+                    display:"inline-flex",
+                    alignItems:"center",
+                    gap:"5px",
+                    boxShadow:"0 2px 10px rgba(2,132,199,0.4)",
+                    flexShrink:0
+                  }}
+                >
+                  {effectiveBackLabel}
+                </button>
+              )}
             <span style={{ color:"#fbbf24", fontSize:"0.71rem", fontWeight:"900", letterSpacing:"1.2px", textTransform:"uppercase" }}>
               🏆 Official Trophy Room
             </span>
@@ -995,7 +1016,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
                   <button
                     key={idx}
                     type="button"
-                    onClick={() => setActiveAth({ name: fb.name, academy: fb.academy || "", g: 0, s: 0, b: 0, events: [] })}
+                    onClick={() => { if (!active) { setAthHistory(h => [...h, activeAth]); setActiveAth({ name: fb.name, academy: fb.academy || "", g: 0, s: 0, b: 0, events: [] }); } }}
                     style={{
                       background: active ? "#f59e0b" : "#161f30",
                       color: active ? "#000" : "#cbd5e1",

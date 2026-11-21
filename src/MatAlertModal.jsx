@@ -44,6 +44,33 @@ function bindForegroundPush() {
   }).catch(() => {});
 }
 
+function normWatchPerson(s) {
+  return String(s || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function watchNamesMatch(aRaw, bRaw) {
+  const a = normWatchPerson(aRaw);
+  const b = normWatchPerson(bRaw);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const ap = a.split(" ");
+  const bp = b.split(" ");
+  if (ap.length >= 2 && bp.length >= 2 && ap[0] === bp[0]) {
+    const al = ap[ap.length - 1];
+    const bl = bp[bp.length - 1];
+    if (al.length >= 2 && bl.length >= 2 && (al.startsWith(bl) || bl.startsWith(al))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function useWatchedAthletes() {
   const [curUid, setCurUid] = useState(() => (auth.currentUser && auth.currentUser.uid) || '');
   const [uidDocs, setUidDocs] = useState([]);
@@ -132,27 +159,26 @@ export function useWatchedAthletes() {
   const watches = Array.from(merged.values());
 
   const getWatch = (name, eventId) => {
-    const n = (name || '').trim().toLowerCase();
+    const n = normWatchPerson(name);
     if (!n) return null;
     return watches.find(w =>
-      (w.athleteName || '').trim().toLowerCase() === n &&
+      watchNamesMatch(w.athleteName, name) &&
       (!eventId || !w.eventId || w.eventId === eventId || w.followFuture === true)
-    ) || null;
+    ) || watches.find(w => watchNamesMatch(w.athleteName, name)) || null;
   };
 
   const removeWatch = async (w) => {
     if (!w) return;
     const activeUid = (auth.currentUser && auth.currentUser.uid) || '';
-    const targetName = (w.athleteName || '').trim().toLowerCase();
+    const targetName = w.athleteName || w.Name || '';
     writeLocal(
       readLocal(activeUid).filter(x =>
-        x.id !== w.id && !((x.athleteName || '').trim().toLowerCase() === targetName && (x.eventId || '') === (w.eventId || ''))
+        x.id !== w.id && !(watchNamesMatch(x.athleteName, targetName) && (!w.eventId || (x.eventId || '') === (w.eventId || '')))
       ),
       activeUid
     );
-    // Remove ALL matching Firestore watch docs for this athlete/event under this user so it never ghosts back!
     const matchingDocs = watches.filter(x =>
-      x.id && (x.id === w.id || ((x.athleteName || '').trim().toLowerCase() === targetName && (!w.eventId || (x.eventId || '') === (w.eventId || ''))))
+      x.id && (x.id === w.id || (watchNamesMatch(x.athleteName, targetName) && (!w.eventId || (x.eventId || '') === (w.eventId || ''))))
     );
     const idsToRemove = matchingDocs.length ? matchingDocs.map(x => x.id) : (w.id ? [w.id] : []);
     for (const docId of idsToRemove) {
@@ -179,6 +205,9 @@ const BOX = {
 };
 
 export function MatAlertModal({ event, comp, division, existingWatch, onRemove, onClose }) {
+  const { getWatch: internalGetWatch, removeWatch: internalRemoveWatch } = useWatchedAthletes();
+  const resolvedWatch = existingWatch || internalGetWatch(comp && comp.Name, event && event.id ? event.id : undefined);
+  const resolvedRemove = onRemove || internalRemoveWatch;
   const curUser = auth.currentUser;
   const iosSafari = isIosSafariBrowser();
   const [email, setEmail] = useState(
@@ -208,7 +237,7 @@ export function MatAlertModal({ event, comp, division, existingWatch, onRemove, 
   };
 
   useEffect(() => {
-    if (existingWatch || typeof window === 'undefined' || !('Notification' in window)) return;
+    if (resolvedWatch || typeof window === 'undefined' || !('Notification' in window)) return;
     if (Notification.permission === 'granted') {
       setPushStatus('requesting');
       isSupported().then((ok) => {
@@ -222,7 +251,7 @@ export function MatAlertModal({ event, comp, division, existingWatch, onRemove, 
       setPushStatus('denied');
       setWantPush(false);
     }
-  }, [existingWatch]);
+  }, [resolvedWatch]);
 
   const requestPushNow = async () => {
     if (fcmToken) return fcmToken;
@@ -312,25 +341,35 @@ export function MatAlertModal({ event, comp, division, existingWatch, onRemove, 
             ? <>Watch <strong style={{ color:'#ff9f43' }}>{comp.Name}</strong>{division ? ` (${division})` : ''} at <strong>{event.name}</strong>.</>
             : <>Follow <strong style={{ color:'#ff9f43' }}>{comp.Name}</strong>{comp.Academy ? ` (${comp.Academy})` : ''} — get an instant alert the moment they join any upcoming tournament bracket, plus live Mat # &amp; Match Time updates!</>}
         </p>
-        {existingWatch && !done ? (
+        {resolvedWatch && !done ? (
           <div style={{ background:'#132a1c', border:'1px solid #2ecc71', borderRadius:'8px', padding:'14px' }}>
-            <div style={{ color:'#2ecc71', fontWeight:'bold', marginBottom:'6px' }}>{'\u2713'} Active Athlete Watch</div>
-            <div style={{ color:'#cbd5e1', fontSize:'0.82rem', marginBottom:'10px', lineHeight:1.55 }}>
-              <div>{existingWatch.fcmToken ? '\u{1F4F2} Phone / Browser Push: Enabled' : '\u{1F4F2} Phone / Browser Push: Off'}</div>
-              <div>{existingWatch.email ? `\u2709\uFE0F Email Alerts: ${existingWatch.email}` : '\u2709\uFE0F Email Alerts: None'}</div>
-              <div>{existingWatch.followFuture ? '\u{1F501} Following All Future Tournaments: Yes' : '\u{1F501} Following Future Tournaments: This Event Only'}</div>
-              {(existingWatch.lastMat || existingWatch.lastTime) && (
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'6px' }}>
+              <div style={{ color:'#2ecc71', fontWeight:'bold' }}>{'\u2713'} Active Athlete Watch</div>
+              <button
+                type="button"
+                title="Stop Watching"
+                onClick={async () => { await resolvedRemove(resolvedWatch); onClose(); }}
+                style={{ background:'#7f1d1d', color:'#fecaca', border:'1px solid #ef4444', borderRadius:'6px', padding:'3px 8px', fontSize:'0.75rem', fontWeight:'900', cursor:'pointer' }}
+              >
+                {'\u2715'} Remove
+              </button>
+            </div>
+            <div style={{ color:'#cbd5e1', fontSize:'0.82rem', marginBottom:'12px', lineHeight:1.55 }}>
+              <div>{resolvedWatch.fcmToken ? '\u{1F4F2} Phone / Browser Push: Enabled' : '\u{1F4F2} Phone / Browser Push: Off'}</div>
+              <div>{resolvedWatch.email ? `\u2709\uFE0F Email Alerts: ${resolvedWatch.email}` : '\u2709\uFE0F Email Alerts: None'}</div>
+              <div>{resolvedWatch.followFuture ? '\u{1F501} Following All Future Tournaments: Yes' : '\u{1F501} Following Future Tournaments: This Event Only'}</div>
+              {(resolvedWatch.lastMat || resolvedWatch.lastTime) && (
                 <div style={{ color:'#ff9f43', marginTop:'4px' }}>
-                  Latest: {[existingWatch.lastMat, existingWatch.lastTime && `Est. ${existingWatch.lastTime}`].filter(Boolean).join(' • ')}
+                  Latest: {[resolvedWatch.lastMat, resolvedWatch.lastTime && `Est. ${resolvedWatch.lastTime}`].filter(Boolean).join(' • ')}
                 </div>
               )}
             </div>
             <button
               type="button"
-              onClick={async () => { await onRemove(existingWatch); onClose(); }}
-              style={{ width:'100%', padding:'9px 12px', background:'#7f1d1d', color:'#fecaca', border:'1px solid #ef4444', borderRadius:'6px', fontWeight:'bold', cursor:'pointer' }}
+              onClick={async () => { await resolvedRemove(resolvedWatch); onClose(); }}
+              style={{ width:'100%', padding:'10px 12px', background:'#991b1b', color:'#ffffff', border:'1px solid #ef4444', borderRadius:'7px', fontWeight:'900', fontSize:'0.88rem', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:'6px' }}
             >
-              Stop Watching {comp.Name}
+              {'\u2715'} Stop Watching {comp.Name}
             </button>
           </div>
         ) : done ? (
