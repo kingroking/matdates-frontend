@@ -53,6 +53,31 @@ export function TaleOfTheTapeModal({ compA, compB, division, onClose }) {
   );
 }
 
+function cleanDisplayAthleteName(raw = "") {
+  return String(raw || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .map(w => {
+      if (!w) return "";
+      if (/^(II|III|IV|JR\.?|SR\.?)$/i.test(w)) return w.toUpperCase();
+      if (w === w.toLowerCase()) return w.charAt(0).toUpperCase() + w.slice(1);
+      return w;
+    })
+    .join(" ");
+}
+
+function isTruncatedPrefixOf(shortFold, fullFold) {
+  if (!shortFold || !fullFold || shortFold === fullFold) return false;
+  const sParts = shortFold.split(/\s+/).filter(Boolean);
+  const fParts = fullFold.split(/\s+/).filter(Boolean);
+  if (sParts.length < 2 || fParts.length < 2) return false;
+  if (sParts[0] !== fParts[0]) return false;
+  const sLast = sParts[sParts.length - 1];
+  const fLast = fParts[fParts.length - 1];
+  return sLast.length >= 2 && fLast.length > sLast.length && fLast.startsWith(sLast);
+}
+
 export function WeekendWarRoomModal({ events, watches, onRemoveWatch, onWatchAthlete, onShareCard, onOpenAthlete, onClose, onOpenEvent }) {
   const [showWatchedDrawer, setShowWatchedDrawer] = useState(false);
   const [showGeneral14d, setShowGeneral14d] = useState(false);
@@ -62,21 +87,49 @@ export function WeekendWarRoomModal({ events, watches, onRemoveWatch, onWatchAth
   const [loadingRegs, setLoadingRegs] = useState(false);
 
   // Deduplicate watched athletes by folded name while keeping all division/mat statuses attached
+  const [resolvedFullNames, setResolvedFullNames] = useState({});
+
   const groupedWatches = useMemo(() => {
-    const map = new Map();
+    const rawList = [];
     (watches || []).forEach(w => {
-      const nm = (w.athleteName || "").trim();
-      if (!nm) return;
-      const k = foldStr(nm);
-      if (!map.has(k)) {
-        map.set(k, { name: nm, academy: w.academy || "", items: [] });
+      const orig = (w.athleteName || "").trim();
+      if (!orig) return;
+      const upgraded = resolvedFullNames[foldStr(orig)] || orig;
+      rawList.push({ w, nm: cleanDisplayAthleteName(upgraded), k: foldStr(upgraded) });
+    });
+
+    const map = new Map();
+    rawList.forEach(({ w, nm, k }) => {
+      let targetKey = k;
+      for (const existingKey of Array.from(map.keys())) {
+        if (existingKey === k) {
+          targetKey = existingKey;
+          break;
+        }
+        if (isTruncatedPrefixOf(k, existingKey)) {
+          targetKey = existingKey;
+          break;
+        }
+        if (isTruncatedPrefixOf(existingKey, k)) {
+          const oldEntry = map.get(existingKey);
+          map.delete(existingKey);
+          oldEntry.name = nm;
+          map.set(k, oldEntry);
+          targetKey = k;
+          break;
+        }
       }
-      const g = map.get(k);
-      if (!g.academy && w.academy) g.academy = w.academy;
-      g.items.push(w);
+
+      if (!map.has(targetKey)) {
+        map.set(targetKey, { name: nm, academy: w.academy || "", items: [] });
+      }
+      const entry = map.get(targetKey);
+      if (nm.length > entry.name.length) entry.name = nm;
+      if (!entry.academy && w.academy) entry.academy = w.academy;
+      entry.items.push(w);
     });
     return Array.from(map.values());
-  }, [watches]);
+  }, [watches, resolvedFullNames]);
 
   // Create fast event lookup map so division + tournament title (e.g. "IBJJF Kids") are checked before matching!
   const eventByIdMap = useMemo(() => {
@@ -125,7 +178,18 @@ export function WeekendWarRoomModal({ events, watches, onRemoveWatch, onWatchAth
         ((d.data() || {}).items || []).forEach(it => {
           const evObj = eventByIdMap.get(it.e);
           const evTitle = evObj?.name || "";
+          enrichedTargets.forEach(gw => {
+            const gFold = foldStr(gw.name);
+            const rFold = foldStr(it.n || "");
+            if (isTruncatedPrefixOf(gFold, rFold)) {
+              const rGen = inferTargetGender(it.n, [], it.d || "");
+              if (!gw.knownGender || !rGen || gw.knownGender === rGen) {
+                setResolvedFullNames(prev => prev[gFold] ? prev : { ...prev, [gFold]: cleanDisplayAthleteName(it.n) });
+              }
+            }
+          });
           const hit = enrichedTargets.find(gw =>
+            isTruncatedPrefixOf(foldStr(gw.name), foldStr(it.n || "")) ||
             strictVerifiedAthleteRowMatch(
               it.n,
               it.a,
@@ -459,7 +523,9 @@ export function WeekendWarRoomModal({ events, watches, onRemoveWatch, onWatchAth
       {trophyAth && (
         <AthleteTrophyRoomModal
           athlete={trophyAth}
-          onClose={() => setTrophyAth(null)}
+          onBack={() => setTrophyAth(null)}
+          backLabel="← War Room"
+          onClose={() => { setTrophyAth(null); if (onClose) onClose(); }}
           isWatching={checkWatching(trophyAth.name)}
           onWatch={(nm, ac) => {
             if (onWatchAthlete) onWatchAthlete(nm, ac);
@@ -915,7 +981,9 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
         {trophyPick && (
           <AthleteTrophyRoomModal
             athlete={trophyPick}
-            onClose={() => setTrophyPick(null)}
+            onBack={() => setTrophyPick(null)}
+            backLabel="← Lookup"
+            onClose={() => { setTrophyPick(null); if (onClose) onClose(); }}
             isWatching={Boolean(getWatch(trophyPick.name))}
             onWatch={(nm, ac) => openFollow(nm, ac)}
           />

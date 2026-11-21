@@ -340,7 +340,7 @@ function lookupSongPreview(rawQuery, directUrl = "") {
   });
 }
 
-export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, onShareCard }) {
+export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '← Back', onWatch, isWatching, onShareCard }) {
   useEffect(() => {
     const prevBodyOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -921,6 +921,20 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
           padding:"10px 50px 10px 14px", borderRadius:"15px 15px 0 0", background:"#101726", borderBottom:"1px solid #243044", flexShrink:0
         }}>
           <div style={{ display:"flex", alignItems:"center", gap:"6px", flexWrap:"wrap" }}>
+            {onBack && (
+              <button
+                type="button"
+                onClick={onBack}
+                aria-label="Go Back"
+                style={{
+                  background:"#1e293b", color:"#38bdf8", border:"1px solid #0284c7",
+                  borderRadius:"7px", padding:"4px 9px", fontSize:"0.73rem", fontWeight:"800",
+                  cursor:"pointer", display:"inline-flex", alignItems:"center", gap:"4px"
+                }}
+              >
+                {backLabel}
+              </button>
+            )}
             <span style={{ color:"#fbbf24", fontSize:"0.71rem", fontWeight:"900", letterSpacing:"1.2px", textTransform:"uppercase" }}>
               🏆 Official Trophy Room
             </span>
