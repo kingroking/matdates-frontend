@@ -314,12 +314,50 @@ function App() {
     try { return new URLSearchParams(window.location.search).get('sponsor') === '1'; } catch { return false; }
   });
   const [showWatchedModal, setShowWatchedModal] = useState(false);
-  const [showWarRoom, setShowWarRoom] = useState(false);
+  const [showWarRoom, setShowWarRoom] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get('warroom') === '1'; } catch { return false; }
+  });
   const [photogEvent, setPhotogEvent] = useState(null);
   const [photogCounts, setPhotogCounts] = useState({});
   const refreshPhotogCounts = () => { fetchPhotogCounts().then(setPhotogCounts); };
   useEffect(() => { refreshPhotogCounts(); }, []);
   useEffect(() => { if (new URLSearchParams(window.location.search).get("trophy")) setShowLeaderboard(true); }, []);
+  const handleDeepLinkAction = (detail = {}) => {
+    try {
+      const rawUrl = detail.url || '';
+      const sp = rawUrl ? new URL(rawUrl, window.location.origin).searchParams : new URLSearchParams(detail.search || '');
+      const ath = sp.get('athlete') || sp.get('trophy') || (detail.view === 'trophy' ? detail.athleteName : '');
+      const gym = sp.get('gym') || '';
+      if (ath || gym) {
+        const nextUrl = new URL(window.location.href);
+        if (ath) nextUrl.searchParams.set('athlete', ath);
+        if (gym) nextUrl.searchParams.set('gym', gym);
+        nextUrl.searchParams.delete('warroom');
+        window.history.replaceState({}, '', nextUrl.pathname + nextUrl.search + nextUrl.hash);
+        setShowWarRoom(false);
+        setShowLeaderboard(true);
+        return;
+      }
+      setShowLeaderboard(false);
+      setShowWarRoom(true);
+    } catch {
+      setShowWarRoom(true);
+    }
+  };
+
+  useEffect(() => {
+    const onCustomDeep = (e) => handleDeepLinkAction(e.detail || {});
+    const onSwMessage = (e) => {
+      if (e?.data?.type === 'MD_PUSH_DEEPLINK') handleDeepLinkAction(e.data);
+    };
+    window.addEventListener('md-open-deeplink', onCustomDeep);
+    if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', onSwMessage);
+    return () => {
+      window.removeEventListener('md-open-deeplink', onCustomDeep);
+      if ('serviceWorker' in navigator) navigator.serviceWorker.removeEventListener('message', onSwMessage);
+    };
+  }, []);
+
   const [livePushToast, setLivePushToast] = useState(null);
   useEffect(() => {
     const h = (e) => { setLivePushToast(e.detail); setTimeout(() => setLivePushToast(null), 12000); };
@@ -723,7 +761,15 @@ function App() {
           <div style={{ color:'#cbd5e1', fontSize:'0.83rem', marginTop:'4px' }}>{livePushToast.body}</div>
         </div>
       )}
-      {showWarRoom && <WeekendWarRoomModal events={events} watches={myWatches} onRemoveWatch={removeMyWatch} onOpenAthlete={(w) => { const ev = events.find(x => x.id === w.eventId); setShowWarRoom(false); if (ev) { setCalcResult(w.athleteName); setSelectedCompetitorEvent(ev); } else if (w.eventLink) { window.open(w.eventLink, '_blank'); } }} onClose={() => setShowWarRoom(false)} onOpenEvent={(ev) => { setShowWarRoom(false); setSelectedCompetitorEvent(ev); }} />}
+      {showWarRoom && <WeekendWarRoomModal events={events} watches={myWatches} onRemoveWatch={removeMyWatch} onOpenAthlete={(w) => { const ev = events.find(x => x.id === w.eventId); setShowWarRoom(false); if (ev) { setCalcResult(w.athleteName); setSelectedCompetitorEvent(ev); } else if (w.eventLink) { window.open(w.eventLink, '_blank'); } }} onClose={() => {
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.delete('warroom');
+          url.searchParams.delete('watch');
+          window.history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash);
+        } catch {}
+        setShowWarRoom(false);
+      }} onOpenEvent={(ev) => { setShowWarRoom(false); setSelectedCompetitorEvent(ev); }} />}
       {showWatchedModal && <WatchedAthletesModal watches={myWatches} onRemove={removeMyWatch} onClose={() => setShowWatchedModal(false)} onOpenAthlete={(w) => { const ev = events.find(x => x.id === w.eventId); setShowWatchedModal(false); if (ev) { setCalcResult(w.athleteName); setSelectedCompetitorEvent(ev); } else if (w.eventLink) { window.open(w.eventLink, '_blank'); } }} />}
       {showLeaderboard && <LeaderboardModal onClose={() => {
         try {
