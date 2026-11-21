@@ -208,6 +208,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
   const [histEvs, setHistEvs] = useState([]);
   const [promBouts, setPromBouts] = useState([]);
   const [fedRanks, setFedRanks] = useState([]);
+  const WATCH_GLOW_MIN = 3;
   const [eraView, setEraView] = useState("2026");
   const [cnt, setCnt] = useState({ g: activeAth?.g || 0, s: activeAth?.s || 0, b: activeAth?.b || 0, acad: activeAth?.academy || activeAth?.a || "" });
   const [bio, setBio] = useState(null);
