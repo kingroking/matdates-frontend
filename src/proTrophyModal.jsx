@@ -227,80 +227,116 @@ function playBioMusicVibe(vibeLabel = "") {
   }
 }
 
-function lookupItunesPreview(rawQuery, directUrl = "") {
+function scoreTrackCandidate(item, raw, parts, norm) {
+  const fullNorm = norm(raw);
+  const p0 = norm(parts[0] || raw);
+  const p1 = norm(parts[1] || "");
+  const tName = norm(item.trackName);
+  const aName = norm(item.artistName);
+  const cName = norm(item.collectionName);
+  let score = 0;
+
+  if (!/karaoke|tribute|lullaby|instrumental|cover/.test(fullNorm)) {
+    if (/karaoke|tribute|originally performed|in the style of|8 bit|lullaby|piano version|made famous/.test(tName + " " + aName + " " + cName)) {
+      score -= 90;
+    }
+  }
+  if (parts.length >= 2) {
+    if ((tName.includes(p0) && aName.includes(p1)) || (tName.includes(p1) && aName.includes(p0))) score += 65;
+    if (tName === p0 || tName === p1) score += 30;
+    if (aName === p1 || aName === p0) score += 30;
+  } else {
+    if (tName === p0) score += 45;
+    else if (tName.startsWith(p0)) score += 25;
+    else if (tName.includes(p0)) score += 12;
+    if (fullNorm.includes(aName) && aName.length > 2) score += 35;
+  }
+  return score;
+}
+
+function jsonpRequest(url, cbParam = "callback", timeoutMs = 4200) {
   return new Promise((resolve) => {
-    const raw = String(rawQuery || "").trim();
-    if (!raw && !directUrl) return resolve(null);
-
-    // If athlete pasted an Apple Music link with ?i=trackId or /song/.../id, look up exact Apple ID first!
-    const appleIdMatch = String(directUrl || "").match(/[?&]i=(\d+)|\/(\d{7,12})(?:[/?#]|$)/);
-    const exactId = appleIdMatch ? (appleIdMatch[1] || appleIdMatch[2]) : "";
-
-    const cbName = "__mdItunesCb_" + Math.random().toString(36).slice(2, 9);
-    let settled = false;
+    const cbName = "__mdMusicCb_" + Math.random().toString(36).slice(2, 9);
+    let done = false;
     const script = document.createElement("script");
     const finish = (val) => {
-      if (settled) return;
-      settled = true;
+      if (done) return;
+      done = true;
       try { delete window[cbName]; } catch { window[cbName] = undefined; }
       if (script.parentNode) script.parentNode.removeChild(script);
       resolve(val);
     };
-    const timer = setTimeout(() => finish(null), 5000);
-
-    // Split "Song - Artist" or "Song by Artist" to score exact artist + title matches and reject karaoke/tribute covers
-    const parts = raw.split(/\s*(?:[-–—|•]|\bby\b)\s*/i).map(s => s.trim()).filter(Boolean);
-    const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
-    const fullNorm = norm(raw);
-    const p0 = norm(parts[0] || raw);
-    const p1 = norm(parts[1] || "");
-
-    window[cbName] = (data) => {
-      clearTimeout(timer);
-      const list = Array.isArray(data?.results) ? data.results.filter(r => r && r.previewUrl) : [];
-      if (!list.length) return finish(null);
-      if (exactId) return finish(list[0]);
-
-      let best = list[0];
-      let bestScore = -999;
-      for (const item of list) {
-        const tName = norm(item.trackName);
-        const aName = norm(item.artistName);
-        const cName = norm(item.collectionName);
-        let score = 0;
-
-        // Penalize karaoke, tribute, instrumental, 8-bit, lullaby covers unless explicitly requested
-        if (!/karaoke|tribute|lullaby|instrumental|cover/.test(fullNorm)) {
-          if (/karaoke|tribute|originally performed|in the style of|8 bit|lullaby|piano version/.test(tName + " " + aName + " " + cName)) {
-            score -= 80;
-          }
-        }
-        if (parts.length >= 2) {
-          // Could be "Song - Artist" OR "Artist - Song"
-          if ((tName.includes(p0) && aName.includes(p1)) || (tName.includes(p1) && aName.includes(p0))) score += 60;
-          if (tName === p0 || tName === p1) score += 30;
-          if (aName === p1 || aName === p0) score += 30;
-        } else {
-          if (tName === p0) score += 45;
-          else if (tName.startsWith(p0)) score += 25;
-          else if (tName.includes(p0)) score += 12;
-          if (fullNorm.includes(aName) && aName.length > 2) score += 35;
-        }
-        if (score > bestScore) {
-          bestScore = score;
-          best = item;
-        }
-      }
-      finish(best);
-    };
-    script.onerror = () => {
-      clearTimeout(timer);
-      finish(null);
-    };
-    script.src = exactId
-      ? "https://itunes.apple.com/lookup?id=" + encodeURIComponent(exactId) + "&entity=song&callback=" + cbName
-      : "https://itunes.apple.com/search?term=" + encodeURIComponent(raw) + "&media=music&entity=song&limit=8&callback=" + cbName;
+    const timer = setTimeout(() => finish(null), timeoutMs);
+    window[cbName] = (data) => { clearTimeout(timer); finish(data); };
+    script.onerror = () => { clearTimeout(timer); finish(null); };
+    script.src = url + (url.includes("?") ? "&" : "?") + cbParam + "=" + cbName;
     document.head.appendChild(script);
+  });
+}
+
+function lookupSongPreview(rawQuery, directUrl = "") {
+  const raw = String(rawQuery || "").trim();
+  if (!raw && !directUrl) return Promise.resolve(null);
+
+  const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+  const parts = raw.split(/\s*(?:[-–—|•]|\bby\b)\s*/i).map(s => s.trim()).filter(Boolean);
+  const appleIdMatch = String(directUrl || "").match(/[?&]i=(\d+)|\/(\d{7,12})(?:[/?#]|$)/);
+  const exactId = appleIdMatch ? (appleIdMatch[1] || appleIdMatch[2]) : "";
+
+  const itunesUrl = exactId
+    ? "https://itunes.apple.com/lookup?id=" + encodeURIComponent(exactId) + "&entity=song"
+    : "https://itunes.apple.com/search?term=" + encodeURIComponent(raw) + "&media=music&entity=song&limit=8";
+  const deezerUrl = "https://api.deezer.com/search?q=" + encodeURIComponent(raw) + "&limit=8&output=jsonp";
+
+  const itunesPromise = jsonpRequest(itunesUrl).then((data) => {
+    const rows = Array.isArray(data?.results) ? data.results.filter(r => r && r.previewUrl) : [];
+    return rows.map(r => ({
+      trackName: r.trackName || "",
+      artistName: r.artistName || "",
+      collectionName: r.collectionName || "",
+      previewUrl: r.previewUrl,
+      artworkUrl60: r.artworkUrl60 || r.artworkUrl100 || "",
+      permanent: true,
+      exact: Boolean(exactId)
+    }));
+  });
+
+  const deezerPromise = exactId ? Promise.resolve([]) : jsonpRequest(deezerUrl).then((data) => {
+    const rows = Array.isArray(data?.data) ? data.data.filter(r => r && r.preview) : [];
+    return rows.map(r => ({
+      trackName: r.title || "",
+      artistName: r.artist?.name || "",
+      collectionName: r.album?.title || "",
+      previewUrl: r.preview,
+      artworkUrl60: r.album?.cover_small || r.album?.cover_medium || "",
+      permanent: false,
+      exact: false
+    }));
+  });
+
+  return Promise.all([deezerPromise, itunesPromise]).then(([dzList, itList]) => {
+    // Combine both sources (giving universal .mp3 slight tie-breaker edge on mobile while keeping permanent URL for caching)
+    const combined = [...dzList.map(x => ({ ...x, mp3Bonus: 3 })), ...itList.map(x => ({ ...x, mp3Bonus: 0 }))];
+    if (!combined.length) return null;
+    const exactHit = combined.find(x => x.exact);
+    if (exactHit) return exactHit;
+
+    let best = combined[0];
+    let bestScore = -999;
+    for (const item of combined) {
+      const sc = scoreTrackCandidate(item, raw, parts, norm) + (item.mp3Bonus || 0);
+      if (sc > bestScore) {
+        bestScore = sc;
+        best = item;
+      }
+    }
+    // Also attach permanentUrl if iTunes found the same song so Edit Profile can cache a non-expiring fallback URL in Firestore!
+    const permMatch = itList.sort((a, b) => scoreTrackCandidate(b, raw, parts, norm) - scoreTrackCandidate(a, raw, parts, norm))[0];
+    return {
+      ...best,
+      permanentPreviewUrl: permMatch && scoreTrackCandidate(permMatch, raw, parts, norm) >= 20 ? permMatch.previewUrl : (best.permanent ? best.previewUrl : ""),
+      artworkUrl60: best.artworkUrl60 || permMatch?.artworkUrl60 || ""
+    };
   });
 }
 
@@ -323,7 +359,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
   const [histEvs, setHistEvs] = useState([]);
   const [promBouts, setPromBouts] = useState([]);
   const [fedRanks, setFedRanks] = useState([]);
-  const WATCH_GLOW_MIN = 3;
+  const WATCH_GLOW_MIN = 100;
   const [eraView, setEraView] = useState("2026");
   const [cnt, setCnt] = useState({ g: activeAth?.g || 0, s: activeAth?.s || 0, b: activeAth?.b || 0, acad: activeAth?.academy || activeAth?.a || "" });
   const [bio, setBio] = useState(null);
@@ -344,6 +380,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
   const [previewArt, setPreviewArt] = useState("");
   const [previewTrackUrl, setPreviewTrackUrl] = useState("");
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const [showNativeAudioBar, setShowNativeAudioBar] = useState(false);
   const audioElRef = useRef(null);
   const previewUrlRef = useRef("");
 
@@ -358,72 +395,54 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
     };
   }, []);
 
-  const [embedTrackUrl, setEmbedTrackUrl] = useState("");
-  const [showInlineEmbed, setShowInlineEmbed] = useState(false);
-  const readyAudioRef = useRef(null);
-
-  // Pre-fetch 30s preview URL & pre-stage Audio object so iPhone tap calls .play() with ZERO .src mutation!
   useEffect(() => {
     let cancelled = false;
-    setPreviewTrackUrl("");
-    previewUrlRef.current = "";
-    setPreviewArt("");
-    setEmbedTrackUrl("");
-    setShowInlineEmbed(false);
+    setShowNativeAudioBar(false);
     setPlayingVibe(false);
-    if (readyAudioRef.current) {
-      try { readyAudioRef.current.pause(); } catch {}
-      readyAudioRef.current = null;
-    }
     const q = (bio?.songRepeat || "").trim();
-    if (!q) return;
+    if (!q) {
+      setPreviewTrackUrl("");
+      previewUrlRef.current = "";
+      setPreviewArt("");
+      return;
+    }
 
-    lookupItunesPreview(q, bio?.songUrl || "").then((track) => {
+    // Immediate zero-network fallback from Firestore bio cache if available!
+    if (bio?.songArtworkUrl) setPreviewArt(bio.songArtworkUrl);
+    if (bio?.songPreviewUrl && !bio.songPreviewUrl.includes("hdnea=")) {
+      previewUrlRef.current = bio.songPreviewUrl;
+      setPreviewTrackUrl(bio.songPreviewUrl);
+    } else {
+      previewUrlRef.current = "";
+      setPreviewTrackUrl("");
+    }
+
+    // Live dual-engine lookup (Deezer .mp3 + iTunes .m4a)
+    lookupSongPreview(q, bio?.songUrl || "").then((track) => {
       if (cancelled || !track) return;
       if (track.artworkUrl60) setPreviewArt(track.artworkUrl60);
-      if (track.trackViewUrl) {
-        setEmbedTrackUrl(track.trackViewUrl.replace("https://music.apple.com/", "https://embed.music.apple.com/"));
-      }
       if (track.previewUrl) {
         previewUrlRef.current = track.previewUrl;
         setPreviewTrackUrl(track.previewUrl);
-        try {
-          const preloaded = new Audio(track.previewUrl);
-          preloaded.preload = "auto";
-          preloaded.playsInline = true;
-          preloaded.setAttribute("playsinline", "");
-          preloaded.setAttribute("webkit-playsinline", "");
-          preloaded.volume = 1.0;
-          readyAudioRef.current = preloaded;
-        } catch {}
       }
     });
-    return () => {
-      cancelled = true;
-      if (readyAudioRef.current) {
-        try { readyAudioRef.current.pause(); } catch {}
-        readyAudioRef.current = null;
-      }
-    };
-  }, [bio?.songRepeat, bio?.songUrl]);
+    return () => { cancelled = true; };
+  }, [bio?.songRepeat, bio?.songUrl, bio?.songPreviewUrl, bio?.songArtworkUrl]);
 
   const toggleSongPreview = (e) => {
     e.stopPropagation();
+    const el = audioElRef.current;
 
-    // iOS 17+ Safari: play through media channel even if iPhone physical Silent switch is on!
+    // iOS 17+ Safari: allow audio playback even when physical Ringer switch is on Silent
     try {
       if (navigator.audioSession) {
         navigator.audioSession.type = "playback";
       }
     } catch {}
 
-    // Stop if already playing
     if (playingVibe) {
-      if (readyAudioRef.current) {
-        try { readyAudioRef.current.pause(); readyAudioRef.current.currentTime = 0; } catch {}
-      }
-      if (audioElRef.current) {
-        try { audioElRef.current.pause(); audioElRef.current.currentTime = 0; } catch {}
+      if (el) {
+        try { el.pause(); el.currentTime = 0; } catch {}
       }
       if (window.__mdActiveAudio) {
         try { window.__mdActiveAudio.pause(); window.__mdActiveAudio = null; } catch {}
@@ -432,64 +451,60 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
       return;
     }
 
-    if (!bio?.songRepeat) return;
+    if (!bio?.songRepeat || !el) return;
 
-    // Synchronously play the pre-staged Audio object or visible <audio> element WITHOUT mutating .src!
-    const player = readyAudioRef.current || audioElRef.current;
-    if (player && previewUrlRef.current) {
-      if (window.__mdActiveAudio && window.__mdActiveAudio !== player) {
+    // Case A: Track URL is ready -> call el.play() synchronously on line 1 of tap without mutating .src!
+    if (previewUrlRef.current) {
+      if (window.__mdActiveAudio && window.__mdActiveAudio !== el) {
         try { window.__mdActiveAudio.pause(); } catch {}
       }
-      window.__mdActiveAudio = player;
-      player.muted = false;
-      player.volume = 1.0;
-      player.onended = () => {
-        setPlayingVibe(false);
-        window.__mdActiveAudio = null;
-      };
+      if (el.getAttribute("src") !== previewUrlRef.current) {
+        el.src = previewUrlRef.current;
+      }
+      el.muted = false;
+      el.volume = 1.0;
+      window.__mdActiveAudio = el;
       setPlayingVibe(true);
-      const p = player.play();
+      const p = el.play();
       if (p && typeof p.catch === "function") {
         p.catch(() => {
           setPlayingVibe(false);
-          // Fallback on strict iOS WebKit: open sleek inline Apple Music mini-player right below the song pill!
-          if (embedTrackUrl) setShowInlineEmbed(true);
+          setShowNativeAudioBar(true);
         });
       }
       return;
     }
 
-    // If user tapped within the first 300ms before lookup finished, toggle inline player or fetch immediately
-    const unlockedAudio = new Audio();
-    unlockedAudio.playsInline = true;
-    unlockedAudio.setAttribute("playsinline", "");
+    // Case B: Tapped before lookup finished -> unlock <audio> synchronously inside gesture with 1-sample silent WAV!
+    const SILENT_WAV = "data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA";
     try {
-      const u = unlockedAudio.play();
+      el.src = SILENT_WAV;
+      el.muted = false;
+      const u = el.play();
       if (u && typeof u.catch === "function") u.catch(() => {});
-      unlockedAudio.pause();
+      el.pause();
     } catch {}
 
     setLoadingPreview(true);
-    lookupItunesPreview(bio.songRepeat, bio?.songUrl || "").then((track) => {
+    lookupSongPreview(bio.songRepeat, bio?.songUrl || "").then((track) => {
       setLoadingPreview(false);
       if (track?.artworkUrl60) setPreviewArt(track.artworkUrl60);
-      const emb = track?.trackViewUrl ? track.trackViewUrl.replace("https://music.apple.com/", "https://embed.music.apple.com/") : "";
-      if (emb) setEmbedTrackUrl(emb);
       if (track?.previewUrl) {
         previewUrlRef.current = track.previewUrl;
         setPreviewTrackUrl(track.previewUrl);
-        unlockedAudio.src = track.previewUrl;
-        unlockedAudio.volume = 1.0;
-        readyAudioRef.current = unlockedAudio;
-        window.__mdActiveAudio = unlockedAudio;
-        unlockedAudio.onended = () => { setPlayingVibe(false); window.__mdActiveAudio = null; };
+        el.src = track.previewUrl;
+        el.volume = 1.0;
+        window.__mdActiveAudio = el;
         setPlayingVibe(true);
-        unlockedAudio.play().catch(() => {
-          setPlayingVibe(false);
-          if (emb) setShowInlineEmbed(true);
-        });
+        const p2 = el.play();
+        if (p2 && typeof p2.catch === "function") {
+          p2.catch(() => {
+            setPlayingVibe(false);
+            setShowNativeAudioBar(true);
+          });
+        }
       } else {
-        handleSongClick();
+        setShowMusicPicker(true);
       }
     });
   };
@@ -770,6 +785,10 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
     if (!curUser) { alert("Please Sign In first to lock your Athlete Bio!"); return; }
     if (bio?.ownerUid && !isOwner) { alert("This bio is locked to its verified owner."); return; }
     setSaving(true);
+    let resolvedPreview = null;
+    if ((form.songRepeat || "").trim()) {
+      try { resolvedPreview = await lookupSongPreview((form.songRepeat || "").trim(), (form.songUrl || "").trim()); } catch {}
+    }
     const clean = {
       kind: "athlete_bio",
       status: "bio_only",
@@ -781,6 +800,8 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
       songRepeat: (form.songRepeat || "").trim(),
       musicVibe: (form.musicVibe || "").trim(),
       songUrl: (form.songUrl || "").trim(),
+      songPreviewUrl: resolvedPreview?.permanentPreviewUrl || ((form.songRepeat || "").trim() === (bio?.songRepeat || "").trim() ? (bio?.songPreviewUrl || "") : ""),
+      songArtworkUrl: resolvedPreview?.artworkUrl60 || ((form.songRepeat || "").trim() === (bio?.songRepeat || "").trim() ? (bio?.songArtworkUrl || "") : ""),
       quote: (form.quote || "").replace(/^["“”]+|["“”]+$/g, "").trim(),
       currentRead: (form.currentRead || "").trim(),
       jitsUrl: (form.jitsUrl || "").trim(),
@@ -869,7 +890,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
     >
       <style>{`.md-tr-close-desktop { display: none !important; }
       }
-      @keyframes matdatesNeonGold { 0%, 100% { box-shadow: 0 0 10px rgba(250,204,21,0.55), 0 0 22px rgba(245,158,11,0.35); } 50% { box-shadow: 0 0 16px rgba(250,204,21,0.9), 0 0 32px rgba(245,158,11,0.55); } }`}</style>
+      @keyframes mdNeonGoldPulse { 0%, 100% { box-shadow: 0 0 10px rgba(250,204,21,0.55), 0 0 22px rgba(245,158,11,0.35); } 50% { box-shadow: 0 0 16px rgba(250,204,21,0.9), 0 0 32px rgba(245,158,11,0.55); } }`}</style>
       <div
         onClick={e => e.stopPropagation()}
         style={{ position: "relative", 
@@ -1039,101 +1060,115 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
               </div>
             </div>
 
-            {/* Wrapped Full-Width Directly Underneath Photo: Belt & Stripes Bar + Open for SuperFights + Walkout Song! */}
+            {/* Wrapped Full-Width Directly Underneath Photo: Row 1 = Belt + SuperFights, Row 2 = Single-Line Walkout Song Player */}
             {(liveBelt || bio?.openSf || bio?.songRepeat) && (
-              <div style={{ marginTop:"10px", paddingTop:"9px", borderTop:"1px dashed rgba(51,65,85,0.6)", display:"flex", alignItems:"center", gap:"7px", flexWrap:"wrap" }}>
-                {liveBelt && <BeltRankBadge belt={liveBelt} />}
-                {bio?.openSf && (
-                  <span style={{ background:"#132a1c", color:"#4ade80", border:"1px solid #22c55e", padding:"3.5px 9px", borderRadius:"8px", fontSize:"0.71rem", fontWeight:"800" }}>
-                    🥊 Open for SuperFights
-                  </span>
+              <div style={{ marginTop: "10px", paddingTop: "9px", borderTop: "1px dashed rgba(51,65,85,0.6)", display: "flex", flexDirection: "column", gap: "8px" }}>
+                {(liveBelt || bio?.openSf) && (
+                  <div style={{ display: "flex", alignItems: "center", gap: "7px", flexWrap: "wrap" }}>
+                    {liveBelt && <BeltRankBadge belt={liveBelt} />}
+                    {bio?.openSf && (
+                      <span style={{ background: "#132a1c", color: "#4ade80", border: "1px solid #22c55e", padding: "3.5px 9px", borderRadius: "8px", fontSize: "0.71rem", fontWeight: "800" }}>
+                        🥊 Open for SuperFights
+                      </span>
+                    )}
+                  </div>
                 )}
+
                 {bio?.songRepeat && (
                   <div style={{
-                    display: "inline-flex", alignItems: "center", gap: "7px", flexWrap: "wrap",
-                    background: "linear-gradient(135deg, rgba(15,23,42,0.95), rgba(14,165,233,0.16))",
-                    border: playingVibe ? "1px solid #38bdf8" : "1px solid rgba(56,189,248,0.45)",
-                    boxShadow: playingVibe ? "0 0 14px rgba(56,189,248,0.35)" : "none",
-                    borderRadius: "14px", padding: "4px 9px 4px 6px", maxWidth: "100%"
+                    display: "flex", alignItems: "center", gap: "8px", flexWrap: "nowrap",
+                    width: "100%", boxSizing: "border-box",
+                    background: "linear-gradient(135deg, rgba(15,23,42,0.96), rgba(14,165,233,0.14))",
+                    border: playingVibe ? "1px solid #38bdf8" : "1px solid rgba(56,189,248,0.4)",
+                    boxShadow: playingVibe ? "0 0 14px rgba(56,189,248,0.3)" : "none",
+                    borderRadius: "12px", padding: "6px 8px"
                   }}>
-                    <style>{`@keyframes mdEqBar { 0%, 100% { height: 4px; } 50% { height: 13px; } }`}</style>
+                    <style>{"@keyframes mdEqBar { 0%, 100% { height: 4px; } 50% { height: 13px; } }"}</style>
                     <audio
                       ref={audioElRef}
                       src={previewTrackUrl || undefined}
                       playsInline
                       preload="auto"
                       onEnded={() => setPlayingVibe(false)}
-                      style={{ position: "absolute", width: 0, height: 0, opacity: 0, pointerEvents: "none" }}
+                      style={{ position: "fixed", left: "-9999px", width: "1px", height: "1px", opacity: 0.01, pointerEvents: "none" }}
                     />
+
                     {previewArt ? (
-                      <img src={previewArt} alt="" style={{ width: "24px", height: "24px", borderRadius: "6px", objectFit: "cover", flexShrink: 0 }} />
+                      <img src={previewArt} alt="" style={{ width: "30px", height: "30px", borderRadius: "7px", objectFit: "cover", flexShrink: 0 }} />
                     ) : (
-                      <span style={{ width: "24px", height: "24px", borderRadius: "6px", background: "rgba(56,189,248,0.18)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "0.78rem", flexShrink: 0 }}>🎵</span>
+                      <span style={{ width: "30px", height: "30px", borderRadius: "7px", background: "rgba(56,189,248,0.18)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "0.85rem", flexShrink: 0 }}>🎵</span>
                     )}
-                    {bio?.musicVibe && (
-                      <span style={{ background: "rgba(250,204,21,0.14)", color: "#fde047", border: "1px solid rgba(250,204,21,0.35)", borderRadius: "8px", padding: "1.5px 6px", fontSize: "0.64rem", fontWeight: "800" }}>
-                        {bio.musicVibe}
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      onClick={toggleSongPreview}
-                      title="Play 30-second song preview"
-                      style={{
-                        background: playingVibe ? "#0284c7" : "#1e293b", color: "#f8fafc",
-                        border: "1px solid #38bdf8", borderRadius: "9px", padding: "2.5px 8px",
-                        fontSize: "0.69rem", fontWeight: "800", cursor: "pointer",
-                        display: "inline-flex", alignItems: "center", gap: "5px"
-                      }}
-                    >
-                      {loadingPreview ? "⏳" : playingVibe ? (
-                        <span style={{ display: "inline-flex", alignItems: "flex-end", gap: "2px", height: "13px" }}>
-                          <span style={{ width: "2.5px", background: "#fde047", animation: "mdEqBar 0.45s ease-in-out infinite" }} />
-                          <span style={{ width: "2.5px", background: "#38bdf8", animation: "mdEqBar 0.65s ease-in-out infinite 0.15s" }} />
-                          <span style={{ width: "2.5px", background: "#fde047", animation: "mdEqBar 0.55s ease-in-out infinite 0.3s" }} />
-                        </span>
-                      ) : "▶"}
-                      <span>{playingVibe ? "Stop" : "Preview"}</span>
-                    </button>
+
                     <button
                       type="button"
                       onClick={handleSongClick}
                       title="Open full track in music app"
                       style={{
-                        background: "transparent", color: "#e0f2fe", border: "none",
-                        padding: "2px 3px", fontSize: "0.73rem", fontWeight: "800",
-                        cursor: "pointer", textAlign: "left"
+                        flex: 1, minWidth: 0, background: "transparent", border: "none",
+                        padding: 0, cursor: "pointer", textAlign: "left",
+                        display: "flex", flexDirection: "column", justifyContent: "center", gap: "1px"
                       }}
                     >
-                      {bio.songRepeat} <span style={{ color: "#38bdf8", fontSize: "0.68rem" }}>↗</span>
+                      {bio?.musicVibe && (
+                        <span style={{ color: "#fde047", fontSize: "0.6rem", fontWeight: "800", letterSpacing: "0.4px", textTransform: "uppercase", lineHeight: 1.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>
+                          {bio.musicVibe}
+                        </span>
+                      )}
+                      <span style={{ color: "#e0f2fe", fontSize: "0.75rem", fontWeight: "800", lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>
+                        {bio.songRepeat} <span style={{ color: "#38bdf8", fontSize: "0.68rem" }}>↗</span>
+                      </span>
                     </button>
-                    {!bio?.songUrl && (
+
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: "5px", flexShrink: 0 }}>
                       <button
                         type="button"
-                        onClick={() => setShowMusicPicker(p => !p)}
-                        style={{ background: "#0f172a", color: "#94a3b8", border: "1px solid #334155", borderRadius: "8px", padding: "2px 6px", fontSize: "0.64rem", cursor: "pointer" }}
+                        onClick={toggleSongPreview}
+                        title="Play 30-second song preview"
+                        style={{
+                          background: playingVibe ? "#0284c7" : "#1e293b", color: "#f8fafc",
+                          border: "1px solid #38bdf8", borderRadius: "8px", padding: "4px 9px",
+                          fontSize: "0.7rem", fontWeight: "800", cursor: "pointer",
+                          display: "inline-flex", alignItems: "center", gap: "5px", whiteSpace: "nowrap"
+                        }}
                       >
-                        {musicPref === "apple" ? "Apple ⚙️" : musicPref === "ytmusic" ? "YT ⚙️" : musicPref === "spotify" ? "Spotify ⚙️" : "App 🎧"}
+                        {loadingPreview ? "⏳" : playingVibe ? (
+                          <span style={{ display: "inline-flex", alignItems: "flex-end", gap: "2px", height: "12px" }}>
+                            <span style={{ width: "2.5px", background: "#fde047", animation: "mdEqBar 0.45s ease-in-out infinite" }} />
+                            <span style={{ width: "2.5px", background: "#38bdf8", animation: "mdEqBar 0.65s ease-in-out infinite 0.15s" }} />
+                            <span style={{ width: "2.5px", background: "#fde047", animation: "mdEqBar 0.55s ease-in-out infinite 0.3s" }} />
+                          </span>
+                        ) : "▶"}
+                        <span>{playingVibe ? "Stop" : "Preview"}</span>
                       </button>
-                    )}
+
+                      {!bio?.songUrl && (
+                        <button
+                          type="button"
+                          onClick={() => setShowMusicPicker(p => !p)}
+                          title="Choose music app (Spotify, Apple Music, YouTube Music)"
+                          style={{ background: "#0f172a", color: "#94a3b8", border: "1px solid #334155", borderRadius: "8px", padding: "4px 7px", fontSize: "0.66rem", cursor: "pointer", whiteSpace: "nowrap" }}
+                        >
+                          {musicPref === "apple" ? "Apple" : musicPref === "ytmusic" ? "YT" : musicPref === "spotify" ? "Spotify" : "🎧"}
+                        </button>
+                      )}
+                    </div>
                   </div>
+                )}
+
+                {showNativeAudioBar && previewTrackUrl && (
+                  <audio
+                    controls
+                    playsInline
+                    src={previewTrackUrl}
+                    onPlay={() => setPlayingVibe(true)}
+                    onPause={() => setPlayingVibe(false)}
+                    onEnded={() => setPlayingVibe(false)}
+                    style={{ width: "100%", height: "36px", borderRadius: "8px" }}
+                  />
                 )}
               </div>
             )}
 
-            {showInlineEmbed && embedTrackUrl && (
-              <div style={{ marginTop: "8px", position: "relative", maxWidth: "100%" }}>
-                <iframe
-                  allow="autoplay *; encrypted-media *; fullscreen *; clipboard-write"
-                  frameBorder="0"
-                  height="152"
-                  style={{ width: "100%", maxWidth: "460px", overflow: "hidden", borderRadius: "12px", background: "transparent", border: "1px solid #334155" }}
-                  sandbox="allow-forms allow-popups allow-same-origin allow-scripts allow-storage-access-by-user-activation allow-top-navigation-by-user-activation"
-                  src={embedTrackUrl + (embedTrackUrl.includes("?") ? "&theme=dark" : "?theme=dark")}
-                  title="Walkout Song Preview"
-                />
-              </div>
-            )}
             {showMusicPicker && bio?.songRepeat && (
               <div style={{ marginTop:"6px", background:"#0f172a", border:"1px solid #38bdf8", borderRadius:"8px", padding:"5px 8px", display:"inline-flex", gap:"6px", alignItems:"center", flexWrap:"wrap", fontSize:"0.71rem" }}>
                 <span style={{ color:"#cbd5e1", fontWeight:"bold" }}>Open in:</span>
