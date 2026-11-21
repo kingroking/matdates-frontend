@@ -478,7 +478,6 @@ export function SubmitEventModal({ onClose }) {
   );
 }
 
-const lookupNormGym = (raw) => universalGymKey(raw);
 const lookupGymBucket = (gk) => {
   const c = (gk || "").replace(/[^a-z0-9]/g, "");
   return (c.slice(0, 2) || "00").padEnd(2, "0");
@@ -522,7 +521,7 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
           if (r.Board === "ibjjf_hist_youth" || r.Board === "ibjjf_hist_adult") return;
           const ac = (r.Academy || "").trim();
           if (!ac) return;
-          const gk = lookupNormGym(ac);
+          const gk = universalGymKey(ac);
           if (!gk) return;
           let rec = byK.get(gk);
           if (!rec) {
@@ -600,7 +599,7 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
     getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__m2_" + topGymBucket + "__"))).then(sn => {
       const a = [];
       sn.forEach(d => ((d.data() || {}).items || []).forEach(it => {
-        if (!it.isEventSummary) a.push({ ...it, _nf: foldStr(it.n), _af: foldStr(it.a), _gk: lookupNormGym(it.a) });
+        if (!it.isEventSummary) a.push({ ...it, _nf: foldStr(it.n), _af: foldStr(it.a), _gk: universalGymKey(it.a) });
       }));
       setGymShards(p => ({ ...p, [topGymBucket]: a }));
     }).catch(() => {});
