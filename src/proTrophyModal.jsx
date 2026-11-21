@@ -197,6 +197,36 @@ const IG_ICON = (
   </svg>
 );
 
+
+function playBioMusicVibe(vibeLabel = "") {
+  try {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return null;
+    const ctx = new AudioCtx();
+    const now = ctx.currentTime;
+    const isHype = /hype|walkout|fire|war/i.test(vibeLabel);
+    const isFlow = /flow|focus|calm|chill/i.test(vibeLabel);
+    const freqs = isHype ? [146.83, 220.0, 293.66] : isFlow ? [174.61, 261.63, 329.63] : [196.0, 293.66, 392.0];
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = isHype ? "sawtooth" : "triangle";
+    osc.frequency.setValueAtTime(freqs[0], now);
+    osc.frequency.exponentialRampToValueAtTime(freqs[1], now + 0.18);
+    osc.frequency.exponentialRampToValueAtTime(freqs[2], now + 0.36);
+    gain.gain.setValueAtTime(0.001, now);
+    gain.gain.exponentialRampToValueAtTime(0.06, now + 0.05);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.45);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.46);
+    setTimeout(() => { try { ctx.close(); } catch {} }, 600);
+    return ctx;
+  } catch {
+    return null;
+  }
+}
+
 export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, onShareCard }) {
   useEffect(() => {
     const prevBodyOverflow = document.body.style.overflow;
@@ -233,6 +263,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
     try { return localStorage.getItem("md_music_pref") || ""; } catch { return ""; }
   });
   const [showMusicPicker, setShowMusicPicker] = useState(false);
+  const [playingVibe, setPlayingVibe] = useState(false);
 
   const emptyForm = {
     handle: "", nickname: "", spiritEmoji: "", songRepeat: "", songUrl: "",
@@ -604,7 +635,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onWatch, isWatching, 
         position:"fixed", inset:0, background:"rgba(4,8,18,0.92)", zIndex:10070,
         display:"flex", alignItems:"center", justifyContent:"center", padding:"10px",
         overscrollBehavior:"none"
-      }}
+      , flexShrink: 0, marginLeft: "auto"}}
     >
       <style>{`@keyframes matdatesNeonGold { 0%, 100% { box-shadow: 0 0 10px rgba(250,204,21,0.55), 0 0 22px rgba(245,158,11,0.35); } 50% { box-shadow: 0 0 16px rgba(250,204,21,0.9), 0 0 32px rgba(245,158,11,0.55); } }`}</style>
       <div
