@@ -1,7 +1,7 @@
 import { cleanAcademyName } from './proHubData';
 import { isIosSafariBrowser, trackEvent } from './analytics';
 import React, { useState, useEffect } from 'react';
-import { collection, addDoc, query, where, onSnapshot, deleteDoc, doc, setDoc, updateDoc, increment } from 'firebase/firestore';
+import { collection, addDoc, query, where, onSnapshot, deleteDoc, doc, setDoc, updateDoc, increment, arrayUnion } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { getMessaging, getToken, isSupported, onMessage } from 'firebase/messaging';
 import { db, auth } from './firebase';
@@ -329,7 +329,18 @@ export function MatAlertModal({ event, comp, division, existingWatch, onRemove, 
         activeWatches: increment(1),
         ...(finalToken ? { activePushWatches: increment(1) } : {})
       }, { merge: true }).catch(() => {});
-      if (finalToken) trackEvent('pushAlertsEnabled');
+      if (finalToken) {
+        trackEvent('pushAlertsEnabled');
+        if (curUser && curUser.uid) {
+          setDoc(doc(db, 'mat_watches', 'pushdev_' + curUser.uid), {
+            kind: 'user_push_device',
+            uid: curUser.uid,
+            email: (curUser.email || email || '').trim().toLowerCase(),
+            fcmTokens: arrayUnion(finalToken),
+            updatedAt: new Date().toISOString()
+          }, { merge: true }).catch(() => {});
+        }
+      }
       setDone(true);
     } catch (err) {
       alert('Could not save alert (' + (err.code || err.message) + ')');
