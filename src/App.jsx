@@ -326,6 +326,14 @@ function App() {
     try {
       const rawUrl = detail.url || '';
       const sp = rawUrl ? new URL(rawUrl, window.location.origin).searchParams : new URLSearchParams(detail.search || '');
+      const evFocus = sp.get('event') || '';
+      if (evFocus) {
+        setHighlightBracketEventId(evFocus);
+        setTimeout(() => {
+          const el = document.getElementById('ev-card-' + evFocus);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 250);
+      }
       const ath = sp.get('athlete') || sp.get('trophy') || (detail.view === 'trophy' ? detail.athleteName : '');
       const gym = sp.get('gym') || '';
       if (ath || gym) {
@@ -394,6 +402,9 @@ function App() {
   const [showCalcModal, setShowCalcModal] = useState(false);
   const [selectedCalcEvent, setSelectedCalcEvent] = useState(null);
   const [selectedCompetitorEvent, setSelectedCompetitorEvent] = useState(null);
+  const [highlightBracketEventId, setHighlightBracketEventId] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get('event') || ''; } catch { return ''; }
+  });
   const [selectedCommentEvent, setSelectedCommentEvent] = useState(null);
   const [tipRefreshTick, setTipRefreshTick] = useState(0);
   const getTipCount = useVenueTipCounts(tipRefreshTick);
@@ -568,6 +579,15 @@ function App() {
       setPendingEvents(p => p.filter(x => x.id !== id));
     } catch (e) { alert("Reject error: " + (e.code || e.message)); }
   };
+
+  useEffect(() => {
+    if (!highlightBracketEventId || !events.length) return;
+    const timer = setTimeout(() => {
+      const el = document.getElementById('ev-card-' + highlightBracketEventId);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [highlightBracketEventId, events.length]);
 
   const anyModalOpen = Boolean(selectedCompetitorEvent || showCalcModal || showReminderModal || showSubmitModal);
   useEffect(() => {
@@ -1009,7 +1029,7 @@ function App() {
               const evBorderColor = isUFC ? '#d20a0a' : isADCC ? '#F1C40F' : (ev.type === 'Super Fight' || isStreamOnly) ? '#14b8a6' : (isJJWL ? '#ffffff' : (ev.color || '#ff9f43'));
               
               return (
-                <div key={ev.id} data-tour={evIdx === 0 ? 'first-card' : undefined} style={{ backgroundColor: '#111', borderLeft: `5px solid ${evBorderColor}`, padding: '20px', borderRadius: '4px', display: 'flex', flexDirection: 'column' }}>
+                <div id={`ev-card-${ev.id}`} key={ev.id} data-tour={evIdx === 0 ? 'first-card' : undefined} style={{ backgroundColor: '#111', borderLeft: `5px solid ${evBorderColor}`, padding: '20px', borderRadius: '4px', display: 'flex', flexDirection: 'column' }}>
                   {(() => { const dbadge = getDeadlineBadge(ev); return dbadge ? <div style={{ background: dbadge.bg, color: dbadge.color, border: "1px solid " + dbadge.border, borderRadius: "5px", padding: "4px 9px", fontSize: "0.73rem", fontWeight: "800", marginBottom: "8px", textAlign: "left" }}>{dbadge.text}</div> : null; })()}
                   <h3 style={{ margin: '0 0 10px 0', fontSize: '1.2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}><span>{ev.name} {ev.isKidsEvent && <span>🐯</span>}</span><button onClick={() => toggleSaveEvent(ev.id)} title="Save to My Schedule" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.35rem', lineHeight: 1, color: savedIds.includes(ev.id) ? '#ff9f43' : '#555', padding: 0 }}>{savedIds.includes(ev.id) ? '★' : '☆'}</button></h3>
                   {(() => { const gt = getEventGiTags(ev); return (
@@ -1074,12 +1094,32 @@ function App() {
                     {!isStreamOnly && ev.type !== 'Seminar' && (
                       <button 
                         onClick={() => {
+                          trackEvent('bracketOpens');
+                          if (highlightBracketEventId === ev.id) {
+                            setHighlightBracketEventId('');
+                            try {
+                              const u = new URL(window.location.href);
+                              u.searchParams.delete('event');
+                              window.history.replaceState({}, '', u.pathname + (u.search ? u.search : '') + u.hash);
+                            } catch {}
+                          }
                           setCalcResult(''); 
                           setSelectedCompetitorEvent(ev);
                         }} 
-                        style={{ flex: 1, backgroundColor: '#1a1a1a', color: '#ff9f43', border: '1px solid #ff9f43', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', minWidth: '120px' }}
+                        style={{
+                          flex: 1,
+                          backgroundColor: highlightBracketEventId === ev.id ? '#132a1c' : '#1a1a1a',
+                          color: highlightBracketEventId === ev.id ? '#4ade80' : '#ff9f43',
+                          border: highlightBracketEventId === ev.id ? '2px solid #2ecc71' : '1px solid #ff9f43',
+                          boxShadow: highlightBracketEventId === ev.id ? '0 0 16px rgba(46,204,113,0.45)' : 'none',
+                          padding: '8px 12px',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontWeight: 'bold',
+                          minWidth: '120px'
+                        }}
                       >
-                        👥 Brackets
+                        {highlightBracketEventId === ev.id ? '👥 Brackets (Updated! ●)' : '👥 Brackets'}
                       </button>
                     )}
                   </div>
