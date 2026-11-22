@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { collection, addDoc, getDocs, query, where, doc, getDoc } from "firebase/firestore";
 import { db } from "./firebase";
 import { MatAlertModal, useWatchedAthletes } from "./MatAlertModal";
-import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, sameCompetitorCluster, findProAthlete, PRO_SUPERFIGHTS, UPCOMING_UFC_SUPERFIGHTS, getDeadlineBadge, computeEliteSpotlight, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName } from "./proHubData";
+import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, sameCompetitorCluster, findProAthlete, PRO_SUPERFIGHTS, UPCOMING_UFC_SUPERFIGHTS, getDeadlineBadge, computeEliteSpotlight, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName, mergeInitialDuplicateProfiles, isUmbrellaAcademyName } from "./proHubData";
 import { AthleteTrophyRoomModal } from "./proTrophyModal";
 
 const MODAL_BG = { position:"fixed", inset:0, background:"rgba(0,0,0,0.86)", zIndex:10060, display:"flex", alignItems:"center", justifyContent:"center", padding:"12px", boxSizing:"border-box" };
@@ -128,7 +128,7 @@ export function WeekendWarRoomModal({ events, watches, onRemoveWatch, onWatchAth
       if (!entry.academy && w.academy) entry.academy = cleanAcademyName(w.academy);
       entry.items.push(w);
     });
-    return Array.from(map.values());
+    return mergeInitialDuplicateProfiles(Array.from(map.values()));
   }, [watches, resolvedFullNames]);
 
   // Create fast event lookup map so division + tournament title (e.g. "IBJJF Kids") are checked before matching!
@@ -774,7 +774,7 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
       } else {
         if (displayNm.length > rec.name.length && !/^[a-z]\./i.test(displayNm)) rec.name = displayNm;
         if (extra.claimed) rec.claimed = true;
-        if (!pro && displayAc.length > (rec.academy || "").length && !/^(carlson gracie team|gracie barra|alliance|checkmat|atos)$/i.test(displayAc.trim())) {
+        if (!pro && displayAc && (!rec.academy || (isUmbrellaAcademyName(rec.academy) && !isUmbrellaAcademyName(displayAc)) || (!isUmbrellaAcademyName(displayAc) && displayAc.length > (rec.academy || "").length))) {
           rec.academy = displayAc;
         } else if (!rec.academy && displayAc) {
           rec.academy = displayAc;

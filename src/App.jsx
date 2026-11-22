@@ -303,6 +303,23 @@ function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [clickCount, setClickCount] = useState(0);
   const [showSubmitModal, setShowSubmitModal] = useState(false);
+  const [sharedAppToast, setSharedAppToast] = useState(false);
+  const handleShareMatDatesApp = async () => {
+    trackEvent('appShares');
+    const shareData = {
+      title: 'MatDates.com — Every Mat. Every Bracket. Every Podium.',
+      text: 'Check out MatDates — free live BJJ tournament brackets, mat time push alerts & Official Athlete Trophy Rooms!',
+      url: 'https://matdates.com'
+    };
+    if (navigator.share) {
+      try { await navigator.share(shareData); return; } catch (e) { if (e?.name === 'AbortError') return; }
+    }
+    try {
+      await navigator.clipboard.writeText('https://matdates.com');
+      setSharedAppToast(true);
+      setTimeout(() => setSharedAppToast(false), 2500);
+    } catch {}
+  };
   const [showLeaderboard, setShowLeaderboard] = useState(() => {
     try {
       const sp = new URLSearchParams(window.location.search);
@@ -944,6 +961,7 @@ function App() {
     <button data-tour="nav-lookup" onClick={() => setShowAthleteSearch(true)} style={{ backgroundColor:'#141820', color:'#38bdf8', padding:'9px 14px', border:'1px solid #0284c7', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.88rem' }}>🔍 Athlete &amp; Academy Lookup</button>
     <button data-tour="nav-warroom" onClick={() => setShowWarRoom(true)} style={{ backgroundColor: myWatches.length > 0 ? '#132a1c' : '#141820', color: myWatches.length > 0 ? '#4ade80' : '#cbd5e1', padding:'9px 14px', border: myWatches.length > 0 ? '1px solid #2ecc71' : '1px solid #334155', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.88rem' }}>🔥 War Room{myWatches.length > 0 ? ` (${myWatches.length})` : ''}</button>
     <button onClick={() => setShowSubmitModal(true)} style={{ backgroundColor:'#ff9f43', color:'#000', padding:'9px 14px', border:'none', borderRadius:'7px', fontWeight:'800', cursor:'pointer', fontSize:'0.88rem' }}>+ Submit</button>
+      <button onClick={handleShareMatDatesApp} title="Share MatDates via Text, Contacts, AirDrop, WhatsApp or Email" style={{ backgroundColor: sharedAppToast ? '#132a1c' : '#141820', color: sharedAppToast ? '#4ade80' : '#fde047', padding:'9px 12px', border: sharedAppToast ? '1px solid #2ecc71' : '1px solid #f59e0b', borderRadius:'7px', fontWeight:'800', cursor:'pointer', fontSize:'0.84rem' }}>{sharedAppToast ? '✓ Link Copied!' : '📤 Share App'}</button>
     <button onClick={() => user ? signOut(auth) : setShowAuthModal(true)} style={{ backgroundColor:'transparent', color:'#94a3b8', padding:'8px 10px', border:'1px solid #262f3d', borderRadius:'7px', cursor:'pointer', fontSize:'0.8rem' }}>{user ? 'Sign Out' : 'Sign In'}</button>
   </div>
 </header>

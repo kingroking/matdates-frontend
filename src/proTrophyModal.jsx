@@ -2,6 +2,7 @@ import { getMessaging, getToken, isSupported } from "firebase/messaging";
 import { onAuthStateChanged } from "firebase/auth";
 import { trackEvent } from "./analytics";
 import React, { useState, useEffect, useRef } from "react";
+import TrophyShareStudioModal from "./trophyShareStudio";
 import { collection, doc, getDoc, getDocs, setDoc, query, where, arrayUnion } from "firebase/firestore";
 import { db, auth } from "./firebase";
 import { addDoc } from "firebase/firestore";
@@ -453,6 +454,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
     try { return localStorage.getItem("md_music_pref") || ""; } catch { return ""; }
   });
   const [showMusicPicker, setShowMusicPicker] = useState(false);
+  const [showShareStudio, setShowShareStudio] = useState(false);
   const [playingVibe, setPlayingVibe] = useState(false);
   const [previewArt, setPreviewArt] = useState("");
   const [previewTrackUrl, setPreviewTrackUrl] = useState("");
@@ -1763,12 +1765,46 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
                       </div>
                     )}
                     <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(185px, 1fr))", gap:"7px", fontSize:"0.8rem" }}>
-                      {bio.coach && (
-                        <div style={{ background:"#0b101b", border:"1px solid #1e293b", padding:"8px 10px", borderRadius:"8px" }}>
-                          <div style={{ fontSize:"0.66rem", color:"#94a3b8", fontWeight:"800", textTransform:"uppercase", letterSpacing:"0.5px" }}>🏛️ Head Professor</div>
-                          <div style={{ color:"#f8fafc", fontWeight:"700", marginTop:"2px" }}>{bio.coach}</div>
-                        </div>
-                      )}
+                      {bio.coach && (() => {
+                        const rawCoaches = String(bio.coach || "").split(/\s*(?:\/|&|\band\b)\s*/i).map(s => s.trim()).filter(Boolean);
+                        const cleanCoachTarget = (c) => c.replace(/^(?:head\s+)?(?:professor|prof\.?|coach|master|mestre|sensei|kru)\s+/i, "").replace(/\s*\([^)]*\)\s*$/, "").trim();
+                        return (
+                          <div style={{ background:"#0b101b", border:"1px solid #1e293b", padding:"8px 10px", borderRadius:"8px" }}>
+                            <div style={{ fontSize:"0.66rem", color:"#94a3b8", fontWeight:"800", textTransform:"uppercase", letterSpacing:"0.5px" }}>🏛️ Head Professor</div>
+                            <div style={{ display:"flex", flexWrap:"wrap", gap:"6px", marginTop:"3px" }}>
+                              {rawCoaches.map((cStr, ci) => {
+                                const targetCoach = cleanCoachTarget(cStr);
+                                const canOpen = targetCoach.length >= 2 && foldStr(targetCoach) !== foldStr(nm);
+                                return canOpen ? (
+                                  <button
+                                    key={ci}
+                                    type="button"
+                                    onClick={() => {
+                                      setEditBio(false);
+                                      setClaimStep(false);
+                                      setShowShareStudio(false);
+                                      setAthHistory(h => [...h, activeAth]);
+                                      setActiveAth({ name: targetCoach, academy: currentAcad, g: 0, s: 0, b: 0, events: [] });
+                                    }}
+                                    title={"Open " + targetCoach + "'s MatDates Trophy Room"}
+                                    style={{
+                                      background:"rgba(245,158,11,0.12)", color:"#fde047",
+                                      border:"1px solid rgba(245,158,11,0.4)", borderRadius:"6px",
+                                      padding:"2px 7px", fontWeight:"800", fontSize:"0.78rem",
+                                      cursor:"pointer", display:"inline-flex", alignItems:"center", gap:"4px", textAlign:"left"
+                                    }}
+                                  >
+                                    <span>{cStr}</span>
+                                    <span style={{ fontSize:"0.68rem", color:"#fbbf24" }}>🏆 →</span>
+                                  </button>
+                                ) : (
+                                  <span key={ci} style={{ color:"#f8fafc", fontWeight:"700" }}>{cStr}</span>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
                       {bio.favMove && (
                         <div style={{ background:"#0b101b", border:"1px solid #1e293b", padding:"8px 10px", borderRadius:"8px" }}>
                           <div style={{ fontSize:"0.66rem", color:"#38bdf8", fontWeight:"800", textTransform:"uppercase", letterSpacing:"0.5px" }}>⚡ Signature Move / Guard</div>
@@ -2293,6 +2329,29 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
             ))}
           </div>
         </div>
+        <TrophyShareStudioModal
+          isOpen={showShareStudio}
+          onClose={() => setShowShareStudio(false)}
+          name={nm}
+          nickname={bio?.nickname || ""}
+          spiritEmoji={bio?.spiritEmoji || ""}
+          academy={currentAcad}
+          belt={liveBelt}
+          coach={bio?.coach || ""}
+          avatarData={bio?.avatarData || ""}
+          handle={bio?.handle || ""}
+          songRepeat={bio?.songRepeat || ""}
+          g26={g26}
+          s26={s26}
+          b26={b26}
+          totG={totG}
+          totS={totS}
+          totB={totB}
+          initialEra={eraView}
+          isYouth={isYouthCompetitor}
+          jitsRating={bio?.jitsRating || ""}
+          jitsRank={bio?.jitsOverallRank || ""}
+        />
       </div>
     </div>
   );

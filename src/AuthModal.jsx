@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { auth, db } from './firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 
 const ROLE_DESCRIPTIONS = {
   user: '🥋 For competitors, parents, friends & family — claim Athlete Trophy Rooms & get live mat alerts whenever your loved ones compete!',
@@ -90,7 +90,15 @@ export default function AuthModal({ isOpen, onClose, onRoleSaved }) {
         }
         if (onRoleSaved) onRoleSaved(role);
       } else {
-        await signInWithEmailAndPassword(auth, email.trim(), password);
+        cred = await signInWithEmailAndPassword(auth, email.trim(), password);
+        getDoc(doc(db, 'mat_watches', 'role_' + cred.user.uid)).then(rd => {
+          if (!rd.exists()) {
+            setDoc(doc(db, 'mat_watches', 'role_' + cred.user.uid), {
+              kind: 'user_role', uid: cred.user.uid, email: email.trim().toLowerCase(),
+              role: 'user', updatedAt: new Date().toISOString()
+            }, { merge: true }).catch(() => {});
+          }
+        }).catch(() => {});
       }
       onClose();
     } catch (error) {

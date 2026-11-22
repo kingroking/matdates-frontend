@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { doc, setDoc, getDoc, collection, getDocs, increment, onSnapshot } from 'firebase/firestore';
-import { db } from './firebase';
+import { doc, setDoc, getDoc, collection, getDocs, increment, onSnapshot, arrayUnion, query, where } from 'firebase/firestore';
+import { db, auth } from './firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { getMessaging, getToken, isSupported } from 'firebase/messaging';
 
 export function isStandalonePwa() {
   if (typeof window === 'undefined') return false;
@@ -19,7 +21,7 @@ export function isIosSafariBrowser() {
 
 const IMPRESSION_METRICS = new Set([
   'pageViews', 'trophyViews', 'bracketOpens', 'shareStatsClicks',
-  'matAlertsCreated', 'standingsOpens', 'eventHubOpens', 'athleteSearches', 'jitsGgOutclicks'
+  'matAlertsCreated', 'standingsOpens', 'eventHubOpens', 'athleteSearches', 'jitsGgOutclicks', 'appShares'
 ]);
 
 export function trackEvent(metric, extra = {}) {
@@ -43,6 +45,8 @@ export function AnalyticsAndPwaManager() {
   const [iosBanner, setIosBanner] = useState(false);
   const [showIosSteps, setShowIosSteps] = useState(false);
   const [dismissed, setDismissed] = useState(() => localStorage.getItem('md_pwa_dismissed') === '1');
+  const [newPhonePushUser, setNewPhonePushUser] = useState(null);
+  const [syncingPhonePush, setSyncingPhonePush] = useState(false);
   const [showStats, setShowStats] = useState(() =>
     typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('stats') === '1'
   );
@@ -69,6 +73,53 @@ export function AnalyticsAndPwaManager() {
     window.addEventListener('beforeinstallprompt', onBeforeInstall);
     return () => window.removeEventListener('beforeinstallprompt', onBeforeInstall);
   }, []);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      if (!u) { setNewPhonePushUser(null); return; }
+      try {
+        if (localStorage.getItem('md_push_dismiss_' + u.uid) === '1') return;
+        const sup = await isSupported().catch(() => false);
+        if (!sup || typeof Notification === 'undefined' || Notification.permission !== 'default') {
+          setNewPhonePushUser(null);
+          return;
+        }
+        // Check if this returning user already owns watches or claimed Trophy Rooms in the cloud
+        const em = (u.email || '').toLowerCase();
+        const [byUid, byOwner] = await Promise.all([
+          getDocs(query(collection(db, 'mat_watches'), where('uid', '==', u.uid))),
+          getDocs(query(collection(db, 'mat_watches'), where('ownerUid', '==', u.uid)))
+        ]);
+        if (!byUid.empty || !byOwner.empty || em) {
+          setNewPhonePushUser(u);
+        }
+      } catch {}
+    });
+    return () => unsub();
+  }, []);
+
+  const activatePushOnNewPhone = async () => {
+    if (!newPhonePushUser) return;
+    setSyncingPhonePush(true);
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm === 'granted') {
+        const reg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+        const tok = await getToken(getMessaging(), { serviceWorkerRegistration: reg });
+        if (tok) {
+          await setDoc(doc(db, 'mat_watches', 'pushdev_' + newPhonePushUser.uid), {
+            kind: 'user_push_device',
+            uid: newPhonePushUser.uid,
+            email: (newPhonePushUser.email || '').toLowerCase(),
+            fcmTokens: arrayUnion(tok),
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+        }
+        setNewPhonePushUser(null);
+      }
+    } catch {}
+    setSyncingPhonePush(false);
+  };
 
   const dismissPwa = () => {
     localStorage.setItem('md_pwa_dismissed', '1');
@@ -132,6 +183,23 @@ export function AnalyticsAndPwaManager() {
           )}
         </div>
       )}
+      {newPhonePushUser && (
+        <div style={{
+          margin: '0 0 14px 0', padding: '10px 14px', borderRadius: '8px',
+          background: '#132a1c', border: '1px solid #22c55e',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap'
+        }}>
+          <div style={{ color: '#e2e8f0', fontSize: '0.83rem', lineHeight: 1.4 }}>
+            <strong style={{ color: '#4ade80' }}>📲 Signed in on this device:</strong> Tap once to link live Mat # &amp; Bracket Opponent Push Alerts to this phone!
+          </div>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button onClick={activatePushOnNewPhone} disabled={syncingPhonePush} style={{ background: '#22c55e', color: '#000', border: 'none', borderRadius: '6px', padding: '6px 12px', fontWeight: '800', fontSize: '0.78rem', cursor: 'pointer' }}>
+              {syncingPhonePush ? 'Linking...' : '🔔 Enable Push on This Phone'}
+            </button>
+            <button onClick={() => { try { localStorage.setItem('md_push_dismiss_' + newPhonePushUser.uid, '1'); } catch {} setNewPhonePushUser(null); }} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: '0.95rem' }}>✕</button>
+          </div>
+        </div>
+      )}
       {showStats && <SponsorStatsModal onClose={() => setShowStats(false)} />}
     </>
   );
@@ -141,6 +209,7 @@ function SponsorStatsModal({ onClose }) {
   const [totalsDoc, setTotalsDoc] = useState({});
   const [allDaily, setAllDaily] = useState([]);
   const [watchStats, setWatchStats] = useState({ active: 0, push: 0, claimedBios: 0, pushDevices: 0 });
+  const [accountStats, setAccountStats] = useState({ total: 0, user: 0, academy: 0, promoter: 0 });
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -214,6 +283,9 @@ function SponsorStatsModal({ onClose }) {
     // Separate real Athlete Watches from Claimed Trophy Rooms & Push Devices
     const unsubWatches = onSnapshot(collection(db, 'mat_watches'), (snap) => {
       let active = 0, push = 0, claimedBios = 0, pushDevices = 0;
+      const roleByKey = new Map();
+      const acadOwners = new Set();
+      const promOwners = new Set();
       snap.forEach(d => {
         const w = d.data() || {};
         if (w.kind === 'athlete_bio') {
@@ -225,12 +297,36 @@ function SponsorStatsModal({ onClose }) {
           pushDevices += toks.length;
           return;
         }
+        if (w.kind === 'user_role') {
+          const uk = w.uid || (w.email || '').toLowerCase() || d.id;
+          roleByKey.set(uk, w.role || 'user');
+          return;
+        }
+        if (w.kind === 'academy_workspace') {
+          const uk = w.ownerUid || (w.ownerEmail || '').toLowerCase();
+          if (uk) acadOwners.add(uk);
+          return;
+        }
+        if (w.kind === 'promoter_workspace') {
+          const uk = w.ownerUid || (w.ownerEmail || '').toLowerCase();
+          if (uk) promOwners.add(uk);
+          return;
+        }
         if (w.kind) return;
         if (w.active !== false || w.followFuture === true) {
           active += 1;
           if (w.fcmToken) push += 1;
         }
       });
+      acadOwners.forEach(k => { if (!roleByKey.has(k) || roleByKey.get(k) === 'user') roleByKey.set(k, 'academy'); });
+      promOwners.forEach(k => { if (!roleByKey.has(k) || roleByKey.get(k) === 'user') roleByKey.set(k, 'promoter'); });
+      let uCnt = 0, aCnt = 0, pCnt = 0;
+      roleByKey.forEach(r => {
+        if (r === 'academy') aCnt++;
+        else if (r === 'promoter') pCnt++;
+        else uCnt++;
+      });
+      setAccountStats({ total: roleByKey.size, user: uCnt, academy: aCnt, promoter: pCnt });
       setWatchStats({ active, push, claimedBios, pushDevices });
     }, () => {});
 
@@ -285,6 +381,16 @@ function SponsorStatsModal({ onClose }) {
         <p style={{ margin:'0 0 14px', color:'#94a3b8', fontSize:'0.8rem' }}>
           Live self-reconciling engagement counters (excludes localhost). Bookmark <strong>matdates.com/?stats=1</strong> anytime.
         </p>
+        <div style={{ background:'#161d2b', border:'1px solid #334155', borderRadius:'10px', padding:'10px 13px', marginBottom:'12px', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'10px' }}>
+          <div style={{ fontSize:'0.82rem', fontWeight:'800', color:'#f8fafc' }}>
+            👥 Registered Accounts: <span style={{ color:'#38bdf8', fontSize:'1.05rem' }}>{accountStats.total.toLocaleString()}</span>
+          </div>
+          <div style={{ display:'flex', gap:'12px', flexWrap:'wrap', fontSize:'0.77rem', color:'#cbd5e1', fontWeight:'700' }}>
+            <span>🥋 Athletes / Parents: <b style={{ color:'#fde047' }}>{accountStats.user}</b></span>
+            <span>🏛️ Academies: <b style={{ color:'#ff9f43' }}>{accountStats.academy}</b></span>
+            <span>🏟️ Promoters: <b style={{ color:'#4ade80' }}>{accountStats.promoter}</b></span>
+          </div>
+        </div>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(190px, 1fr))', gap:'10px', marginBottom:'16px' }}>
           {cards.map((c, i) => (
             <div key={i} style={{ background:'#181c24', border:'1px solid #242b38', borderRadius:'8px', padding:'12px' }}>

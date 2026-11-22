@@ -1,4 +1,4 @@
-import { foldStr, athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, sameCompetitorCluster, findProAthlete, PRO_SUPERFIGHTS, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName, dedupeVerifiedMedals } from './proHubData';
+import { foldStr, athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, sameCompetitorCluster, findProAthlete, PRO_SUPERFIGHTS, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName, dedupeVerifiedMedals, mergeInitialDuplicateProfiles } from './proHubData';
 import { AcademyProSuite } from "./proWorkspaces";
 import { auth } from "./firebase";
 import { computeEliteSpotlight } from "./proHubData";
@@ -689,7 +689,7 @@ export function LeaderboardModal({ onClose }) {
       rec.events.push(m);
     });
 
-    return Array.from(grouped.values())
+    return mergeInitialDuplicateProfiles(Array.from(grouped.values()))
       .sort((a, b) => (b.g * 9 + b.s * 3 + b.b + (b.isPro ? 12 : 0)) - (a.g * 9 + a.s * 3 + a.b + (a.isPro ? 12 : 0)))
       .slice(0, 80);
   }, [deferredAthQ, athShardMap, fed, age, sortBy, standEra]);

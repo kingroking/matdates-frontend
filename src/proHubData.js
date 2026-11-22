@@ -770,6 +770,87 @@ export function dedupeVerifiedMedals(rows, referenceRows = []) {
   return out;
 }
 
+export function academyAffiliationRoot(raw) {
+  const s = foldStr(cleanAcademyName(raw || "")).replace(/[^a-z0-9\s]/g, " ").trim();
+  if (!s) return "";
+  const stop = new Set(["bjj", "jiu", "jitsu", "jiujitsu", "academy", "team", "association", "affiliation", "international", "hq", "headquarters", "mma", "club"]);
+  const toks = s.split(/\s+/).filter(t => t && !stop.has(t));
+  return toks.slice(0, 2).join(" ");
+}
+
+export function isUmbrellaAcademyName(raw) {
+  const s = foldStr(raw || "").trim();
+  if (!s) return true;
+  if (/\b(team|association|affiliation|international)\b$/i.test(s)) return true;
+  const compact = s.replace(/[^a-z0-9]/g, "");
+  return ["carlsongracie", "graciebarra", "alliance", "checkmat", "atos", "ares", "brunobastos", "gfteam", "zrteam", "btt", "braziliantopteam", "sixblades", "novauniao", "10thplanet"].includes(compact);
+}
+
+export function academiesCompatibleForMerge(acA, acB) {
+  const a = cleanAcademyName(acA || "").trim();
+  const b = cleanAcademyName(acB || "").trim();
+  if (!a || !b) return true;
+  const fa = foldStr(a), fb = foldStr(b);
+  if (fa === fb) return true;
+  const rootA = academyAffiliationRoot(a);
+  const rootB = academyAffiliationRoot(b);
+  if (rootA && rootA === rootB && (isUmbrellaAcademyName(a) || isUmbrellaAcademyName(b))) {
+    return true;
+  }
+  return false;
+}
+
+export function mergeInitialDuplicateProfiles(profiles) {
+  if (!Array.isArray(profiles) || profiles.length < 2) return profiles || [];
+  const nameTokens = (nm) => foldStr(nm || "").replace(/[^a-z\s]/g, " ").trim().split(/\s+/).filter(Boolean);
+  const fulls = [];
+  const abbrevs = [];
+
+  for (const p of profiles) {
+    const toks = nameTokens(p.name);
+    if (toks.length >= 2 && toks[0].length === 1) {
+      abbrevs.push({ p, toks });
+    } else {
+      fulls.push({ p, toks });
+    }
+  }
+  if (!abbrevs.length || !fulls.length) return profiles;
+
+  const absorbed = new Set();
+  for (const ab of abbrevs) {
+    const init = ab.toks[0];
+    const last = ab.toks[ab.toks.length - 1];
+    const cands = fulls.filter(f =>
+      f.toks.length >= 2 &&
+      f.toks[0][0] === init &&
+      f.toks[f.toks.length - 1] === last &&
+      academiesCompatibleForMerge(ab.p.academy, f.p.academy)
+    );
+    if (cands.length === 1) {
+      const target = cands[0].p;
+      const mergedEvs = dedupeVerifiedMedals([...(target.events || []), ...(ab.p.events || [])]);
+      target.events = mergedEvs;
+      if (mergedEvs.length > 0) {
+        target.g = mergedEvs.reduce((acc, x) => acc + (x.mg !== undefined ? Number(x.mg) : (Number(x.p) === 1 ? 1 : 0)), 0);
+        target.s = mergedEvs.reduce((acc, x) => acc + (x.ms !== undefined ? Number(x.ms) : (Number(x.p) === 2 ? 1 : 0)), 0);
+        target.b = mergedEvs.reduce((acc, x) => acc + (x.mb !== undefined ? Number(x.mb) : (Number(x.p) >= 3 ? 1 : 0)), 0);
+      } else {
+        target.g = (target.g || 0) + (ab.p.g || 0);
+        target.s = (target.s || 0) + (ab.p.s || 0);
+        target.b = (target.b || 0) + (ab.p.b || 0);
+      }
+      target.histCount = (target.histCount || 0) + (ab.p.histCount || 0);
+      if (ab.p.academy && (!target.academy || (isUmbrellaAcademyName(target.academy) && !isUmbrellaAcademyName(ab.p.academy)))) {
+        target.academy = cleanAcademyName(ab.p.academy);
+      } else if (target.academy) {
+        target.academy = cleanAcademyName(target.academy);
+      }
+      absorbed.add(ab.p);
+    }
+  }
+  return profiles.filter(p => !absorbed.has(p));
+}
+
 export function cleanAcademyName(raw) {
   if (!raw || typeof raw !== "string") return raw || "";
   let s = raw.trim().replace(/\s+/g, " ");
@@ -898,7 +979,7 @@ function isAdultUpperBeltAthlete(targetName, targetBelt = "") {
 }
 
 // Strict Verified Row Matcher — eliminates cross-gender, cross-age/belt & "C. Moura" / "R. Mendes" initial contamination 100%!
-export function strictVerifiedAthleteRowMatch(rowName, rowAcad, rowDiv, targetName, targetAcad, targetGender, opts = {}) {
+function _baseStrictVerifiedAthleteRowMatch(rowName, rowAcad, rowDiv, targetName, targetAcad, targetGender, opts = {}) {
   const rFold = foldStr(rowName || "").replace(/[^a-z\s.]/g, " ").trim();
   const tFold = foldStr(targetName || "").replace(/[^a-z\s.]/g, " ").trim();
   if (!rFold || !tFold) return false;
@@ -956,5 +1037,24 @@ export function strictVerifiedAthleteRowMatch(rowName, rowAcad, rowDiv, targetNa
     return true;
   }
 
+  return false;
+}
+
+export function strictVerifiedAthleteRowMatch(rowName, rowAcad, rowDiv, targetName, targetAcad, targetGender) {
+  if (_baseStrictVerifiedAthleteRowMatch(rowName, rowAcad, rowDiv, targetName, targetAcad, targetGender)) {
+    return true;
+  }
+  const rToks = foldStr(rowName || "").replace(/[^a-z\s]/g, " ").trim().split(/\s+/).filter(Boolean);
+  const tToks = foldStr(targetName || "").replace(/[^a-z\s]/g, " ").trim().split(/\s+/).filter(Boolean);
+  if (rToks.length >= 2 && tToks.length >= 2 && (rToks[0].length === 1 || tToks[0].length === 1)) {
+    if (rToks[0][0] === tToks[0][0] && rToks[rToks.length - 1] === tToks[tToks.length - 1]) {
+      if (academiesCompatibleForMerge(rowAcad, targetAcad) && (rowAcad || targetAcad)) {
+        const dLow = String(rowDiv || "").toLowerCase();
+        if (targetGender === "F" && /\b(male|boys|men)\b/.test(dLow) && !/\b(female|girls|women)\b/.test(dLow)) return false;
+        if (targetGender === "M" && /\b(female|girls|women)\b/.test(dLow)) return false;
+        return true;
+      }
+    }
+  }
   return false;
 }
