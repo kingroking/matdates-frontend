@@ -227,6 +227,8 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, meda
   const [wsLoaded, setWsLoaded] = useState(false);
   const [switchingGym, setSwitchingGym] = useState(false);
   const [userRole, setUserRole] = useState("");
+  const [explicitAcademySignup, setExplicitAcademySignup] = useState(false);
+  const [hideOnboarding, setHideOnboarding] = useState(() => { try { return localStorage.getItem("md_hide_acad_onboard") === "1"; } catch { return false; } });
   const [newGymName, setNewGymName] = useState("");
   const activeName = cleanAcademyName(propGymName || ws?.gymName || "");
   const canonicalTargetKey = exactGymKey(propGymKey || activeName);
@@ -256,7 +258,11 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, meda
   useEffect(() => {
     if (!user?.uid) { setUserRole(""); return; }
     getDoc(doc(db, "mat_watches", "role_" + user.uid)).then(d => {
-      if (d.exists()) setUserRole(d.data()?.role || "user");
+      if (d.exists()) {
+        const rd = d.data() || {};
+        setUserRole(rd.role || "user");
+        setExplicitAcademySignup(rd.explicitSignUpRole === "academy");
+      }
     }).catch(() => {});
   }, [user?.uid]);
 
@@ -481,7 +487,7 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, meda
     );
   }
 
-  if (isHomepage && staffOnlyIfNotAcademyRole && (!wsLoaded || myWorkspaces.length === 0)) return null;
+  if (isHomepage && (!wsLoaded || (!ws && (!explicitAcademySignup || hideOnboarding)))) return null;
   return (
     <div style={{ background:"#131924", border: isHomepage ? "1.5px solid #38bdf8" : "1px solid #2d3b52", borderRadius:"10px", padding:"14px", marginBottom:"12px", textAlign:"left" }}>
       {isHomepage && ws && (

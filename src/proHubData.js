@@ -1089,5 +1089,32 @@ export function strictVerifiedAthleteRowMatch(rowName, rowAcad, rowDiv, targetNa
       }
     }
   }
+  // Brazilian double-surname & middle-initial matcher (e.g. 'Thiago Mendes' <-> 'Thiago L. Mendes Barros')
+  if (rToks.length >= 2 && tToks.length >= 2 && rToks[0] === tToks[0]) {
+    const nonInitShort = (rToks.length <= tToks.length ? rToks : tToks).filter(w => w.length > 1);
+    const fullLong = (rToks.length <= tToks.length ? tToks : rToks);
+    const orderedNameSubset = nonInitShort.length >= 2 && (() => {
+      let pos = 0;
+      for (const tok of nonInitShort) {
+        const idx = fullLong.indexOf(tok, pos);
+        if (idx === -1) return false;
+        pos = idx + 1;
+      }
+      return true;
+    })();
+    if (orderedNameSubset) {
+      const rAcFold = foldStr(rowAcad || "");
+      const tNmFold = foldStr(targetName || "");
+      const eponymousSchool = rAcFold && tNmFold && rAcFold.includes(tNmFold);
+      const compatSchool = targetAcad && rowAcad && academiesCompatibleForMerge(rowAcad, targetAcad);
+      if (eponymousSchool || compatSchool) {
+        const dLow = String(rowDiv || "").toLowerCase();
+        if (targetGender === "F" && /\b(male|boys|men|masculino)\b/.test(dLow) && !/\b(female|girls|women|feminino)\b/.test(dLow)) return false;
+        if (targetGender === "M" && /\b(female|girls|women|feminino)\b/.test(dLow)) return false;
+        return true;
+      }
+    }
+  }
+
   return false;
 }

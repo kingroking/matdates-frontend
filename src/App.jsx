@@ -943,9 +943,10 @@ function App() {
       )}
 
       <div style={{ maxWidth: '1200px', margin: '0 auto', minHeight: 'calc(100vh - 120px)' }}>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '4px' }}>
-          <button onClick={() => setShowSiteTour(true)} title="Take quick spotlight tour" style={{ backgroundColor: 'transparent', color: '#64748b', padding: '3px 9px', border: '1px solid #1e293b', borderRadius: '12px', fontSize: '0.73rem', cursor: 'pointer' }}>❓ Site Guide</button>
-        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+            <button onClick={handleShareMatDatesApp} title="Share MatDates via Text, Contacts, AirDrop or Email" style={{ backgroundColor: sharedAppToast ? '#132a1c' : 'transparent', color: sharedAppToast ? '#4ade80' : '#cbd5e1', padding: '3px 10px', border: sharedAppToast ? '1px solid #22c55e' : '1px solid #334155', borderRadius: '12px', fontSize: '0.73rem', fontWeight: '700', cursor: 'pointer' }}>{sharedAppToast ? '✓ Link Copied!' : '📤 Share'}</button>
+            <button onClick={() => setShowSiteTour(true)} title="Take quick spotlight tour" style={{ backgroundColor: 'transparent', color: '#64748b', padding: '3px 9px', border: '1px solid #1e293b', borderRadius: '12px', fontSize: '0.73rem', cursor: 'pointer' }}>❓ Site Guide</button>
+          </div>
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap', gap: '12px' }}>
   <div onClick={handleLogoClick} style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', userSelect: 'none' }}>
     <img src="/mat-icon.png" alt="MatDates" style={{ height: '58px', width: '58px', objectFit: 'contain' }} />

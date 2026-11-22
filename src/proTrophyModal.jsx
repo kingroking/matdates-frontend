@@ -1315,25 +1315,40 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
           textAlign:"left", color:"#fff", boxShadow:"0 22px 55px rgba(0,0,0,0.9)"
         }}
       >
-          <button
-            type="button"
-            onClick={() => guardExitAction(onClose)}
-              aria-label="Close Trophy Room"
-            style={{
-              position: "absolute", top: "10px", right: "10px", zIndex: 45,
-              width: "32px", height: "32px", borderRadius: "50%",
-              background: "rgba(15,23,42,0.92)", color: "#cbd5e1",
-              border: "1px solid #334155", display: "flex", alignItems: "center",
-              justifyContent: "center", fontSize: "0.95rem", fontWeight: "800",
-              cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.45)"
-            }}
-          >
-            ✕
-          </button>
+          <div style={{ position: "absolute", top: "9px", right: "10px", zIndex: 45, display: "flex", alignItems: "center", gap: "6px" }}>
+              <button
+                type="button"
+                onClick={() => { trackEvent("shareStatsClicks"); setShowShareStudio(true); }}
+                title="Share Trophy Room, Mat-Side QR Pass & Gold-Foil BJJ Trading Card"
+                style={{
+                  height: "32px", padding: "0 10px", borderRadius: "999px",
+                  background: "linear-gradient(135deg,#f59e0b,#fde047)", color: "#000",
+                  border: "none", display: "inline-flex", alignItems: "center", gap: "4px",
+                  fontSize: "0.73rem", fontWeight: "900", cursor: "pointer",
+                  boxShadow: "0 2px 10px rgba(245,158,11,0.4)", whiteSpace: "nowrap"
+                }}
+              >
+                🃏 Share / Card
+              </button>
+              <button
+                type="button"
+                onClick={() => guardExitAction(onClose)}
+                aria-label="Close Trophy Room"
+                style={{
+                  width: "32px", height: "32px", borderRadius: "50%",
+                  background: "rgba(15,23,42,0.94)", color: "#cbd5e1",
+                  border: "1px solid #334155", display: "flex", alignItems: "center",
+                  justifyContent: "center", fontSize: "0.95rem", fontWeight: "800",
+                  cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,0.45)"
+                }}
+              >
+                ✕
+              </button>
+            </div>
         {/* PINNED TOP BAR: Official Trophy Room + Verified (Left) • Watch + Jits/Smoothcomp + Close (Right) */}
         <div style={{
           display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap",
-          padding:"10px 50px 10px 14px", borderRadius:"15px 15px 0 0", background:"#101726", borderBottom:"1px solid #243044", flexShrink:0
+          padding:"10px 158px 10px 14px", borderRadius:"15px 15px 0 0", background:"#101726", borderBottom:"1px solid #243044", flexShrink:0
         }}>
           <div style={{ display:"flex", alignItems:"center", gap:"6px", flexWrap:"wrap" }}>
             {effectiveOnBack && (
@@ -1384,22 +1399,6 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
               {isWatching ? "✓ Watching" : "🔔 Watch"}
               {bio?.showWatchCount ? ` • 🔥${watcherCount}` : (isOwner ? ` • 👁️${watcherCount}` : "")}
             </button>
-
-              <button
-                type="button"
-                onClick={() => { trackEvent("shareStatsClicks"); setShowShareStudio(true); }}
-                title="Share Trophy Room, Mat-Side QR Pass & Gold-Foil BJJ Trading Card"
-                style={{
-                  background:"linear-gradient(135deg,#f59e0b,#fde047)",
-                  color:"#000",
-                  border:"none",
-                  borderRadius:"7px", padding:"5px 10px", fontWeight:"900", fontSize:"0.73rem",
-                  cursor:"pointer", display:"inline-flex", alignItems:"center", gap:"4px",
-                  boxShadow:"0 2px 10px rgba(245,158,11,0.38)"
-                }}
-              >
-                🃏 Share / Card
-              </button>
 
               <a
                 href={externalRecordHref}
@@ -1595,20 +1594,6 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
                     {IG_ICON}
                     {bio?.handle ? "@" + bio.handle : "IG"}
                   </button>
-                    <button
-                      type="button"
-                      onClick={() => { trackEvent("shareStatsClicks"); setShowShareStudio(true); }}
-                      title="Generate Gold-Foil Trading Card, Mat-Side QR Scan & Share Link"
-                      style={{
-                        display:"inline-flex", alignItems:"center", gap:"4px",
-                        background:"linear-gradient(135deg,#f59e0b,#fbbf24)",
-                        color:"#000", border:"none",
-                        boxShadow:"0 2px 8px rgba(245,158,11,0.35)",
-                        borderRadius:"7px", padding:"3px 9px", cursor:"pointer", fontWeight:"900", fontSize:"0.72rem"
-                      }}
-                    >
-                      🃏 Trading Card &amp; Share
-                    </button>
                   
                 </div>
               </div>
