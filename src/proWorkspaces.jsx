@@ -474,7 +474,10 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, meda
 
   const inp = { padding:"7px 9px", borderRadius:"6px", background:"#0f141e", color:"#fff", border:"1px solid #334155", fontSize:"0.82rem" };
 
+  if (isHomepage && !wsLoaded) return null;
+
   if (isHomepage && !activeName) {
+    if (!explicitAcademySignup || hideOnboarding) return null;
     return (
       <form onSubmit={claimAcademy} style={{ background:"#131b28", border:"1.5px solid #38bdf8", borderRadius:"10px", padding:"14px", marginBottom:"16px", display:"flex", gap:"8px", flexWrap:"wrap", alignItems:"center", textAlign:"left" }}>
         <div style={{ flex:"1 1 260px" }}>
@@ -483,11 +486,10 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, meda
         </div>
         <input required placeholder="Academy Name (e.g. Carlson Gracie San Antonio)" value={newGymName} onChange={e => setNewGymName(e.target.value)} style={{ ...inp, flex:"1 1 220px", padding:"9px 11px" }} />
         <button type="submit" style={{ background:"#38bdf8", color:"#000", border:"none", borderRadius:"7px", padding:"9px 14px", fontWeight:"800", cursor:"pointer" }}>Link My Academy</button>
+        <button type="button" title="Dismiss" onClick={() => { try { localStorage.setItem("md_hide_acad_onboard", "1"); } catch {} setHideOnboarding(true); }} style={{ background:"transparent", color:"#94a3b8", border:"1px solid #334155", borderRadius:"7px", padding:"9px 11px", cursor:"pointer", fontWeight:"800" }}>✕</button>
       </form>
     );
   }
-
-  if (isHomepage && (!wsLoaded || (!ws && (!explicitAcademySignup || hideOnboarding)))) return null;
   return (
     <div style={{ background:"#131924", border: isHomepage ? "1.5px solid #38bdf8" : "1px solid #2d3b52", borderRadius:"10px", padding:"14px", marginBottom:"12px", textAlign:"left" }}>
       {isHomepage && ws && (
