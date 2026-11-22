@@ -178,7 +178,6 @@ export function MultiCategoryDropdown({ selected, onChange }) {
     if (selected.includes(k)) onChange(selected.filter(x => x !== k));
     else onChange([...selected, k]);
   };
-  if (isHomepage && staffOnlyIfNotAcademyRole && (!wsLoaded || myWorkspaces.length === 0)) return null;
   return (
     <div style={{ position:"relative", minWidth:"205px", flex:"0 1 auto" }}>
       <button type="button" onClick={() => setOpen(!open)} style={{ width:"100%", padding:"11px 13px", borderRadius:"6px", border: selected.length ? "1px solid #38bdf8" : "1px solid #2b3340", background:"#0d1117", color: selected.length ? "#38bdf8" : "#e2e8f0", fontSize:"0.92rem", fontWeight:"600", cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"10px" }}>
@@ -482,8 +481,45 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, meda
     );
   }
 
+  if (isHomepage && staffOnlyIfNotAcademyRole && (!wsLoaded || myWorkspaces.length === 0)) return null;
   return (
     <div style={{ background:"#131924", border: isHomepage ? "1.5px solid #38bdf8" : "1px solid #2d3b52", borderRadius:"10px", padding:"14px", marginBottom:"12px", textAlign:"left" }}>
+      {isHomepage && ws && (
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap", marginBottom:"10px", paddingBottom:"8px", borderBottom:"1px solid #1e293b", fontSize:"0.76rem" }}>
+          <div style={{ display:"flex", alignItems:"center", gap:"6px", flexWrap:"wrap" }}>
+            <span style={{ color:"#94a3b8", fontWeight:"700" }}>Active Academy:</span>
+            {myWorkspaces.length > 1 ? (
+              <select
+                value={ws.gymKey}
+                onChange={e => {
+                  const pick = myWorkspaces.find(w => w.gymKey === e.target.value);
+                  if (pick) {
+                    setWs(pick);
+                    try { localStorage.setItem("md_active_acad_" + user.uid, pick.gymKey); } catch {}
+                  }
+                }}
+                style={{ background:"#0f172a", color:"#fde047", border:"1px solid #f59e0b", borderRadius:"6px", padding:"3px 8px", fontWeight:"800", fontSize:"0.76rem" }}
+              >
+                {myWorkspaces.map(w => <option key={w.gymKey} value={w.gymKey}>{w.gymName}</option>)}
+              </select>
+            ) : (
+              <b style={{ color:"#fde047" }}>{activeName}</b>
+            )}
+            {staffOnlyIfNotAcademyRole && (
+              <span style={{ background:"#132a1c", color:"#4ade80", border:"1px solid #22c55e", borderRadius:"999px", padding:"1px 7px", fontSize:"0.68rem", fontWeight:"800" }}>✓ Verified Coach / Staff Access</span>
+            )}
+          </div>
+          <button type="button" onClick={() => setSwitchingGym(s => !s)} style={{ background:"#1e293b", color:"#cbd5e1", border:"1px solid #334155", borderRadius:"6px", padding:"3px 9px", fontSize:"0.72rem", fontWeight:"700", cursor:"pointer" }}>
+            {switchingGym ? "Cancel" : "🔄 Switch / Add Academy"}
+          </button>
+          {switchingGym && (
+            <form onSubmit={handleSwitchOrClaimNewGym} style={{ width:"100%", display:"flex", gap:"6px", marginTop:"4px", flexWrap:"wrap" }}>
+              <input value={newGymName} onChange={e => setNewGymName(e.target.value)} placeholder="Enter new or second Academy Name (e.g. TM Combat Academy)..." style={{ flex:"1 1 220px", padding:"6px 10px", borderRadius:"6px", background:"#090d16", color:"#fff", border:"1px solid #38bdf8", fontSize:"0.78rem" }} />
+              <button type="submit" style={{ background:"#38bdf8", color:"#000", border:"none", borderRadius:"6px", padding:"6px 12px", fontWeight:"800", fontSize:"0.76rem", cursor:"pointer" }}>Link Academy</button>
+            </form>
+          )}
+        </div>
+      )}
       {showTour && <GuidedTourModal mode="ACADEMY" onClose={() => setShowTour(false)} />}
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap", marginBottom:"10px" }}>
         <div>
