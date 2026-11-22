@@ -1,4 +1,4 @@
-import { foldStr, athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, sameCompetitorCluster, findProAthlete, PRO_SUPERFIGHTS, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName } from './proHubData';
+import { foldStr, athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, sameCompetitorCluster, findProAthlete, PRO_SUPERFIGHTS, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName, dedupeVerifiedMedals } from './proHubData';
 import { AcademyProSuite } from "./proWorkspaces";
 import { auth } from "./firebase";
 import { computeEliteSpotlight } from "./proHubData";

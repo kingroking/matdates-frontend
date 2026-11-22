@@ -673,6 +673,103 @@ export function getBeltVisualSpec(raw) {
 
 
 // Universal Academy Normalizer — merges 'HQ', 'Jiu-Jitsu', 'BJJ', 'Academy', 'MMA' variations cleanly across ALL gyms!
+export function canonicalTournamentStem(evRaw) {
+  return foldStr(evRaw || "")
+    .replace(/^us\s+open\b/, "adcc us open")
+    .replace(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\s+\d{1,2}\s+20\d{2}\b/g, " ")
+    .replace(/\b(ii|iii|iv|international|championship|championships|grappling|bjj|jiu|jitsu|open|tournament)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function dedupeVerifiedMedals(rows, referenceRows = []) {
+  if (!Array.isArray(rows) || !rows.length) return [];
+  const isGenericJitsDiv = (d) => /^(youth\s*(gi|no[\s-]*gi)|official\s*youth\s*division)$/i.test(String(d || "").trim());
+  const styleOf = (ev, d) => (/\bno[\s-]*gi\b|\bnogi\b|\badcc\b/i.test((ev || "") + " " + (d || "")) ? "nogi" : "gi");
+  const yearOf = (r) => {
+    if (r.yr) return String(r.yr);
+    const m = String(r.ev || "").match(/\b(201\d|202\d)\b/);
+    return m ? m[1] : "";
+  };
+
+  // Pass 1: Group exact (Event Stem + Specific Division) so Smoothcomp subgroup leaks (p:1 + p:2 in same bracket)
+  //         and 'US Open - Austin' vs 'ADCC US Open - Austin' / 'Carlson Gracie Team' vs local chapter collapse cleanly!
+  const bestByDiv = new Map();
+  const passthrough = [];
+
+  for (const r of rows) {
+    if (!r) continue;
+    if (r.mg !== undefined || isGenericJitsDiv(r.d)) {
+      passthrough.push(r);
+      continue;
+    }
+    const stem = canonicalTournamentStem(r.ev);
+    const divKey = foldStr(r.d || "");
+    const key = stem + "::" + divKey;
+    const prev = bestByDiv.get(key);
+    if (!prev) {
+      bestByDiv.set(key, r);
+    } else {
+      const pCur = Number(r.p || 99);
+      const pPrev = Number(prev.p || 99);
+      // Prefer best podium placement (1 over 2) when division + tournament are identical;
+      // on ties, prefer specific federation (ADCC/UFC/IBJJF over SMOOTHCOMP) & specific local academy over generic 'Team'
+      const scoreRow = (x) =>
+        (x.f && x.f !== "SMOOTHCOMP" ? 4 : 0) +
+        (x.a && !/\bteam$/i.test(cleanAcademyName(x.a)) ? 2 : 0) +
+        (String(x.ev || "").length > 18 ? 1 : 0);
+      if (pCur < pPrev || (pCur === pPrev && scoreRow(r) > scoreRow(prev))) {
+        bestByDiv.set(key, { ...r, a: cleanAcademyName(r.a || prev.a || "") });
+      }
+    }
+  }
+
+  const specificRows = Array.from(bestByDiv.values());
+  const allSpecificRef = [...specificRows, ...(Array.isArray(referenceRows) ? referenceRows : [])];
+
+  // Build fuzzy signatures of specific bracket rows to suppress duplicate generic Jits rows (e.g. NAGA SA Oct 18, 2025)
+  const refSigs = allSpecificRef.map(x => ({
+    stem: canonicalTournamentStem(x.ev),
+    yr: yearOf(x),
+    style: styleOf(x.ev, x.d),
+    p: Number(x.p || 1)
+  }));
+  const exactRefKeys = new Set(
+    (Array.isArray(referenceRows) ? referenceRows : []).map(x => canonicalTournamentStem(x.ev) + "::" + foldStr(x.d || "") + "::" + Number(x.p || 1))
+  );
+
+  // Clean specificRows against referenceRows (when filtering histEvs against 2026 s26Evs)
+  const out = specificRows.filter(x => {
+    const k = canonicalTournamentStem(x.ev) + "::" + foldStr(x.d || "") + "::" + Number(x.p || 1);
+    return !exactRefKeys.has(k);
+  });
+
+  // Pass 2: Add non-duplicate summary/generic rows
+  const seenGeneric = new Set();
+  for (const r of passthrough) {
+    if (r.mg !== undefined) {
+      const mk = foldStr(r.ev) + "|" + r.mg + "|" + r.ms + "|" + r.mb;
+      if (!seenGeneric.has(mk)) { seenGeneric.add(mk); out.push(r); }
+      continue;
+    }
+    const rStem = canonicalTournamentStem(r.ev);
+    const rYr = yearOf(r);
+    const rStyle = styleOf(r.ev, r.d);
+    const rP = Number(r.p || 1);
+    const rToks = rStem.split(" ").filter(t => t.length >= 3 && !/^20\d{2}$/.test(t) && t !== "gi" && t !== "nogi");
+
+    const alreadyCovered = refSigs.some(ref => {
+      if (ref.p !== rP || ref.style !== rStyle) return false;
+      if (rYr && ref.yr && rYr !== ref.yr) return false;
+      return rToks.length >= 2 && rToks.every(t => ref.stem.includes(t));
+    });
+    if (!alreadyCovered) {
+      out.push(r);
+    }
+  }
+  return out;
+}
+
 export function cleanAcademyName(raw) {
   if (!raw || typeof raw !== "string") return raw || "";
   let s = raw.trim().replace(/\s+/g, " ");

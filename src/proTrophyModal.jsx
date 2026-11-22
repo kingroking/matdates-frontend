@@ -5,7 +5,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { collection, doc, getDoc, getDocs, setDoc, query, where, arrayUnion } from "firebase/firestore";
 import { db, auth } from "./firebase";
 import { addDoc } from "firebase/firestore";
-import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, matchesYouthInitial, computeEliteSpotlight, PRO_SUPERFIGHTS, BJJ_BELT_GROUPS, normalizeBeltValue, getBeltVisualSpec, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName } from "./proHubData";
+import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, matchesYouthInitial, computeEliteSpotlight, PRO_SUPERFIGHTS, BJJ_BELT_GROUPS, normalizeBeltValue, getBeltVisualSpec, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName, dedupeVerifiedMedals } from "./proHubData";
 
 export function SuperFightsPanel({ fed, qStr, onOpenTrophy, onWatch, getWatch }) {
   const [subTab, setSubTab] = useState("PROS");
@@ -979,7 +979,16 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
       if (isOwner || !isClaimed) {
         const nowIso = new Date().toISOString();
         const patch = {
-          kind: "athlete_bio",
+          ...(baseBio.careerG !== undefined ? { careerG: baseBio.careerG, careerS: baseBio.careerS || 0, careerB: baseBio.careerB || 0 } : {}),
+      ...(baseBio.jitsRating ? { jitsRating: baseBio.jitsRating } : {}),
+      ...(baseBio.jitsOverallRank ? { jitsOverallRank: baseBio.jitsOverallRank } : {}),
+      ...(baseBio.jitsGiRank ? { jitsGiRank: baseBio.jitsGiRank } : {}),
+      ...(baseBio.jitsNoGiRank ? { jitsNoGiRank: baseBio.jitsNoGiRank } : {}),
+      ...(baseBio.jitsRecord ? { jitsRecord: baseBio.jitsRecord } : {}),
+      ...(baseBio.jitsWinRate ? { jitsWinRate: baseBio.jitsWinRate } : {}),
+      ...(baseBio.jitsTier ? { jitsTier: baseBio.jitsTier } : {}),
+      ...(baseBio.jitsPercentile ? { jitsPercentile: baseBio.jitsPercentile } : {}),
+      kind: "athlete_bio",
           status: "bio_only",
           ownerUid: bio?.ownerUid || curUser.uid,
           ownerEmail: bio?.ownerEmail || curUser.email || "",
@@ -1215,9 +1224,8 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
     : (bio?.belt || elite.pro?.belt || "");
 
   // Deduplicate histEvs against 2026 evs so 2026 events are never counted twice in All-Time
-  const s26Evs = [...promBouts, ...evs];
-  const s26Keys = new Set(s26Evs.map(e => foldStr(e.ev) + "|" + foldStr(e.d) + "|" + e.p));
-  const cleanHistEvs = histEvs.filter(h => !s26Keys.has(foldStr(h.ev) + "|" + foldStr(h.d) + "|" + h.p));
+  const s26Evs = dedupeVerifiedMedals([...promBouts, ...evs]);
+  const cleanHistEvs = dedupeVerifiedMedals(histEvs, s26Evs);
 
   const g26 = s26Evs.reduce((acc, x) => acc + (x.mg !== undefined ? Number(x.mg) : (Number(x.p) === 1 ? 1 : 0)), 0) || cnt.g;
   const s26 = s26Evs.reduce((acc, x) => acc + (x.ms !== undefined ? Number(x.ms) : (Number(x.p) === 2 ? 1 : 0)), 0) || cnt.s;
@@ -2257,10 +2265,10 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
             </div>
             <div style={{ display:"inline-flex", background:"#101726", border:"1px solid #2d3b52", borderRadius:"7px", padding:"2px", gap:"2px" }}>
               <button type="button" onClick={() => setEraView("2026")} style={{ padding:"3px 8px", borderRadius:"5px", border:"none", fontSize:"0.69rem", fontWeight:"800", cursor:"pointer", background: eraView === "2026" ? "#f59e0b" : "transparent", color: eraView === "2026" ? "#000" : "#94a3b8" }}>
-                2026 ({s26Evs.length})
+                2026 Season ({g26}🥇)
               </button>
               <button type="button" onClick={() => setEraView("ALLTIME")} style={{ padding:"3px 8px", borderRadius:"5px", border:"none", fontSize:"0.69rem", fontWeight:"800", cursor:"pointer", background: eraView === "ALLTIME" ? "#38bdf8" : "transparent", color: eraView === "ALLTIME" ? "#000" : "#94a3b8" }}>
-                All-Time ({allCombinedEvs.length})
+                All-Time Career ({totG}🥇)
               </button>
             </div>
           </div>
