@@ -2,11 +2,11 @@ import { getMessaging, getToken, isSupported } from "firebase/messaging";
 import { onAuthStateChanged } from "firebase/auth";
 import { trackEvent } from "./analytics";
 import React, { useState, useEffect, useRef } from "react";
-import TrophyShareStudioModal from "./trophyShareStudio";
+const TrophyShareStudioModal = React.lazy(() => import("./trophyShareStudio"));
 import { collection, doc, getDoc, getDocs, setDoc, query, where, arrayUnion } from "firebase/firestore";
 import { db, auth } from "./firebase";
 import { addDoc } from "firebase/firestore";
-import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, matchesYouthInitial, computeEliteSpotlight, PRO_SUPERFIGHTS, BJJ_BELT_GROUPS, normalizeBeltValue, getBeltVisualSpec, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName, dedupeVerifiedMedals } from "./proHubData";
+import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, matchesYouthInitial, computeEliteSpotlight, PRO_SUPERFIGHTS, BJJ_BELT_GROUPS, normalizeBeltValue, getBeltVisualSpec, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName, dedupeVerifiedMedals, getCachedShardItems } from "./proHubData";
 
 export function SuperFightsPanel({ fed, qStr, onOpenTrophy, onWatch, getWatch }) {
   const [subTab, setSubTab] = useState("PROS");
@@ -817,23 +817,23 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
     if (!bkts.length && athBucket(nm) !== "__") bkts.push(athBucket(nm));
 
     // Fetch Daily Official Federation #Rank Standings (__f2_XX__) for this athlete!
-    Promise.all(bkts.map(b => getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__f2_" + b + "__"))))).then(snaps => {
+    Promise.all(bkts.map(b => getCachedShardItems(db, collection, query, where, getDocs, "__f2_" + b + "__"))).then(arrays => {
       const fHits = [], seenF = new Set();
-      snaps.forEach(s => s.forEach(d => ((d.data() || {}).items || []).forEach(it => {
+      arrays.forEach(arr => arr.forEach(it => {
         if (!strictVerifiedAthleteRowMatch(it.n, it.a || knownAcad, it.cat || "", nm, knownAcad, seedGender)) return;
         const fk = it.fed + "|" + it.cat;
         if (seenF.has(fk)) return;
         seenF.add(fk);
         fHits.push(it);
-      })));
+      }));
       fHits.sort((a, b) => parseInt(String(a.rank || "9999").replace(/\D/g, ""), 10) - parseInt(String(b.rank || "9999").replace(/\D/g, ""), 10));
       setFedRanks(fHits);
     }).catch(() => {});
 
     // Fetch Prior-Year All-Time Career Podiums (__alltime_a2_XX__) with strict gender + academy guard!
-    Promise.all(bkts.map(b => getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__alltime_a2_" + b + "__"))))).then(snaps => {
+    Promise.all(bkts.map(b => getCachedShardItems(db, collection, query, where, getDocs, "__alltime_a2_" + b + "__"))).then(arrays => {
       const seenH = new Set(), outH = [];
-      snaps.forEach(s => s.forEach(d => ((d.data() || {}).items || []).forEach(it => {
+      arrays.forEach(arr => arr.forEach(it => {
         const sameExactOrPriorSchool = strictVerifiedAthleteRowMatch(it.n, it.a, it.d, nm, knownAcad, seedGender) ||
           strictVerifiedAthleteRowMatch(it.n, it.a, it.d, nm, "", seedGender);
         if (!sameExactOrPriorSchool) return;
@@ -842,14 +842,15 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
         if (seenH.has(dk)) return;
         seenH.add(dk);
         outH.push(it);
-      })));
+      }));
+      outH.sort((a, b) => (Number(b.yr || 0) - Number(a.yr || 0)) || (Number(a.p || 3) - Number(b.p || 3)));
       setHistEvs(outH);
     }).catch(() => {});
 
     // Fetch 2026 Season Podiums (__a2_XX__) with strict gender + academy guard!
-    Promise.all(bkts.map(b => getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__a2_" + b + "__"))))).then(snaps => {
+    Promise.all(bkts.map(b => getCachedShardItems(db, collection, query, where, getDocs, "__a2_" + b + "__"))).then(arrays => {
       const rawItems = [];
-      snaps.forEach(s => s.forEach(d => ((d.data() || {}).items || []).forEach(it => rawItems.push(it))));
+      arrays.forEach(arr => arr.forEach(it => rawItems.push(it)));
       const resolvedGen = seedGender || inferTargetGender(nm, rawItems);
       let resolvedAcad = knownAcad;
       if (!resolvedAcad) {
@@ -2422,7 +2423,9 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
             ))}
           </div>
         </div>
-        <TrophyShareStudioModal
+        {showShareStudio && (
+          <React.Suspense fallback={null}>
+            <TrophyShareStudioModal
           isOpen={showShareStudio}
           onClose={() => setShowShareStudio(false)}
           name={nm}
@@ -2445,6 +2448,8 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
           jitsRating={bio?.jitsRating || ""}
           jitsRank={bio?.jitsOverallRank || ""}
         />
+          </React.Suspense>
+        )}
       </div>
     </div>
   );

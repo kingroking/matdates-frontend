@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { collection, addDoc, getDocs, query, where, doc, getDoc } from "firebase/firestore";
 import { db } from "./firebase";
 import { MatAlertModal, useWatchedAthletes } from "./MatAlertModal";
-import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, sameCompetitorCluster, findProAthlete, PRO_SUPERFIGHTS, UPCOMING_UFC_SUPERFIGHTS, getDeadlineBadge, computeEliteSpotlight, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName, mergeInitialDuplicateProfiles, isUmbrellaAcademyName } from "./proHubData";
+import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, sameCompetitorCluster, findProAthlete, PRO_SUPERFIGHTS, UPCOMING_UFC_SUPERFIGHTS, getDeadlineBadge, computeEliteSpotlight, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName, mergeInitialDuplicateProfiles, isUmbrellaAcademyName, getCachedShardItems } from "./proHubData";
 import { AthleteTrophyRoomModal } from "./proTrophyModal";
 
 const MODAL_BG = { position:"fixed", inset:0, background:"rgba(0,0,0,0.86)", zIndex:10060, display:"flex", alignItems:"center", justifyContent:"center", padding:"12px", boxSizing:"border-box" };

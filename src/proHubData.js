@@ -1,3 +1,36 @@
+const _SHARD_TTL_MS = 5 * 60 * 1000;
+export function getCachedShardItems(db, collectionFn, queryFn, whereFn, getDocsFn, eventId) {
+  if (typeof window !== "undefined") {
+    if (!window.__mdShardCache) window.__mdShardCache = new Map();
+    const hit = window.__mdShardCache.get(eventId);
+    if (hit && (Date.now() - hit.ts) < _SHARD_TTL_MS) {
+      return hit.promise;
+    }
+  }
+  const p = getDocsFn(queryFn(collectionFn(db, "event_competitors"), whereFn("event_id", "==", eventId)))
+    .then(sn => {
+      const items = [];
+      sn.forEach(d => {
+        const arr = (d.data() || {}).items;
+        if (Array.isArray(arr)) {
+          for (let i = 0; i < arr.length; i++) items.push(arr[i]);
+        }
+      });
+      return items;
+    })
+    .catch(err => {
+      if (typeof window !== "undefined" && window.__mdShardCache) {
+        window.__mdShardCache.delete(eventId);
+      }
+      throw err;
+    });
+
+  if (typeof window !== "undefined" && window.__mdShardCache) {
+    window.__mdShardCache.set(eventId, { ts: Date.now(), promise: p });
+  }
+  return p;
+}
+
 export const foldStr = (s) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
 export const athBucket = (q) => {
