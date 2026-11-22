@@ -1272,7 +1272,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
 
   // Deduplicate histEvs against 2026 evs so 2026 events are never counted twice in All-Time
   const s26Evs = dedupeVerifiedMedals([...promBouts, ...evs]);
-  const cleanHistEvs = dedupeVerifiedMedals(histEvs, s26Evs);
+  const cleanHistEvs = dedupeVerifiedMedals([...histEvs, ...(elite.pro?.careerPodiums || [])], s26Evs);
 
   const g26 = s26Evs.reduce((acc, x) => acc + (x.mg !== undefined ? Number(x.mg) : (Number(x.p) === 1 ? 1 : 0)), 0) || cnt.g;
   const s26 = s26Evs.reduce((acc, x) => acc + (x.ms !== undefined ? Number(x.ms) : (Number(x.p) === 2 ? 1 : 0)), 0) || cnt.s;
@@ -1282,9 +1282,15 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
   const hB = cleanHistEvs.reduce((acc, x) => acc + (Number(x.p) >= 3 ? 1 : 0), 0);
 
   // Combine 2026 + Pre-2026 Archive + Jits/Career floor (so All-Time always reflects true multi-year career medals!)
-  const totG = Math.max(g26 + hG, Number(bio?.careerG || 0));
-  const totS = Math.max(s26 + hS, Number(bio?.careerS || 0));
-  const totB = Math.max(b26 + hB, Number(bio?.careerB || 0));
+  const totG = Math.max(g26 + hG, Number(bio?.careerG || elite.pro?.careerG || 0));
+  const totS = Math.max(s26 + hS, Number(bio?.careerS || elite.pro?.careerS || 0));
+  const totB = Math.max(b26 + hB, Number(bio?.careerB || elite.pro?.careerB || 0));
+
+  useEffect(() => {
+    if ((g26 + s26 + b26) === 0 && (totG + totS + totB > 0 || cleanHistEvs.length > 0)) {
+      setEraView("ALLTIME");
+    }
+  }, [nm, g26, s26, b26, totG, totS, totB, cleanHistEvs.length]);
 
   const dispG = eraView === "ALLTIME" ? totG : g26;
   const dispS = eraView === "ALLTIME" ? totS : s26;

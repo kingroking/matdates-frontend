@@ -59,6 +59,142 @@ export const UPCOMING_UFC_SUPERFIGHTS = [
 
 export const PRO_SUPERFIGHTS = [
   {
+    name: "Carlson Gracie Jr.", aliases: ["carlson gracie jr", "carlson gracie junior", "master carlson gracie jr"], shards: ["gr"],
+    academy: "Carlson Gracie Team HQ", belt: "5th Degree Black Belt", rec: "Head of Carlson Gracie Team • 6x Rio & CBJJ Champion", feds: ["IBJJF", "CBJJ"],
+    careerG: 6, careerS: 2, careerB: 1,
+    titles: ["🥋 5th-Degree Carlson Gracie Black Belt (Son of Grandmaster Carlson Gracie Sr.)", "🏛️ Global Head of Carlson Gracie Team Federation", "🥇 Multi-Time Rio de Janeiro State & Greco-Roman Champion"],
+    careerPodiums: [
+      { ev: "Campeonato Estadual de Jiu-Jitsu (Rio de Janeiro)", d: "Adult / Medium-Heavy", p: 1, f: "CBJJ", yr: 1994 },
+      { ev: "Campeonato Brasileiro de Equipes CBJJ", d: "Carlson Gracie Team Heavyweight Squad", p: 1, f: "CBJJ", yr: 1996 },
+      { ev: "Pan IBJJF Jiu-Jitsu Championship", d: "Master Black Belt Division", p: 2, f: "IBJJF", yr: 2001 }
+    ],
+    bouts: [{ ev: "Carlson Gracie Legacy & Global Coaching", org: "IBJJF", res: "🏛️ Head Master of Worldwide Carlson Gracie Affiliates", sub: "Classic Carlson Gracie Smash & Top Pressure" }],
+    facts: ["Son of Grandmaster Carlson Gracie Sr. (9th-Degree Red Belt) and nephew of Helio Gracie, carrying forward the legendary Rua Figueiredo Magalhães competition lineage worldwide."]
+  },
+  {
+    name: "Carlson Gracie Sr.", aliases: ["carlson gracie sr", "grandmaster carlson gracie", "mestre carlson gracie"], shards: ["gr"],
+    academy: "Carlson Gracie Team", belt: "9th Degree Red Belt", rec: "Grandmaster • Undefeated Vale Tudo & BJJ Icon (1932–2006)", feds: ["CBJJ", "VALE TUDO"],
+    careerG: 12, careerS: 1, careerB: 0,
+    titles: ["🟥 9th-Degree Red Belt Grandmaster", "👑 Undefeated Vale Tudo Champion (Defeated Waldemar Santana)", "🏛️ Founder of the Legendary Carlson Gracie Competition Team"],
+    careerPodiums: [
+      { ev: "Maracanãzinho Vale Tudo Superfight vs. Waldemar Santana", d: "Openweight Vale Tudo Championship", p: 1, f: "VALE TUDO", yr: 1956 },
+      { ev: "Rio de Janeiro Openweight Jiu-Jitsu Championship", d: "Absolute Division", p: 1, f: "CBJJ", yr: 1955 }
+    ],
+    bouts: [{ ev: "Waldemar Santana Trilogy", org: "VALE TUDO", res: "🏆 Avenged Helio Gracie in front of 40,000 fans at Maracanãzinho", sub: "TKO / Corner Stoppage" }],
+    facts: ["Eldest son of Carlos Gracie; revolutionized team-based competition jiu-jitsu and trained champions including Murilo Bustamante, Ricardo De La Riva, Mario Sperry, Vitor Belfort, and Wallid Ismail."]
+  },
+  {
+    name: "Roger Gracie", aliases: ["roger gracie"], shards: ["gr"],
+    academy: "Roger Gracie Academy", belt: "Black Belt (Hall of Fame)", rec: "10x IBJJF Black Belt World Champion • ADCC Double Gold", feds: ["IBJJF", "ADCC"],
+    careerG: 14, careerS: 5, careerB: 0,
+    titles: ["👑 10x IBJJF Black Belt World Champion (3x Open Class)", "🥇 2005 ADCC Weight & Absolute Champion (8/8 Submissions)", "🏛️ IBJJF & ADCC Hall of Fame"],
+    careerPodiums: [
+      { ev: "World IBJJF Jiu-Jitsu Championship 2010", d: "Male / Adult / Black / Open Class & Super-Heavy", p: 1, f: "IBJJF", yr: 2010 },
+      { ev: "World IBJJF Jiu-Jitsu Championship 2009", d: "Male / Adult / Black / Open Class (9/9 Cross-Choke Subs)", p: 1, f: "IBJJF", yr: 2009 },
+      { ev: "ADCC Submission Fighting World Championship 2005", d: "-99kg & Absolute Double Gold", p: 1, f: "ADCC", yr: 2005 }
+    ],
+    bouts: [{ ev: "Buchecha vs. Roger Gracie II (Gracie Pro)", org: "IBJJF", res: "🏆 W via Rear-Naked Choke in Retirement Superfight", sub: "Cross Collar Choke & Mount Mastery" }],
+    facts: ["Widely regarded as the greatest Gi competitor of all time, famously submitting all 9 opponents from mount at the 2009 Worlds."]
+  },
+  {
+    name: "Rickson Gracie", aliases: ["rickson gracie"], shards: ["gr"],
+    academy: "Gracie Jiu-Jitsu", belt: "9th Degree Red Belt", rec: "Grandmaster • 1980s Rio & Vale Tudo Legend", feds: ["CBJJ", "VALE TUDO"],
+    careerG: 11, careerS: 0, careerB: 0,
+    titles: ["🟥 Red Belt Grandmaster", "🥇 2x Vale Tudo Japan Openweight Champion (1994, 1995)", "🏆 Copa Cantão & Brazil Middle-Heavyweight Champion"],
+    careerPodiums: [
+      { ev: "Vale Tudo Japan Open 1995", d: "8-Man Openweight Tournament", p: 1, f: "VALE TUDO", yr: 1995 },
+      { ev: "Vale Tudo Japan Open 1994", d: "8-Man Openweight Tournament", p: 1, f: "VALE TUDO", yr: 1994 }
+    ],
+    bouts: [{ ev: "PRIDE 1 Main Event (Tokyo Dome)", org: "VALE TUDO", res: "🏆 W vs. Nobuhiko Takada in front of 47,000 fans", sub: "Armbar" }],
+    facts: ["Icon of invisible jiu-jitsu and leverage mechanics; undefeated across official Jiu-Jitsu and Vale Tudo bouts."]
+  },
+  {
+    name: "Marcelo Garcia", aliases: ["marcelo garcia", "marcelinho"], shards: ["ga"],
+    academy: "Alliance / Marcelo Garcia Academy", belt: "Black Belt (Hall of Fame)", rec: "5x IBJJF World Champion • 4x ADCC World Champion", feds: ["ADCC", "IBJJF"],
+    careerG: 9, careerS: 3, careerB: 1,
+    titles: ["👑 4x ADCC World Champion (-77kg)", "🥇 5x IBJJF Black Belt World Champion", "🏛️ IBJJF & ADCC Hall of Fame"],
+    careerPodiums: [
+      { ev: "ADCC Submission Fighting World Championship 2011", d: "-77kg Division", p: 1, f: "ADCC", yr: 2011 },
+      { ev: "World IBJJF Jiu-Jitsu Championship 2011", d: "Male / Adult / Black / Middle", p: 1, f: "IBJJF", yr: 2011 },
+      { ev: "ADCC Submission Fighting World Championship 2007", d: "-77kg Gold & Absolute Silver", p: 1, f: "ADCC", yr: 2007 }
+    ],
+    bouts: [{ ev: "ADCC Worlds", org: "ADCC", res: "🔥 Record Submission Rate in -77kg History", sub: "Marcelotine, Butterfly Sweep, X-Guard & Back Take" }],
+    facts: ["Pioneered modern No-Gi & Gi middleweight offense with butterfly guard, single-leg X, X-guard, and high-elbow guillotines."]
+  },
+  {
+    name: "Ricardo De La Riva", aliases: ["ricardo de la riva", "de la riva"], shards: ["ri", "la"],
+    academy: "Carlson Gracie / De La Riva BJJ", belt: "Coral Belt (7th Degree)", rec: "Coral Belt Master • Creator of the De La Riva Guard", feds: ["CBJJ", "IBJJF"],
+    careerG: 5, careerS: 2, careerB: 1,
+    titles: ["⬛🟥 7th-Degree Coral Belt under Grandmaster Carlson Gracie Sr.", "🧬 Inventor of the De La Riva Guard", "🏆 Historic Victories over Royler Gracie & Rolker Gracie"],
+    careerPodiums: [
+      { ev: "Copa Cantão Rio de Janeiro", d: "Black Belt Featherweight", p: 1, f: "CBJJ", yr: 1986 }
+    ],
+    bouts: [{ ev: "Rio Championship Classic", org: "CBJJ", res: "🏆 Defeated Royler Gracie using revolutionary open guard", sub: "De La Riva Guard Sweeps & Back Attacks" }],
+    facts: ["Awarded his Black Belt by Carlson Gracie Sr. in 1986; revolutionized modern open guard play across every weight class."]
+  },
+  {
+    name: "Bruno Bastos", aliases: ["bruno bastos"], shards: ["ba"],
+    academy: "Bruno Bastos Association (Midland, TX)", belt: "5th Degree Black Belt", rec: "Multi-Time IBJJF World Master & No-Gi World Champion", feds: ["IBJJF", "ADCC"],
+    careerG: 15, careerS: 6, careerB: 4,
+    titles: ["🥋 5th-Degree Nova União / Bastos Black Belt", "🥇 Multi-Time IBJJF No-Gi World & Pan Champion", "🏛️ Founder of Bruno Bastos Association (Midland, Texas)"],
+    careerPodiums: [
+      { ev: "World Master IBJJF Jiu-Jitsu Championship", d: "Male / Master / Black / Ultra-Heavy & Open Class", p: 1, f: "IBJJF", yr: 2022 },
+      { ev: "Pan IBJJF Jiu-Jitsu No-Gi Championship", d: "Male / Adult / Black / Ultra-Heavy", p: 1, f: "IBJJF", yr: 2015 }
+    ],
+    bouts: [{ ev: "ADCC & IBJJF Pro Circuit", org: "IBJJF", res: "🏆 Over 20 Years Competing at Elite Black Belt", sub: "Half Guard & Heavy Top Pressure" }],
+    facts: ["Head Professor of Bruno Bastos Association in Midland, Texas and one of the most active Black Belt champions in Texas BJJ."]
+  },
+  {
+    name: "Royce Gracie", aliases: ["royce gracie"], shards: ["gr"],
+    academy: "Gracie Jiu-Jitsu", belt: " Coral Belt", rec: "3x UFC Tournament Champion • UFC Hall of Fame", feds: ["UFC", "VALE TUDO"],
+    careerG: 4, careerS: 0, careerB: 0,
+    titles: ["🏆 UFC 1, UFC 2 & UFC 4 Openweight Tournament Champion", "🏛️ Inaugural UFC Hall of Fame Inductee"],
+    careerPodiums: [
+      { ev: "UFC 1: The Beginning (1993)", d: "Openweight No-Rules Tournament", p: 1, f: "UFC", yr: 1993 },
+      { ev: "UFC 2: No Way Out (1994)", d: "16-Man Openweight Tournament", p: 1, f: "UFC", yr: 1994 }
+    ],
+    bouts: [{ ev: "UFC 1–4", org: "UFC", res: "🔥 11 Consecutive Submission Wins Introducing BJJ to the World", sub: "Triangle Choke & Rear-Naked Choke" }],
+    facts: ["Proved the effectiveness of Brazilian Jiu-Jitsu against larger opponents from every martial art on global television in 1993."]
+  },
+  {
+    name: "Renzo Gracie", aliases: ["renzo gracie"], shards: ["gr"],
+    academy: "Renzo Gracie Academy", belt: "Coral Belt (7th Degree)", rec: "2x ADCC World Champion • Legendary Coach", feds: ["ADCC", "IBJJF"],
+    careerG: 4, careerS: 1, careerB: 1,
+    titles: ["🥇 2x ADCC Submission Fighting World Champion (1998, 2000)", "🏛️ ADCC Hall of Fame & Mentor to Champions"],
+    careerPodiums: [
+      { ev: "ADCC Submission Fighting World Championship 2000", d: "-77kg Division", p: 1, f: "ADCC", yr: 2000 },
+      { ev: "ADCC Submission Fighting World Championship 1998", d: "-77kg Division", p: 1, f: "ADCC", yr: 1998 }
+    ],
+    bouts: [{ ev: "ADCC Worlds", org: "ADCC", res: "🏆 Back-to-Back ADCC Gold & Legendary NYC Academy Builder", sub: "Guillotine & Armbar" }],
+    facts: ["Built one of the most influential academies in grappling history in New York City, mentoring John Danaher, Georges St-Pierre, Matt Serra, and Gordon Ryan."]
+  },
+  {
+    name: "Andre Galvao", aliases: ["andre galvao"], shards: ["ga"],
+    academy: "Atos Jiu-Jitsu HQ", belt: "Black Belt (Hall of Fame)", rec: "6x ADCC Champion • 5x IBJJF Black Belt World Champion", feds: ["ADCC", "IBJJF"],
+    careerG: 15, careerS: 4, careerB: 2,
+    titles: ["👑 6x ADCC World & Superfight Champion (4-Time Undefeated Superfight King)", "🥇 5x IBJJF Black Belt World Champion", "🏛️ Co-Founder of Atos Jiu-Jitsu HQ"],
+    careerPodiums: [
+      { ev: "ADCC World Championship Superfight 2019", d: "Superfight Championship vs. Felipe Pena", p: 1, f: "ADCC", yr: 2019 },
+      { ev: "ADCC Submission Fighting World Championship 2011", d: "-88kg & Absolute Double Gold", p: 1, f: "ADCC", yr: 2011 },
+      { ev: "World IBJJF Jiu-Jitsu Championship 2017", d: "Male / Adult / Black / Medium-Heavy", p: 1, f: "IBJJF", yr: 2017 }
+    ],
+    bouts: [{ ev: "ADCC Superfight Dynasty", org: "ADCC", res: "🏆 Held ADCC Superfight Title from 2011 to 2022", sub: "Takedowns & Dynamic Back Attacks" }],
+    facts: ["Co-founded Atos Jiu-Jitsu with Angelica Galvao in San Diego, developing world champions across both Youth and Adult ranks."]
+  },
+  {
+    name: "Gordon Ryan", aliases: ["gordon ryan", "the king gordon ryan"], shards: ["ry"],
+    academy: "New Wave Jiu-Jitsu", belt: "Black Belt", rec: "7x ADCC World Champion • IBJJF No-Gi Double Gold", feds: ["ADCC", "IBJJF", "WNO"],
+    careerG: 11, careerS: 1, careerB: 0,
+    titles: ["👑 7x ADCC World & Superfight Champion across 3 Weight Classes + Absolute", "🥇 IBJJF No-Gi World & Pan Double Gold"],
+    careerPodiums: [
+      { ev: "ADCC World Championship 2024", d: "Double Superfight Winner (vs. Pena & Yuri Simoes)", p: 1, f: "ADCC", yr: 2024 },
+      { ev: "ADCC World Championship 2022", d: "+99kg Gold & Superfight Gold vs. Andre Galvao", p: 1, f: "ADCC", yr: 2022 },
+      { ev: "ADCC World Championship 2019", d: "-99kg & Absolute Double Gold", p: 1, f: "ADCC", yr: 2019 }
+    ],
+    bouts: [{ ev: "ADCC 2022 Historic Double", org: "ADCC", res: "🏆 Won +99kg Bracket + Fastest Submission in ADCC Superfight History", sub: "Rear-Naked Choke & Heel Hook" }],
+    facts: ["Only grappler in ADCC history to win gold across three different weight divisions (-88kg, -99kg, +99kg), the Absolute, and the Superfight."]
+  },
+  {
     name: "Thiago Mendes", aliases: ["professor thiago mendes", "thiago mendes barros"], shards: ["me", "ba"], academy: "Carlson Gracie San Antonio / TM Combat Academy", belt: "3rd Degree Black Belt", rec: "Head Professor • Carlson Gracie Lineage", feds: ["IBJJF", "ADCC", "JJWL"],
     titles: ["🥋 3rd-Degree Carlson Gracie Black Belt", "🏛️ Head Professor — Carlson Gracie San Antonio & TM Combat Academy"],
     bouts: [{ ev: "Championship Coaching Corner", org: "IBJJF", res: "🏆 Multi-Federation Youth & Adult Medalists", sub: "Rio de Janeiro Old-School Pressure + Modern Competition Prep" }],

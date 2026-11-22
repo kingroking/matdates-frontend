@@ -358,8 +358,8 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, meda
     }).catch(() => {});
   }, [activeName, canonicalTargetKey]);
 
-  // Build unified, deduplicated Team Roster (Claimed Athletes + 2026 Medalists + Upcoming Squad)
-  const teamRoster = React.useMemo(() => {
+  // Build unified, deduplicated raw Academy People Map first
+  const rawAcademyPeople = React.useMemo(() => {
     const map = new Map();
     const ensure = (rawNm, beltStr) => {
       const nm = (rawNm || "").trim();
@@ -397,24 +397,142 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, meda
     return Array.from(map.values()).sort((a, b) => (b.g * 9 + b.s * 3 + b.b) - (a.g * 9 + a.s * 3 + a.b) || a.name.localeCompare(b.name));
   }, [publicBios, medalists, upcomingSquad, activeName]);
 
-  // Build clickable Professors & Coaches directory for this Academy!
+  // GLOBAL STRICT PROFESSORS & COACHES DIRECTORY:
+  // - Never infer staff from unclaimed bios, Black Belts' own historical belt lineage, or '/' lineage strings!
+  // - Require Owner/Workspace authority OR multi-student verified local consensus at this exact gym!
   const gymCoaches = React.useMemo(() => {
     const map = new Map();
+    const removedSet = new Set((ws?.removedCoaches || []).map(x => foldStr(x)));
     const addCoach = (raw, roleLabel) => {
-      const clean = (raw || "").replace(/^(head\s+professor|professor|prof\.?|coach)\s+/i, "").trim();
-      if (clean.length < 3 || clean.includes("@")) return;
+      const clean = String(raw || "")
+        .replace(/^(head\s+professor|professor|prof\.?|coach|master|mestre|sensei)\s+/i, "")
+        .trim();
+      if (clean.length < 3 || clean.length > 48 || /[@\/→|,]/.test(clean)) return;
       const k = foldStr(clean);
-      if (!map.has(k)) map.set(k, { name: clean, displayTitle: /^(prof)/i.test(raw || "") ? "Head Professor" : (roleLabel || "Professor / Coach") });
+      if (!k || removedSet.has(k)) return;
+      const rosterHit = rawAcademyPeople.find(r => strictVerifiedAthleteRowMatch(r.name, activeName, "", clean, activeName, ""));
+      if (!map.has(k)) {
+        map.set(k, {
+          name: rosterHit && rosterHit.name.length >= clean.length ? rosterHit.name : clean,
+          displayTitle: /^(head|prof)/i.test(raw || "") ? "Head Professor" : (roleLabel || "Professor / Coach"),
+          g: rosterHit?.g || 0,
+          s: rosterHit?.s || 0,
+          b: rosterHit?.b || 0,
+          events: rosterHit?.events || []
+        });
+      }
     };
-    if (canonicalTargetKey === "carlsongraciesanantonio") addCoach("Professor Thiago Mendes", "Head Professor • 3rd Degree Black Belt");
+
+    if (canonicalTargetKey === "carlsongraciesanantonio") {
+      addCoach("Professor Thiago Mendes", "Head Professor • 3rd Degree Black Belt");
+    }
+
+    // 1. Official Academy Owner / Staff Workspace entries are always authoritative
     (ws?.coachNames || []).forEach(cn => addCoach(cn, "Academy Professor / Coach"));
-    publicBios.forEach(b => { if (b.coach) addCoach(b.coach, "Professor / Coach"); });
+
+    // 2. For student-submitted coach names: ONLY count CLAIMED non-Black-Belt student bios at THIS exact gym,
+    //    and require 2+ independent claimed students (or 1 claimed student + active roster entry at this exact gym)
+    //    when no workspace owner has configured staff yet!
+    const nominatedCounts = new Map();
+    const nominatedRaw = new Map();
+    publicBios.forEach(b => {
+      if (!b?.isClaimed || !b?.coach) return;
+      if (/\b(black|coral|red)\b/i.test(b.belt || "")) return; // Black belt's 'coach' is historical lineage, not local staff!
+      const cClean = String(b.coach).replace(/^(head\s+professor|professor|prof\.?|coach)\s+/i, "").trim();
+      if (cClean.length < 3 || /[@\/→|,]/.test(cClean)) return;
+      const ck = foldStr(cClean);
+      if (!ck || ck === foldStr(b.name || "")) return;
+      nominatedCounts.set(ck, (nominatedCounts.get(ck) || 0) + 1);
+      if (!nominatedRaw.has(ck)) nominatedRaw.set(ck, b.coach);
+    });
+
+    const hasOwnerStaffList = Array.isArray(ws?.coachNames) && ws.coachNames.length > 0;
+    nominatedCounts.forEach((cnt, ck) => {
+      const alsoCompetesForExactGym = rawAcademyPeople.some(r => foldStr(r.name) === ck);
+      if (cnt >= 2 || (!hasOwnerStaffList && cnt >= 1 && alsoCompetesForExactGym)) {
+        addCoach(nominatedRaw.get(ck), "Verified Professor / Coach");
+      }
+    });
+
     return Array.from(map.values());
-  }, [ws, publicBios, canonicalTargetKey]);
+  }, [ws, publicBios, canonicalTargetKey, rawAcademyPeople, activeName]);
+
+  // Deduplicate verified Professors/Coaches out of student Team Roster so leadership isn't listed twice!
+  const teamRoster = React.useMemo(() => {
+    if (!gymCoaches.length) return rawAcademyPeople;
+    return rawAcademyPeople.filter(p => !gymCoaches.some(c =>
+      foldStr(c.name) === foldStr(p.name) ||
+      strictVerifiedAthleteRowMatch(p.name, activeName, "", c.name, activeName, "")
+    ));
+  }, [rawAcademyPeople, gymCoaches, activeName]);
+
+  // 1-Click Follow / Unfollow Entire Roster or Coaching Staff!
+  const toggleFollowSquadBatch = async (namesList, groupLabel) => {
+    const cleanNames = Array.from(new Set((namesList || []).map(n => String(n || "").trim()).filter(Boolean)));
+    if (!cleanNames.length) return;
+    const allAlreadyWatched = cleanNames.every(n => Boolean(getWatch(n)));
+
+    if (allAlreadyWatched) {
+      for (const n of cleanNames) {
+        const w = getWatch(n);
+        if (w) await Promise.resolve(removeWatch(w)).catch(() => {});
+      }
+      setMsg(`🔕 Unfollowed ${cleanNames.length} ${activeName} ${groupLabel}.`);
+      return;
+    }
+
+    const uid = user?.uid || "";
+    const lsKey = uid ? `md_watches_u_${uid}` : "md_watches_guest_v2";
+    let curLocal = [];
+    try { curLocal = JSON.parse(localStorage.getItem(lsKey) || "[]"); if (!Array.isArray(curLocal)) curLocal = []; } catch { curLocal = []; }
+
+    const toAddNames = cleanNames.filter(n => !getWatch(n));
+    const nowIso = new Date().toISOString();
+
+    for (const nm of toAddNames) {
+      const slug = foldStr(nm).replace(/[^a-z0-9]+/g, "_");
+      const docId = uid ? `watch_sq_${uid}_${slug}` : `local_sq_${slug}_${Date.now()}`;
+      const entry = {
+        id: docId,
+        uid: uid,
+        email: (user?.email || "").toLowerCase(),
+        athleteName: nm,
+        academy: activeName,
+        eventId: "",
+        eventName: "All Upcoming Tournaments",
+        eventLink: "https://matdates.com/?athlete=" + encodeURIComponent(nm).replace(/%20/g, "+"),
+        division: "",
+        followFuture: true,
+        active: true,
+        createdAt: nowIso
+      };
+      curLocal.push(entry);
+      if (uid) {
+        setDoc(doc(db, "mat_watches", docId), entry, { merge: true }).catch(() => {});
+      }
+    }
+
+    try { localStorage.setItem(lsKey, JSON.stringify(curLocal)); } catch {}
+    window.dispatchEvent(new Event("md-watches-updated"));
+    setMsg(`🔔 Following all ${cleanNames.length} ${activeName} ${groupLabel} for live bracket & podium alerts!`);
+  };
+
+  const removeCoachFromStaff = async (coachName, e) => {
+    if (e) e.stopPropagation();
+    const k = foldStr(coachName);
+    const gKey = ws?.gymKey || activeKey || canonicalTargetKey;
+    if (!gKey) return;
+    const nextNames = (ws?.coachNames || []).filter(cn => foldStr(cn.replace(/^(head\s+professor|professor|prof\.?|coach)\s+/i, "")) !== k);
+    const nextRemoved = Array.from(new Set([...(ws?.removedCoaches || []), k]));
+    const updated = { ...(ws || { kind: "academy_workspace", gymKey: gKey, gymName: activeName }), coachNames: nextNames, removedCoaches: nextRemoved };
+    await setDoc(doc(db, "mat_watches", "acad_ws_" + gKey), { kind: "academy_workspace", gymKey: gKey, gymName: activeName, coachNames: nextNames, removedCoaches: nextRemoved }, { merge: true });
+    setWs(updated);
+    setMsg(`Removed ${coachName} from ${activeName} Coaching Staff.`);
+  };
 
   const openPersonTrophy = (personName) => {
     if (!onOpenAthlete) return;
-    const hit = teamRoster.find(r => foldStr(r.name) === foldStr(personName));
+    const hit = rawAcademyPeople.find(r => foldStr(r.name) === foldStr(personName)) || gymCoaches.find(c => foldStr(c.name) === foldStr(personName));
     if (hit) {
       onOpenAthlete({ name: hit.name, academy: activeName, g: hit.g || 0, s: hit.s || 0, b: hit.b || 0, events: hit.events || [] });
     } else {
@@ -551,7 +669,26 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, meda
       {/* TEAM ROSTER (Default for Regular Users — every name opens their Trophy Room!) */}
       {sub === "ROSTER" && (
         <div style={{ display:"grid", gap:"6px" }}>
-          <div style={{ fontSize:"0.78rem", color:"#93c5fd", fontWeight:"bold" }}>🥋 Verified {activeName} Competitors ({teamRoster.length}) — tap any teammate to open their Trophy Room:</div>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
+            <div style={{ fontSize:"0.78rem", color:"#93c5fd", fontWeight:"bold" }}>🥋 Verified {activeName} Competitors ({teamRoster.length}) — tap any teammate to open their Trophy Room:</div>
+            {teamRoster.length > 0 && (() => {
+              const allWatched = teamRoster.every(m => Boolean(getWatch(m.name)));
+              return (
+                <button
+                  type="button"
+                  onClick={() => toggleFollowSquadBatch(teamRoster.map(m => m.name), "teammates")}
+                  style={{
+                    background: allWatched ? "#132a1c" : "linear-gradient(135deg,#0284c7,#38bdf8)",
+                    color: allWatched ? "#4ade80" : "#000",
+                    border: allWatched ? "1px solid #22c55e" : "none",
+                    borderRadius: "999px", padding: "4px 11px", fontSize: "0.72rem", fontWeight: "900", cursor: "pointer", whiteSpace: "nowrap"
+                  }}
+                >
+                  {allWatched ? `✓ Following Entire Roster (${teamRoster.length})` : `🔔 Follow Entire Roster (${teamRoster.length})`}
+                </button>
+              );
+            })()}
+          </div>
           {teamRoster.length === 0 ? (
             <div style={{ color:"#94a3b8", fontSize:"0.78rem" }}>Athletes appear here automatically as they claim profiles, register for upcoming events, or earn verified podiums!</div>
           ) : (
@@ -649,7 +786,26 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, meda
       {/* PROFESSORS & COACHES DIRECTORY (Clickable to Trophy Rooms for all users; Staff Editor ONLY for Academy Accounts!) */}
       {sub === "STAFF" && (
         <div style={{ display:"grid", gap:"8px" }}>
-          <div style={{ fontSize:"0.78rem", color:"#4ade80", fontWeight:"bold" }}>🥋 {activeName} Professors &amp; Coaching Staff:</div>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
+            <div style={{ fontSize:"0.78rem", color:"#4ade80", fontWeight:"bold" }}>🥋 {activeName} Professors &amp; Coaching Staff:</div>
+            {gymCoaches.length > 1 && (() => {
+              const allCWatched = gymCoaches.every(c => Boolean(getWatch(c.name)));
+              return (
+                <button
+                  type="button"
+                  onClick={() => toggleFollowSquadBatch(gymCoaches.map(c => c.name), "coaches")}
+                  style={{
+                    background: allCWatched ? "#132a1c" : "#162536",
+                    color: allCWatched ? "#4ade80" : "#38bdf8",
+                    border: allCWatched ? "1px solid #22c55e" : "1px solid #0284c7",
+                    borderRadius: "999px", padding: "4px 10px", fontSize: "0.71rem", fontWeight: "800", cursor: "pointer"
+                  }}
+                >
+                  {allCWatched ? `✓ Following All Coaches (${gymCoaches.length})` : `🔔 Follow All Coaches (${gymCoaches.length})`}
+                </button>
+              );
+            })()}
+          </div>
           {gymCoaches.length === 0 ? (
             <div style={{ color:"#94a3b8", fontSize:"0.78rem" }}>No Professors or Coaches listed yet — populates as Academy owners add coaches or athletes list their Head Professor!</div>
           ) : (
@@ -670,6 +826,16 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, meda
                       >
                         {watchingCoach ? "✓ Watching" : "🔔 Watch"}
                       </button>
+                      {isGymStaff && !isHomepage && (
+                        <button
+                          type="button"
+                          title="Remove from active Coaching Staff"
+                          onClick={(e) => removeCoachFromStaff(c.name, e)}
+                          style={{ background:"transparent", color:"#94a3b8", border:"1px solid #334155", borderRadius:"5px", padding:"2px 6px", fontSize:"0.68rem", cursor:"pointer" }}
+                        >
+                          ✕
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => openPersonTrophy(c.name)}

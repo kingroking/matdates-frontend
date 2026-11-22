@@ -316,6 +316,73 @@ const buildShareOrigin = () => {
 };
 
 
+let _cachedEvDateMap = null;
+function ensureLiveEventDatesLoaded(dbRef, collectionFn, getDocsFn) {
+  if (_cachedEvDateMap) return Promise.resolve(_cachedEvDateMap);
+  const map = new Map();
+  return Promise.all([
+    getDocsFn(collectionFn(dbRef, 'live_events')).catch(() => ({ forEach: () => {} })),
+    getDocsFn(collectionFn(dbRef, 'events')).catch(() => ({ forEach: () => {} }))
+  ]).then(([s1, s2]) => {
+    const ingest = (sn) => sn.forEach(d => {
+      const x = d.data() || {};
+      if (x.name && x.sort_date) {
+        const k = foldAscii(x.name).replace(/[^a-z0-9]+/g, ' ').trim();
+        if (k && (!map.has(k) || x.sort_date > map.get(k))) map.set(k, x.sort_date);
+      }
+    });
+    ingest(s1);
+    ingest(s2);
+    _cachedEvDateMap = map;
+    return map;
+  });
+}
+
+function infer2026EventSortScore(evTitleRaw, dateHintRaw = '') {
+  if (dateHintRaw && /^\d{4}-\d{2}-\d{2}/.test(String(dateHintRaw))) {
+    return String(dateHintRaw).slice(0, 10);
+  }
+  const ev = foldAscii(evTitleRaw || '').replace(/[^a-z0-9]+/g, ' ').trim();
+  if (!ev) return '2026-00-00';
+
+  if (/season ranking|overall ranking/.test(ev)) return '2026-00-01';
+
+  if (_cachedEvDateMap) {
+    if (_cachedEvDateMap.has(ev)) return _cachedEvDateMap.get(ev);
+    for (const [k, dt] of _cachedEvDateMap.entries()) {
+      if (k.length >= 10 && (ev.includes(k) || k.includes(ev))) return dt;
+    }
+  }
+
+  if (/austin/.test(ev) && /adcc/.test(ev)) return '2026-11-14';
+  if (/majestic/.test(ev)) return '2026-11-22';
+  if (/world.*no gi/.test(ev)) return '2026-12-10';
+  if (/pan kids.*no gi|pan.*no gi/.test(ev)) return '2026-10-18';
+  if (/ufc bjj.*open|phoenix|ak chin/.test(ev)) return '2026-09-19';
+  if (/jiu jitsu con|world master/.test(ev)) return '2026-09-04';
+  if (/american national/.test(ev)) return '2026-07-04';
+  if (/world ibjjf jiu jitsu championship/.test(ev) && !/no gi|master/.test(ev)) return '2026-06-01';
+  if (/campeonato brasileiro/.test(ev)) return '2026-05-01';
+  if (/pan kids/.test(ev)) return '2026-07-25';
+  if (/pan ibjjf/.test(ev)) return '2026-03-26';
+  if (/european/.test(ev) && !/kids|fall/.test(ev)) return '2026-01-24';
+
+  const months = [
+    ['december|dec\b', '12'], ['november|nov\b', '11'], ['october|oct\b', '10'],
+    ['september|sep\b|sept\b', '09'], ['august|aug\b', '08'], ['july|jul\b', '07'],
+    ['june|jun\b', '06'], ['may\b', '05'], ['april|apr\b', '04'],
+    ['march|mar\b', '03'], ['february|feb\b', '02'], ['january|jan\b', '01']
+  ];
+  for (const [pat, mm] of months) {
+    if (new RegExp('\\b(' + pat + ')', 'i').test(ev)) return `2026-${mm}-15`;
+  }
+  if (/\bfall\b|autumn/.test(ev)) return '2026-10-10';
+  if (/\bsummer\b/.test(ev)) return '2026-07-15';
+  if (/\bspring\b/.test(ev)) return '2026-04-15';
+  if (/\bwinter\b/.test(ev)) return '2026-02-01';
+  return '2026-06-15';
+}
+
 function canonicalizeHits(hits) {
   const stripG = (k) => (k || "").replace(/(jiujitsu|bjj|team|hq|academy)+$/g, "");
   const hqRoots = ["carlsongracie", "graciebarra", "alliance", "checkmat", "atos", "ares", "gfteam", "zrteam", "unity", "btt"];
@@ -832,13 +899,40 @@ export function LeaderboardModal({ onClose }) {
             ) : (
               <>
                 <AcademyProSuite gymName={cleanAcademyName(activeGym.Academy)} gymKey={activeGym.key} medalists={indivList} onOpenAthlete={setOpenAthTrophy} user={auth.currentUser} isAdmin={false} onRequireAuth={() => alert("Please Sign In at the top right of MatDates first!")} />
-                {indivList.length > 0 && (
-                  <div>
-                    <div style={{ color:'#38bdf8', fontSize:'0.8rem', fontWeight:'bold', marginBottom:'6px' }}>
-                      🥋 Verified 2026 Individual Podium Finishers ({indivList.length})
-                    </div>
-                    <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
-                      {indivList.slice(0, 150).map((m, idx) => (
+                {indivList.length > 0 && (() => {
+                    ensureLiveEventDatesLoaded(db, collection, getDocs);
+                    const sortedIndiv = [...indivList].sort((a, b) => {
+                      const da = infer2026EventSortScore(a.ev, a.dt || a.sort_date);
+                      const dbScore = infer2026EventSortScore(b.ev, b.dt || b.sort_date);
+                      if (dbScore !== da) return dbScore.localeCompare(da);
+                      const evCmp = String(a.ev || '').localeCompare(String(b.ev || ''));
+                      if (evCmp !== 0) return evCmp;
+                      const pa = Number(a.p || 3), pb = Number(b.p || 3);
+                      if (pa !== pb) return pa - pb;
+                      return String(a.n || '').localeCompare(String(b.n || ''));
+                    });
+                    let lastEvKey = '';
+                    return (
+                    <div>
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:'6px', flexWrap:'wrap', marginBottom:'6px' }}>
+                        <div style={{ color:'#38bdf8', fontSize:'0.8rem', fontWeight:'bold' }}>
+                          🥋 Verified 2026 Individual Podium Finishers ({indivList.length})
+                        </div>
+                        <span style={{ color:'#64748b', fontSize:'0.7rem', fontWeight:'700' }}>Most Recent Event First • 🥇→🥈→🥉</span>
+                      </div>
+                      <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
+                        {sortedIndiv.slice(0, 150).map((m, idx) => {
+                          const curEvKey = foldAscii(m.ev || '').trim();
+                          const showEvGroupHeader = curEvKey && curEvKey !== lastEvKey;
+                          if (curEvKey) lastEvKey = curEvKey;
+                          return (
+                            <React.Fragment key={idx}>
+                              {showEvGroupHeader && (
+                                <div style={{ marginTop: idx === 0 ? 0 : '6px', padding:'4px 8px', borderRadius:'5px', background:'rgba(30,41,59,0.75)', borderLeft:'3px solid #f59e0b', color:'#fde047', fontSize:'0.73rem', fontWeight:'800', display:'flex', justifyContent:'space-between', alignItems:'center', gap:'6px' }}>
+                                  <span>🏟️ {m.ev}</span>
+                                  {m.f && <span style={{ color:'#93c5fd', fontSize:'0.66rem' }}>{m.f}</span>}
+                                </div>
+                              )}
                         <div key={idx} style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:'8px', background:'#151b24', border:'1px solid #222b3a', borderRadius:'6px', padding:'8px 10px', fontSize:'0.82rem' }}>
                           <div style={{ minWidth:0 }}>
                             <div
@@ -862,10 +956,13 @@ export function LeaderboardModal({ onClose }) {
                           </div>
                           {m.f && <span style={{ fontSize:'0.65rem', padding:'2px 6px', borderRadius:'4px', background:'#1e293b', color:'#cbd5e1', flexShrink:0 }}>{m.f}</span>}
                         </div>
-                      ))}
+                      </React.Fragment>
+                          );
+                        })}
                     </div>
                   </div>
-                )}
+                );
+                  })()}
 
                 {eventSummaries.length > 0 && (
                   <div>
@@ -873,7 +970,7 @@ export function LeaderboardModal({ onClose }) {
                       🏟️ 2026 Tournament Team Podium Breakdown ({eventSummaries.length} Events)
                     </div>
                     <div style={{ display:'flex', flexDirection:'column', gap:'6px' }}>
-                      {eventSummaries.map((ev, idx) => (
+                      {[...eventSummaries].sort((a, b) => infer2026EventSortScore(b.n, b.dt || b.sort_date).localeCompare(infer2026EventSortScore(a.n, a.dt || a.sort_date))).map((ev, idx) => (
                         <div key={idx} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:'8px', background:'#151925', border:'1px solid #282f44', borderRadius:'6px', padding:'8px 10px', fontSize:'0.8rem' }}>
                           <div style={{ minWidth:0 }}>
                             <div style={{ color:'#fff', fontWeight:'bold', wordBreak:'break-word' }}>{ev.n}</div>

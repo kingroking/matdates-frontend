@@ -880,6 +880,30 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
   const trimmedQ = qStr.trim();
   const alreadyWatched = Boolean(trimmedQ.length >= 2 && getWatch(trimmedQ));
 
+    const allPodProfiles = useMemo(() => {
+    const qF = foldStr(trimmedQ).replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+    if (qF.length < 2) return podProfiles;
+    const qTerms = qF.split(" ").filter(Boolean);
+    const existingKeys = new Set(podProfiles.map(p => foldStr(p.name).replace(/[^a-z0-9]/g, "")));
+    const legendProfiles = [];
+    for (const hero of PRO_SUPERFIGHTS) {
+      const hKey = foldStr(hero.name).replace(/[^a-z0-9]/g, "");
+      if (existingKeys.has(hKey)) continue;
+      const hay = foldStr([hero.name, ...(hero.aliases || []), hero.academy || ""].join(" "));
+      if (hay.includes(qF) || qTerms.every(t => hay.includes(t))) {
+        legendProfiles.push({
+          name: hero.name,
+          academy: hero.academy || "",
+          g: 0, s: 0, b: 0,
+          histCount: (hero.careerG || 0) + (hero.careerS || 0) + (hero.careerB || 0) || (hero.careerPodiums || []).length,
+          proTitles: hero.titles || [],
+          events: []
+        });
+      }
+    }
+    return [...legendProfiles, ...podProfiles];
+  }, [podProfiles, trimmedQ]);
+
   return (
     <div onClick={onClose} style={{ ...MODAL_BG, alignItems: "flex-start", paddingTop: "12px" }}>
       <div onClick={e => e.stopPropagation()} style={{ background:"#111622", border:"1px solid #334155", borderRadius:"12px", maxWidth:"640px", width:"100%", maxHeight:"90dvh", overflowY:"auto", overscrollBehavior:"contain", WebkitOverflowScrolling:"touch", padding:"15px", color:"#fff", textAlign:"left" }}>
@@ -905,9 +929,9 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
               <div style={{ display:"grid", gap:"6px" }}>
                 <div style={{ color:"#fbbf24", fontWeight:"800", fontSize:"0.77rem" }}>🏛️ MATCHING ACADEMIES ({matchingGyms.length})</div>
                 {matchingGyms.slice(0, 4).map(g => (
-                  <div key={g.key} style={{ background:"#172032", border:"1px solid #f59e0b", borderRadius:"8px", padding:"8px 11px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
-                    <div style={{ fontSize:"0.81rem" }}>
-                      <b>{g.Academy}</b>
+                  <div key={g.key} onClick={() => { window.location.href = "/?gym=" + encodeURIComponent(g.key); }} style={{ background:"#172032", border:"1px solid #f59e0b", borderRadius:"8px", padding:"8px 11px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" , cursor:"pointer" }}>
+                      <div style={{ fontSize:"0.81rem" }}>
+                        <b style={{ color:"#fff", textDecoration:"underline", textDecorationColor:"rgba(245,158,11,0.65)" }}>{g.Academy}</b>
                       <span style={{ color:"#cbd5e1", marginLeft:"7px", fontSize:"0.76rem" }}>🥇{g.Gold} 🥈{g.Silver} 🥉{g.Bronze}</span>
                     </div>
                     <a href={"/?gym=" + encodeURIComponent(g.key)} style={{ background:"#f59e0b", color:"#000", padding:"5px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.74rem", textDecoration:"none", whiteSpace:"nowrap" }}>Academy Trophy Room →</a>
@@ -916,13 +940,13 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
               </div>
             )}
 
-            {podProfiles.length > 0 && <div style={{ color:"#fbbf24", fontWeight:"bold", fontSize:"0.78rem", marginTop:"2px" }}>🏆 ATHLETE TROPHY ROOMS ({podProfiles.length})</div>}
-            {podProfiles.map((p, i) => (
+            {allPodProfiles.length > 0 && <div style={{ color:"#fbbf24", fontWeight:"bold", fontSize:"0.78rem", marginTop:"2px" }}>🏆 ATHLETE TROPHY ROOMS ({allPodProfiles.length})</div>}
+            {allPodProfiles.map((p, i) => (
               <div key={"p"+i} onClick={() => { document.activeElement?.blur?.(); setTrophyPick(p); }} style={{ background:"#182030", border:"1px solid #334155", borderRadius:"8px", padding:"9px 11px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap", cursor:"pointer" }}>
                 <div style={{ minWidth:0, flex:"1 1 200px" }}>
                   <div>
                     <b style={{ textDecoration:"underline", textDecorationColor:"rgba(251,191,36,0.5)" }}>{p.name}{p.nickname ? ` "${p.nickname}"` : ""}</b>
-                    {p.academy && <span style={{ color:"#ff9f43", fontSize:"0.78rem" }}> • {p.academy}</span>}
+                    {p.academy && <span onClick={(e) => { e.stopPropagation(); const gk = universalGymKey(p.academy); if (gk) window.location.href = "/?gym=" + encodeURIComponent(gk); }} title={"Open " + p.academy + " Trophy Room"} style={{ color:"#ff9f43", fontSize:"0.78rem", cursor:"pointer", textDecoration:"underline", textDecorationColor:"rgba(255,159,67,0.45)" }}> • {p.academy}</span>}
                   </div>
                   <div style={{ fontSize:"0.76rem", color:"#cbd5e1" }}>
                     🥇{p.g} 🥈{p.s} 🥉{p.b} (2026){p.histCount ? ` • +${p.histCount} Prior-Yr` : ""}{p.proTitles ? " • " + p.proTitles[0] : ""}
@@ -941,7 +965,7 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
               return (
                 <div key={"r"+i} style={{ background:"#182030", border:"1px solid #22c55e", borderRadius:"8px", padding:"9px 11px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
                   <div style={{ minWidth:0, flex:"1 1 200px" }}>
-                    <div><b onClick={() => setTrophyPick({ name: r.n, academy: r.a, g: 0, s: 0, b: 0, events: [] })} style={{ cursor:"pointer", textDecoration:"underline", textDecorationColor:"rgba(56,189,248,0.5)" }}>{r.n}</b> <span style={{ color:"#ff9f43", fontSize:"0.78rem" }}>• {r.a}</span></div>
+                    <div><b onClick={() => setTrophyPick({ name: r.n, academy: r.a, g: 0, s: 0, b: 0, events: [] })} style={{ cursor:"pointer", textDecoration:"underline", textDecorationColor:"rgba(56,189,248,0.5)" }}>{r.n}</b> <span onClick={(e) => { e.stopPropagation(); const gk = universalGymKey(r.a); if (gk) window.location.href = "/?gym=" + encodeURIComponent(gk); }} title={"Open " + r.a + " Trophy Room"} style={{ color:"#ff9f43", fontSize:"0.78rem", cursor:"pointer", textDecoration:"underline", textDecorationColor:"rgba(255,159,67,0.45)" }}>• {r.a}</span></div>
                     <div style={{ fontSize:"0.76rem", color:"#cbd5e1" }}>{ev.name} {ev.date ? <span style={{ color:"#fbbf24", fontWeight:"bold" }}>• 📅 {ev.date}</span> : null} • {r.d}</div>
                   </div>
                   <div style={{ display:"flex", gap:"6px" }}>
@@ -954,7 +978,7 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
 
             <div style={{ background:"#151d2b", border:"1px dashed #38bdf8", borderRadius:"8px", padding:"10px 12px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" }}>
               <span style={{ fontSize:"0.78rem", color:"#cbd5e1" }}>
-                {podProfiles.length === 0 && regHits.length === 0
+                {allPodProfiles.length === 0 && regHits.length === 0
                   ? <>Open <b>{trimmedQ}</b>&apos;s All-Time Trophy Room or Watch for future brackets:</>
                   : <>Want alerts for every future tournament &amp; SuperFight <b>{trimmedQ}</b> enters?</>}
               </span>
