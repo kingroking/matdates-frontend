@@ -178,6 +178,7 @@ export function MultiCategoryDropdown({ selected, onChange }) {
     if (selected.includes(k)) onChange(selected.filter(x => x !== k));
     else onChange([...selected, k]);
   };
+  if (isHomepage && staffOnlyIfNotAcademyRole && (!wsLoaded || myWorkspaces.length === 0)) return null;
   return (
     <div style={{ position:"relative", minWidth:"205px", flex:"0 1 auto" }}>
       <button type="button" onClick={() => setOpen(!open)} style={{ width:"100%", padding:"11px 13px", borderRadius:"6px", border: selected.length ? "1px solid #38bdf8" : "1px solid #2b3340", background:"#0d1117", color: selected.length ? "#38bdf8" : "#e2e8f0", fontSize:"0.92rem", fontWeight:"600", cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"10px" }}>
@@ -221,8 +222,11 @@ const exactGymKey = (raw) => {
   return k;
 };
 
-export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, medalists = [], onOpenAthlete, user, isAdmin, onRequireAuth, isHomepage = false }) {
+export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, medalists = [], onOpenAthlete, user, isAdmin, onRequireAuth, isHomepage = false, staffOnlyIfNotAcademyRole = false }) {
   const [ws, setWs] = useState(null);
+  const [myWorkspaces, setMyWorkspaces] = useState([]);
+  const [wsLoaded, setWsLoaded] = useState(false);
+  const [switchingGym, setSwitchingGym] = useState(false);
   const [userRole, setUserRole] = useState("");
   const [newGymName, setNewGymName] = useState("");
   const activeName = cleanAcademyName(propGymName || ws?.gymName || "");
@@ -259,13 +263,23 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, meda
 
   useEffect(() => {
     if (propGymKey) {
-      getDoc(doc(db, "mat_watches", "acad_ws_" + propGymKey)).then(d => { if (d.exists()) setWs(d.data()); }).catch(() => {});
+      getDoc(doc(db, "mat_watches", "acad_ws_" + propGymKey)).then(d => {
+        if (d.exists()) setWs(d.data());
+        setWsLoaded(true);
+      }).catch(() => setWsLoaded(true));
     } else if (user?.email) {
       const em = user.email.toLowerCase();
       getDocs(query(collection(db, "mat_watches"), where("kind", "==", "academy_workspace"))).then(sn => {
-        const hit = sn.docs.map(d => d.data()).find(w => w.ownerUid === user.uid || (w.staffEmails || []).includes(em));
-        if (hit) setWs(hit);
-      }).catch(() => {});
+        const allMine = sn.docs.map(d => d.data()).filter(w => w.ownerUid === user.uid || (w.staffEmails || []).includes(em));
+        setMyWorkspaces(allMine);
+        let savedPref = "";
+        try { savedPref = localStorage.getItem("md_active_acad_" + user.uid) || ""; } catch {}
+        const preferred = allMine.find(w => w.gymKey === savedPref) || allMine[0] || null;
+        setWs(preferred);
+        setWsLoaded(true);
+      }).catch(() => setWsLoaded(true));
+    } else {
+      setWsLoaded(true);
     }
   }, [propGymKey, user]);
 
@@ -278,6 +292,28 @@ export function AcademyProSuite({ gymName: propGymName, gymKey: propGymKey, meda
   );
 
   const [sub, setSub] = useState(isHomepage ? "CLIPBOARD" : "ROSTER");
+  const handleSwitchOrClaimNewGym = async (e) => {
+    e.preventDefault();
+    if (!user || !newGymName.trim()) return;
+    const cleanG = cleanAcademyName(newGymName.trim());
+    const gk = foldStr(cleanG).replace(/[^a-z0-9]+/g, "_");
+    const newWs = {
+      kind: "academy_workspace",
+      gymKey: gk,
+      gymName: cleanG,
+      ownerUid: user.uid,
+      ownerEmail: (user.email || "").toLowerCase(),
+      staffEmails: [(user.email || "").toLowerCase()],
+      createdAt: new Date().toISOString()
+    };
+    await setDoc(doc(db, "mat_watches", "acad_ws_" + gk), newWs, { merge: true });
+    await setDoc(doc(db, "mat_watches", "role_" + user.uid), { orgName: cleanG, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
+    try { localStorage.setItem("md_active_acad_" + user.uid, gk); } catch {}
+    setMyWorkspaces(prev => [...prev.filter(x => x.gymKey !== gk), newWs]);
+    setWs(newWs);
+    setNewGymName("");
+    setSwitchingGym(false);
+  };
   useEffect(() => {
     if (isHomepage) setSub("CLIPBOARD");
   }, [isHomepage]);

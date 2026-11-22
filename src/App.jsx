@@ -961,12 +961,11 @@ function App() {
     <button data-tour="nav-lookup" onClick={() => setShowAthleteSearch(true)} style={{ backgroundColor:'#141820', color:'#38bdf8', padding:'9px 14px', border:'1px solid #0284c7', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.88rem' }}>🔍 Athlete &amp; Academy Lookup</button>
     <button data-tour="nav-warroom" onClick={() => setShowWarRoom(true)} style={{ backgroundColor: myWatches.length > 0 ? '#132a1c' : '#141820', color: myWatches.length > 0 ? '#4ade80' : '#cbd5e1', padding:'9px 14px', border: myWatches.length > 0 ? '1px solid #2ecc71' : '1px solid #334155', borderRadius:'7px', fontWeight:'bold', cursor:'pointer', fontSize:'0.88rem' }}>🔥 War Room{myWatches.length > 0 ? ` (${myWatches.length})` : ''}</button>
     <button onClick={() => setShowSubmitModal(true)} style={{ backgroundColor:'#ff9f43', color:'#000', padding:'9px 14px', border:'none', borderRadius:'7px', fontWeight:'800', cursor:'pointer', fontSize:'0.88rem' }}>+ Submit</button>
-      <button onClick={handleShareMatDatesApp} title="Share MatDates via Text, Contacts, AirDrop, WhatsApp or Email" style={{ backgroundColor: sharedAppToast ? '#132a1c' : '#141820', color: sharedAppToast ? '#4ade80' : '#fde047', padding:'9px 12px', border: sharedAppToast ? '1px solid #2ecc71' : '1px solid #f59e0b', borderRadius:'7px', fontWeight:'800', cursor:'pointer', fontSize:'0.84rem' }}>{sharedAppToast ? '✓ Link Copied!' : '📤 Share App'}</button>
     <button onClick={() => user ? signOut(auth) : setShowAuthModal(true)} style={{ backgroundColor:'transparent', color:'#94a3b8', padding:'8px 10px', border:'1px solid #262f3d', borderRadius:'7px', cursor:'pointer', fontSize:'0.8rem' }}>{user ? 'Sign Out' : 'Sign In'}</button>
   </div>
 </header>
         <SponsorBanner onOpenMediaKit={() => setShowSponsorKit(true)} />
-        {user && userRole === 'academy' && <AcademyProSuite user={user} isAdmin={isAdmin} isHomepage={true} onRequireAuth={() => setShowAuthModal(true)} />}
+        {user && <AcademyProSuite user={user} isAdmin={isAdmin} isHomepage={true} staffOnlyIfNotAcademyRole={userRole !== 'academy'} onRequireAuth={() => setShowAuthModal(true)} />}
         {user && userRole === 'promoter' && <PromoterHomeDashboard events={mergedWithUfcCards} user={user} />}
         <AnalyticsAndPwaManager />
 {isAdmin && (

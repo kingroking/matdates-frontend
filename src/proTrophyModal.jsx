@@ -437,6 +437,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
   const [histEvs, setHistEvs] = useState([]);
   const [promBouts, setPromBouts] = useState([]);
   const [fedRanks, setFedRanks] = useState([]);
+  const [coachedSquadStats, setCoachedSquadStats] = useState(null);
   const WATCH_GLOW_MIN = 100;
   const [eraView, setEraView] = useState("2026");
   const [cnt, setCnt] = useState({ g: activeAth?.g || 0, s: activeAth?.s || 0, b: activeAth?.b || 0, acad: activeAth?.academy || activeAth?.a || "" });
@@ -592,7 +593,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
     handle: "", nickname: "", spiritEmoji: "", songRepeat: "", songUrl: "", musicVibe: "",
     quote: "", currentRead: "", age: "", belt: "", coach: "", favMove: "",
     cheatMeal: "", funFact: "", avatarData: "", photoCredit: "", openSf: false,
-    showWatchCount: false, bracketPushAlerts: true, songPreviewUrl: "", songArtworkUrl: "", coEmails: [], jitsUrl: ""
+    showWatchCount: false, bracketPushAlerts: true, songPreviewUrl: "", songArtworkUrl: "", coEmails: [], jitsUrl: "", careerG: "", careerS: "", careerB: ""
   };
   const [form, setForm] = useState(emptyForm);
 
@@ -738,8 +739,44 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
     }).catch(() => {});
 
     setHistEvs([]);
+    setCoachedSquadStats(null);
     setPromBouts([]);
     setEraView("2026");
+    // Check if this athlete is a Head Professor / Coach of an Academy & load their Squad's Coached Medal Haul!
+    getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__public_bios__"))).then(sn => {
+      const nFold = foldStr(nm);
+      let students = 0;
+      let matchedGym = "";
+      sn.forEach(d => {
+        const b = d.data() || {};
+        const cFold = foldStr(String(b.coach || "").replace(/^(?:head\s+)?(?:professor|prof\.?|coach|master|mestre|sensei)\s+/i, ""));
+        if (cFold && (cFold.includes(nFold) || nFold.includes(cFold))) {
+          students++;
+          if (!matchedGym && b.academy) matchedGym = cleanAcademyName(b.academy);
+        }
+      });
+      const targetGym = matchedGym || (/black/i.test(bio?.belt || "") ? cleanAcademyName(knownAcad || bio?.academy || "") : "");
+      if (targetGym && (students > 0 || /thiago mendes|bruno bastos/i.test(nm))) {
+        const gk = foldStr(targetGym).replace(/[^a-z0-9]/g, "").replace(/(hq|bjj|jiujitsu|academy|mma)$/, "");
+        getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__lb_all_all__"))).then(lsn => {
+          lsn.forEach(ld => {
+            ((ld.data() || {}).items || []).forEach(row => {
+              const rk = foldStr(row.Academy || row.a || "").replace(/[^a-z0-9]/g, "");
+              if (rk && (rk === gk || rk.includes(gk) || gk.includes(rk))) {
+                setCoachedSquadStats({
+                  academy: targetGym,
+                  g: Number(row.Gold || row.g || 0),
+                  s: Number(row.Silver || row.s || 0),
+                  b: Number(row.Bronze || row.b || 0),
+                  students
+                });
+              }
+            });
+          });
+        }).catch(() => {});
+      }
+    }).catch(() => {});
+
     getDocs(query(collection(db, "mat_watches"), where("athleteName", "==", nm))).then(sn => {
       const uniqueWatchers = new Set();
       sn.forEach(d => {
@@ -797,7 +834,10 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
     Promise.all(bkts.map(b => getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__alltime_a2_" + b + "__"))))).then(snaps => {
       const seenH = new Set(), outH = [];
       snaps.forEach(s => s.forEach(d => ((d.data() || {}).items || []).forEach(it => {
-        if (!strictVerifiedAthleteRowMatch(it.n, it.a, it.d, nm, knownAcad, seedGender)) return;
+        const sameExactOrPriorSchool = strictVerifiedAthleteRowMatch(it.n, it.a, it.d, nm, knownAcad, seedGender) ||
+          strictVerifiedAthleteRowMatch(it.n, it.a, it.d, nm, "", seedGender);
+        if (!sameExactOrPriorSchool) return;
+        if (/black/i.test(bio?.belt || "") && /\b(white|blue|grey|gray|yellow|orange|green)\b/i.test(it.d || "") && Number(it.yr || 2018) >= 2022) return;
         const dk = foldStr(it.ev) + "|" + foldStr(it.d) + "|" + it.p;
         if (seenH.has(dk)) return;
         seenH.add(dk);
@@ -981,7 +1021,11 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
       if (isOwner || !isClaimed) {
         const nowIso = new Date().toISOString();
         const patch = {
-          ...(baseBio.careerG !== undefined ? { careerG: baseBio.careerG, careerS: baseBio.careerS || 0, careerB: baseBio.careerB || 0 } : {}),
+          ...((form.careerG !== "" || baseBio.careerG !== undefined) ? {
+        careerG: form.careerG !== "" ? Math.max(0, parseInt(form.careerG, 10) || 0) : (baseBio.careerG || 0),
+        careerS: form.careerS !== "" ? Math.max(0, parseInt(form.careerS, 10) || 0) : (baseBio.careerS || 0),
+        careerB: form.careerB !== "" ? Math.max(0, parseInt(form.careerB, 10) || 0) : (baseBio.careerB || 0)
+      } : {}),
       ...(baseBio.jitsRating ? { jitsRating: baseBio.jitsRating } : {}),
       ...(baseBio.jitsOverallRank ? { jitsOverallRank: baseBio.jitsOverallRank } : {}),
       ...(baseBio.jitsGiRank ? { jitsGiRank: baseBio.jitsGiRank } : {}),
@@ -1340,8 +1384,24 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
               {bio?.showWatchCount ? ` • 🔥${watcherCount}` : (isOwner ? ` • 👁️${watcherCount}` : "")}
             </button>
 
-            <a
-              href={externalRecordHref}
+              <button
+                type="button"
+                onClick={() => { trackEvent("shareStatsClicks"); setShowShareStudio(true); }}
+                title="Share Trophy Room, Mat-Side QR Pass & Gold-Foil BJJ Trading Card"
+                style={{
+                  background:"linear-gradient(135deg,#f59e0b,#fde047)",
+                  color:"#000",
+                  border:"none",
+                  borderRadius:"7px", padding:"5px 10px", fontWeight:"900", fontSize:"0.73rem",
+                  cursor:"pointer", display:"inline-flex", alignItems:"center", gap:"4px",
+                  boxShadow:"0 2px 10px rgba(245,158,11,0.38)"
+                }}
+              >
+                🃏 Share / Card
+              </button>
+
+              <a
+                href={externalRecordHref}
               target="_blank"
               rel="noopener noreferrer"
               onClick={() => { if (isYouthCompetitor) trackEvent("jitsGgOutclicks"); }}
@@ -1534,6 +1594,20 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
                     {IG_ICON}
                     {bio?.handle ? "@" + bio.handle : "IG"}
                   </button>
+                    <button
+                      type="button"
+                      onClick={() => { trackEvent("shareStatsClicks"); setShowShareStudio(true); }}
+                      title="Generate Gold-Foil Trading Card, Mat-Side QR Scan & Share Link"
+                      style={{
+                        display:"inline-flex", alignItems:"center", gap:"4px",
+                        background:"linear-gradient(135deg,#f59e0b,#fbbf24)",
+                        color:"#000", border:"none",
+                        boxShadow:"0 2px 8px rgba(245,158,11,0.35)",
+                        borderRadius:"7px", padding:"3px 9px", cursor:"pointer", fontWeight:"900", fontSize:"0.72rem"
+                      }}
+                    >
+                      🃏 Trading Card &amp; Share
+                    </button>
                   
                 </div>
               </div>
@@ -2293,6 +2367,25 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
               </div>
             );
           })()}
+
+          {coachedSquadStats && (
+            <div style={{ marginBottom:"12px", background:"linear-gradient(135deg, rgba(245,158,11,0.14), rgba(15,23,42,0.95))", border:"1px solid rgba(245,158,11,0.55)", borderRadius:"11px", padding:"11px 13px" }}>
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:"6px", marginBottom:"6px" }}>
+                <span style={{ color:"#fde047", fontWeight:"900", fontSize:"0.76rem", letterSpacing:"0.5px", textTransform:"uppercase" }}>
+                  🏛️ Head Professor Coaching Pedigree — {coachedSquadStats.academy}
+                </span>
+                <a href={"/?gym=" + encodeURIComponent(foldStr(coachedSquadStats.academy).replace(/[^a-z0-9]/g, ""))} style={{ color:"#38bdf8", fontSize:"0.72rem", fontWeight:"800", textDecoration:"none" }}>
+                  Open Academy Trophy Room →
+                </a>
+              </div>
+              <div style={{ display:"flex", gap:"14px", flexWrap:"wrap", alignItems:"center", fontSize:"0.82rem", color:"#f8fafc", fontWeight:"800" }}>
+                <span>2026 Squad Hardware Coached:</span>
+                <span style={{ color:"#fde047" }}>🥇 {coachedSquadStats.g} Gold</span>
+                <span style={{ color:"#e2e8f0" }}>🥈 {coachedSquadStats.s} Silver</span>
+                <span style={{ color:"#fdba74" }}>🥉 {coachedSquadStats.b} Bronze</span>
+              </div>
+            </div>
+          )}
 
           {/* 6. VERIFIED TOURNAMENT PODIUMS & SUPERFIGHTS + SECOND SYNCED 2026 / ALL-TIME MINI TOGGLE */}
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap", marginBottom:"8px", paddingTop:"4px" }}>
