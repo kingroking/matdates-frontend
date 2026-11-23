@@ -1,3 +1,5 @@
+import { AthleteTrophyRoomModal } from "./proTrophyModal";
+import { athBucketsForQuery, athBucket, getCachedShardItems, strictVerifiedAthleteRowMatch, universalGymKey, inferTargetGender } from "./proHubData";
 import { GuidedTourModal, MultiCategoryDropdown, AcademyProSuite, PromoterHomeDashboard } from "./proWorkspaces";
 import { EventPortalModal } from "./EventPortalModal";
 import { UPCOMING_UFC_SUPERFIGHTS, getEventGiTags, getDeadlineBadge, cleanAcademyName } from "./proHubData";
@@ -38,6 +40,8 @@ function CompetitorTable({ calcResult, event, onClose }) {
   const [storyPayload, setStoryPayload] = useState(null);
   const [watchTarget, setWatchTarget] = useState(null);
   const [scoutPair, setScoutPair] = useState([]);
+  const [bracketTrophyAth, setBracketTrophyAth] = useState(null);
+  const [compMedalMap, setCompMedalMap] = useState({});
   useEffect(() => { if (event && event.id) trackEvent('bracketOpens'); }, [event?.id]);
   const { getWatch, removeWatch } = useWatchedAthletes();
 
@@ -56,6 +60,67 @@ function CompetitorTable({ calcResult, event, onClose }) {
     };
     fetchCompetitors();
   }, [event.id]);
+
+  useEffect(() => {
+    if (!liveCompetitors.length) { setCompMedalMap({}); return; }
+    let cancelled = false;
+    const bktSet = new Set();
+    liveCompetitors.forEach(c => {
+      if (!c.Name) return;
+      athBucketsForQuery(c.Name).forEach(b => { if (b && b !== "__") bktSet.add(b); });
+      const fb = athBucket(c.Name);
+      if (fb && fb !== "__") bktSet.add(fb);
+    });
+    const bkts = Array.from(bktSet);
+    Promise.all([
+      Promise.all(bkts.map(b => getCachedShardItems(db, collection, query, where, getDocs, "__a2_" + b + "__"))),
+      Promise.all(bkts.map(b => getCachedShardItems(db, collection, query, where, getDocs, "__alltime_a2_" + b + "__")))
+    ]).then(([s26Arrs, histArrs]) => {
+      if (cancelled) return;
+      const byLast2_26 = new Map();
+      const byLast2_H = new Map();
+      bkts.forEach((b, idx) => {
+        byLast2_26.set(b, s26Arrs[idx] || []);
+        byLast2_H.set(b, histArrs[idx] || []);
+      });
+      const nextMap = {};
+      liveCompetitors.forEach(c => {
+        if (!c.Name) return;
+        const myBkts = Array.from(new Set([...athBucketsForQuery(c.Name), athBucket(c.Name)])).filter(b => b && b !== "__");
+        const cGen = /female|girls|women/i.test(c.Division || "") ? "F" : (/\b(male|boys|men)\b/i.test(c.Division || "") ? "M" : "");
+        let g = 0, s = 0, b = 0, hg = 0, hs = 0, hb = 0;
+        const evs26 = [], seen26 = new Set(), seenH = new Set();
+        myBkts.forEach(bk => {
+          (byLast2_26.get(bk) || []).forEach(it => {
+            if (strictVerifiedAthleteRowMatch(it.n, it.a, it.d, c.Name, c.Academy || "", cGen) ||
+                strictVerifiedAthleteRowMatch(it.n, it.a, it.d, c.Name, "", cGen)) {
+              const dk = (it.ev || "") + "|" + (it.d || "") + "|" + it.p;
+              if (seen26.has(dk)) return;
+              seen26.add(dk);
+              const p = Number(it.p || 3);
+              if (p === 1) g++; else if (p === 2) s++; else b++;
+              evs26.push(it);
+            }
+          });
+          (byLast2_H.get(bk) || []).forEach(it => {
+            if (strictVerifiedAthleteRowMatch(it.n, it.a, it.d, c.Name, c.Academy || "", cGen) ||
+                strictVerifiedAthleteRowMatch(it.n, it.a, it.d, c.Name, "", cGen)) {
+              const dk = (it.ev || "") + "|" + (it.d || "") + "|" + it.p;
+              if (seenH.has(dk) || seen26.has(dk)) return;
+              seenH.add(dk);
+              const p = Number(it.p || 3);
+              if (p === 1) hg++; else if (p === 2) hs++; else hb++;
+            }
+          });
+        });
+        if (g + s + b + hg + hs + hb > 0) {
+          nextMap[c.id] = { g, s, b, totG: g + hg, totS: s + hs, totB: b + hb, events: evs26 };
+        }
+      });
+      setCompMedalMap(nextMap);
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [liveCompetitors]);
 
   useEffect(() => {
     if (calcResult) {
@@ -229,6 +294,14 @@ function CompetitorTable({ calcResult, event, onClose }) {
         </div>
 
         {storyPayload && <StoryShareModal payload={storyPayload} onClose={() => setStoryPayload(null)} />}
+          {bracketTrophyAth && (
+            <AthleteTrophyRoomModal
+              athlete={bracketTrophyAth}
+              onClose={() => setBracketTrophyAth(null)}
+              onBack={() => setBracketTrophyAth(null)}
+              backLabel="← Back to Bracket"
+            />
+          )}
         {scoutPair.length === 2 && <TaleOfTheTapeModal compA={scoutPair[0]} compB={scoutPair[1]} division={event.name} onClose={() => setScoutPair([])} />}
         {watchTarget && <MatAlertModal event={event} comp={watchTarget.comp} division={watchTarget.division} existingWatch={getWatch(watchTarget.comp.Name, event.id)} onRemove={removeWatch} onClose={() => setWatchTarget(null)} />}
           <EventSquadChips competitors={liveCompetitors} onSelectGym={setSearchTerm} />
@@ -247,14 +320,49 @@ function CompetitorTable({ calcResult, event, onClose }) {
                       <tr key={comp.id} style={{ borderBottom: '1px solid #2a2a2a' }}>
                         <td style={{ padding: "12px", fontWeight: "bold", color: "#fff", width: "38%" }}>
                           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: "6px" }}>
-                            <a href={getProfileLink(comp)} target="_blank" rel="noreferrer" style={{ color: "#fff", textDecoration: "none", wordBreak: "normal", overflowWrap: "break-word", lineHeight: 1.35, fontSize: "0.95rem" }}>{comp.Name}</a>
+                            <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const st = compMedalMap[comp.id];
+                                    setBracketTrophyAth({
+                                      name: comp.Name,
+                                      academy: comp.Academy || "",
+                                      g: st?.g || 0,
+                                      s: st?.s || 0,
+                                      b: st?.b || 0,
+                                      events: st?.events || []
+                                    });
+                                  }}
+                                  title="Open Official MatDates Trophy Room"
+                                  style={{ background: "none", border: "none", padding: 0, color: "#fff", fontWeight: "800", textDecoration: "underline", textDecorationColor: "rgba(251,191,36,0.6)", cursor: "pointer", textAlign: "left", lineHeight: 1.35, fontSize: "0.95rem" }}
+                                >
+                                  {comp.Name} 🏆
+                                </button>
+                                {compMedalMap[comp.id] && (
+                                  <span
+                                    onClick={() => {
+                                      const st = compMedalMap[comp.id];
+                                      setBracketTrophyAth({ name: comp.Name, academy: comp.Academy || "", g: st?.g || 0, s: st?.s || 0, b: st?.b || 0, events: st?.events || [] });
+                                    }}
+                                    title="Verified Career Medals (tap for full Trophy Room)"
+                                    style={{ background: "rgba(245,158,11,0.16)", border: "1px solid rgba(245,158,11,0.45)", color: "#fde047", borderRadius: "999px", padding: "1px 7px", fontSize: "0.7rem", fontWeight: "800", cursor: "pointer", whiteSpace: "nowrap" }}
+                                  >
+                                    🥇{compMedalMap[comp.id].totG} 🥈{compMedalMap[comp.id].totS} 🥉{compMedalMap[comp.id].totB}
+                                  </span>
+                                )}
+                              </div>
                             <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
                               <button onClick={() => setWatchTarget({ comp, division })} title="Live Mat # & Match Time alerts" style={{ background: getWatch(comp.Name, event.id) ? "#132a1c" : "#162536", color: getWatch(comp.Name, event.id) ? "#2ecc71" : "#38bdf8", border: getWatch(comp.Name, event.id) ? "1px solid #2ecc71" : "1px solid #0284c7", borderRadius: "5px", padding: "3px 8px", fontSize: "0.71rem", cursor: "pointer", fontWeight: "bold", whiteSpace: "nowrap" }}>{getWatch(comp.Name, event.id) ? (getWatch(comp.Name, event.id).fcmToken ? "✓ Watching 📲" : "✓ Watching ✉️") : "🔔 Watch"}</button>
                               <button onClick={() => setScoutPair(p => p.some(x => x.id === comp.id) ? p.filter(x => x.id !== comp.id) : [...p.slice(-1), comp])} title="Compare 2 athletes side-by-side" style={{ background: scoutPair.some(x => x.id === comp.id) ? "#431407" : "#1e293b", color: scoutPair.some(x => x.id === comp.id) ? "#fbbf24" : "#cbd5e1", border: "1px solid #475569", borderRadius: "5px", padding: "3px 7px", fontSize: "0.7rem", cursor: "pointer", fontWeight: "bold", whiteSpace: "nowrap" }}>{scoutPair.some(x => x.id === comp.id) ? "🆚 Pick 2nd" : "🆚 Compare"}</button>
                             </div>
                           </div>
                         </td>
-                        <td style={{ padding: '12px', color: '#ccc', width: '35%' }}>{comp.Academy}</td>
+                        <td style={{ padding: '12px', color: '#ff9f43', width: '35%' }}>
+                            {comp.Academy && comp.Academy !== 'Independent' ? (
+                              <a href={"/?gym=" + encodeURIComponent(universalGymKey(comp.Academy))} style={{ color: '#ff9f43', textDecoration: 'underline', textDecorationColor: 'rgba(255,159,67,0.45)', fontWeight: '700', fontSize: '0.86rem' }} title={"Open " + comp.Academy + " Trophy Room"}>{comp.Academy}</a>
+                            ) : (comp.Academy || 'Independent')}
+                          </td>
                         <td style={{ padding: '12px', textAlign: 'right', width: '35%' }}>
                           {(isKid(comp) && !comp.JitsProfile) || (!isKid(comp) && (!comp.Profile || comp.Profile === "#")) ? (
                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px' }}>

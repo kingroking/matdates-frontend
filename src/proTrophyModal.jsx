@@ -8,6 +8,98 @@ import { db, auth } from "./firebase";
 import { addDoc } from "firebase/firestore";
 import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, matchesYouthInitial, computeEliteSpotlight, PRO_SUPERFIGHTS, BJJ_BELT_GROUPS, normalizeBeltValue, getBeltVisualSpec, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName, dedupeVerifiedMedals, getCachedShardItems } from "./proHubData";
 
+let _trLiveEvDates = null;
+function loadTrEventDates(dbRef, collectionFn, getDocsFn) {
+  if (_trLiveEvDates) return;
+  _trLiveEvDates = new Map();
+  Promise.all([
+    getDocsFn(collectionFn(dbRef, "live_events")).catch(() => ({ forEach: () => {} })),
+    getDocsFn(collectionFn(dbRef, "events")).catch(() => ({ forEach: () => {} }))
+  ]).then(([s1, s2]) => {
+    const add = (sn) => sn.forEach(d => {
+      const x = d.data() || {};
+      if (x.name && x.sort_date) {
+        const k = foldStr(x.name).replace(/[^a-z0-9]+/g, " ").trim();
+        if (k && (!_trLiveEvDates.has(k) || x.sort_date > _trLiveEvDates.get(k))) {
+          _trLiveEvDates.set(k, x.sort_date);
+        }
+      }
+    });
+    add(s1);
+    add(s2);
+  });
+}
+
+function inferMedalTimestampKey(m, fallbackYr = 2026) {
+  const rawDt = m?.dt || m?.sort_date || m?.date || "";
+  if (/^\d{4}-\d{2}-\d{2}/.test(String(rawDt))) return String(rawDt).slice(0, 10);
+
+  const evRaw = String(m?.ev || "");
+  const evFold = foldStr(evRaw).replace(/[^a-z0-9]+/g, " ").trim();
+
+  // 1. Explicit date inside parentheses e.g. "(Oct 18, 2026)" or "(Nov 14, 2025)"
+  const parenDate = evRaw.match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)[a-z]*\s+(\d{1,2}),?\s+(199\d|20\d{2})\b/i);
+  const monthMap = { jan:"01", feb:"02", mar:"03", apr:"04", may:"05", jun:"06", jul:"07", aug:"08", sep:"09", sept:"09", oct:"10", nov:"11", dec:"12" };
+  if (parenDate) {
+    const mm = monthMap[parenDate[1].toLowerCase().slice(0, 4)] || monthMap[parenDate[1].toLowerCase().slice(0, 3)] || "06";
+    const dd = String(parenDate[2]).padStart(2, "0");
+    return `${parenDate[3]}-${mm}-${dd}`;
+  }
+
+  // 2. Determine year
+  const yrMatch = evRaw.match(/\b(19\d{2}|20[0-2]\d)\b/);
+  const yr = Number(m?.yr || (yrMatch ? yrMatch[1] : fallbackYr) || fallbackYr);
+
+  if (/season ranking|overall ranking/.test(evFold)) return `${yr}-00-01`;
+
+  // 3. Exact or substring match in live_events / events map when year matches
+  if (_trLiveEvDates && yr >= 2025) {
+    if (_trLiveEvDates.has(evFold)) return _trLiveEvDates.get(evFold);
+    for (const [k, dt] of _trLiveEvDates.entries()) {
+      if (k.length >= 10 && dt.startsWith(String(yr)) && (evFold.includes(k) || k.includes(evFold))) return dt;
+    }
+  }
+
+  // 4. Major annual BJJ tournament calendar landmarks (keeps months accurate across ALL years!)
+  if (/world.*no gi/.test(evFold)) return `${yr}-12-10`;
+  if (/majestic/.test(evFold)) return `${yr}-11-22`;
+  if (/austin/.test(evFold) && /adcc/.test(evFold)) return `${yr}-11-14`;
+  if (/pan.*no gi/.test(evFold)) return `${yr}-10-18`;
+  if (/european.*no gi/.test(evFold)) return `${yr}-10-25`;
+  if (/ufc bjj.*open|phoenix|ak chin/.test(evFold)) return `${yr}-09-19`;
+  if (/jiu jitsu con|world master/.test(evFold)) return `${yr}-09-02`;
+  if (/pan kids/.test(evFold) && !/no gi/.test(evFold)) return `${yr}-07-25`;
+  if (/american national/.test(evFold)) return `${yr}-07-04`;
+  if (/world ibjjf jiu jitsu championship/.test(evFold) && !/no gi|master/.test(evFold)) return `${yr}-06-02`;
+  if (/campeonato brasileiro|brasileiro/.test(evFold) && !/sem kimono/.test(evFold)) return `${yr}-05-01`;
+  if (/pan ibjjf/.test(evFold) && !/no gi|kids|pacific/.test(evFold)) return `${yr}-03-26`;
+  if (/san antonio/.test(evFold)) return `${yr}-09-28`;
+  if (/houston/.test(evFold)) return `${yr}-02-16`;
+  if (/european/.test(evFold) && !/fall|no gi/.test(evFold)) return `${yr}-01-24`;
+
+  for (const [mKey, mm] of Object.entries(monthMap)) {
+    if (new RegExp("\\b" + mKey + "[a-z]*\\b", "i").test(evFold)) return `${yr}-${mm}-15`;
+  }
+  if (/\bfall\b|autumn/.test(evFold)) return `${yr}-10-12`;
+  if (/\bsummer\b/.test(evFold)) return `${yr}-07-15`;
+  if (/\bspring\b/.test(evFold)) return `${yr}-04-15`;
+  if (/\bwinter\b/.test(evFold)) return `${yr}-02-05`;
+  return `${yr}-06-15`;
+}
+
+function sortPodiumsNewestFirst(list, defaultYr = 2026) {
+  return [...(list || [])].sort((a, b) => {
+    const ka = inferMedalTimestampKey(a, a?.yr || defaultYr);
+    const kb = inferMedalTimestampKey(b, b?.yr || defaultYr);
+    if (kb !== ka) return kb.localeCompare(ka);
+    const evCmp = String(a?.ev || "").localeCompare(String(b?.ev || ""));
+    if (evCmp !== 0) return evCmp;
+    const pa = Number(a?.p || 3), pb = Number(b?.p || 3);
+    if (pa !== pb) return pa - pb;
+    return String(a?.d || "").localeCompare(String(b?.d || ""));
+  });
+}
+
 export function SuperFightsPanel({ fed, qStr, onOpenTrophy, onWatch, getWatch }) {
   const [subTab, setSubTab] = useState("PROS");
   const [extra, setExtra] = useState([]);
@@ -1271,8 +1363,9 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
     : (bio?.belt || elite.pro?.belt || "");
 
   // Deduplicate histEvs against 2026 evs so 2026 events are never counted twice in All-Time
-  const s26Evs = dedupeVerifiedMedals([...promBouts, ...evs]);
-  const cleanHistEvs = dedupeVerifiedMedals([...histEvs, ...(elite.pro?.careerPodiums || [])], s26Evs);
+  loadTrEventDates(db, collection, getDocs);
+  const s26Evs = sortPodiumsNewestFirst(dedupeVerifiedMedals([...promBouts, ...evs]), 2026);
+  const cleanHistEvs = sortPodiumsNewestFirst(dedupeVerifiedMedals([...histEvs, ...(elite.pro?.careerPodiums || [])], s26Evs), 2025);
 
   const g26 = s26Evs.reduce((acc, x) => acc + (x.mg !== undefined ? Number(x.mg) : (Number(x.p) === 1 ? 1 : 0)), 0) || cnt.g;
   const s26 = s26Evs.reduce((acc, x) => acc + (x.ms !== undefined ? Number(x.ms) : (Number(x.p) === 2 ? 1 : 0)), 0) || cnt.s;
@@ -1296,7 +1389,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
   const dispS = eraView === "ALLTIME" ? totS : s26;
   const dispB = eraView === "ALLTIME" ? totB : b26;
   const dispPts = dispG * 9 + dispS * 3 + dispB;
-  const allCombinedEvs = [...s26Evs, ...cleanHistEvs];
+  const allCombinedEvs = sortPodiumsNewestFirst([...s26Evs, ...cleanHistEvs], 2026);
   const visibleEvents = eraView === "ALLTIME" ? allCombinedEvs : s26Evs;
   const hasScoutingCards = Boolean(bio && (bio.quote || bio.age || bio.coach || bio.favMove || bio.cheatMeal || bio.currentRead));
 
@@ -2401,7 +2494,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
                   ? `No 2026 podiums posted yet — tap "All-Time (${allCombinedEvs.length})" right above to view prior-season championship medals!`
                   : "Tournament podiums & SuperFight results sync automatically as official brackets conclude."}
               </div>
-            ) : visibleEvents.slice(0, 75).map((m, i) => (
+            ) : visibleEvents.slice(0, 200).map((m, i) => (
               <div key={i} style={{ background:"#131a26", border:"1px solid #1e293b", padding:"7px 10px", borderRadius:"8px", fontSize:"0.77rem", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px" }}>
                 <span style={{ lineHeight:1.35 }}>
                   {Number(m.p)===1 ? "🥇" : Number(m.p)===2 ? "🥈" : "🥉"} <b style={{ color:"#f8fafc" }}>{m.ev}</b>

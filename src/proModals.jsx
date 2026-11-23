@@ -12,19 +12,27 @@ export function TaleOfTheTapeModal({ compA, compB, division, onClose }) {
   const [stats, setStats] = useState([null, null]);
   useEffect(() => {
     Promise.all([compA, compB].map(async (c) => {
-      const nm = c?.Name || "", bkt = athBucket(nm);
-      const sn = await getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__a2_" + bkt + "__")));
-      let g = 0, s = 0, b = 0, gi = 0, nogi = 0; const seen = new Set(), feds = new Set();
-      sn.forEach(d => ((d.data() || {}).items || []).forEach(it => {
-        if (foldStr(it.n) !== foldStr(nm)) return;
+      const nm = c?.Name || "";
+      const bkts = Array.from(new Set([...athBucketsForQuery(nm), athBucket(nm)])).filter(b => b && b !== "__");
+      const [s26Arrs, histArrs] = await Promise.all([
+        Promise.all(bkts.map(b => getCachedShardItems(db, collection, query, where, getDocs, "__a2_" + b + "__"))),
+        Promise.all(bkts.map(b => getCachedShardItems(db, collection, query, where, getDocs, "__alltime_a2_" + b + "__")))
+      ]);
+      let g = 0, s = 0, b = 0, gi = 0, nogi = 0;
+      const seen = new Set(), feds = new Set();
+      [...s26Arrs.flat(), ...histArrs.flat()].forEach(it => {
+        if (!strictVerifiedAthleteRowMatch(it.n, it.a, it.d, nm, c?.Academy || "", "") &&
+            !strictVerifiedAthleteRowMatch(it.n, it.a, it.d, nm, "", "")) return;
         const dk = foldStr(it.ev) + "|" + foldStr(it.d) + "|" + it.p;
-        if (seen.has(dk)) return; seen.add(dk);
-        const p = Number(it.p || 3); if (p === 1) g++; else if (p === 2) s++; else b++;
-        if (/no[- ]?gi|adcc|ufc/i.test((it.d||"")+" "+(it.ev||""))) nogi++; else gi++;
-        feds.add(/ufc/i.test((it.ev||"")+" "+(it.f||"")) ? "UFC" : it.f);
-      }));
+        if (seen.has(dk)) return;
+        seen.add(dk);
+        const p = Number(it.p || 3);
+        if (p === 1) g++; else if (p === 2) s++; else b++;
+        if (/no[- ]?gi|adcc|ufc/i.test((it.d || "") + " " + (it.ev || ""))) nogi++; else gi++;
+        if (it.f) feds.add(/ufc/i.test((it.ev || "") + " " + (it.f || "")) ? "UFC" : it.f);
+      });
       const sp = computeEliteSpotlight({ name: nm, academy: c?.Academy, g, s, b, events: [] });
-      return { nm, acad: c?.Academy || "", g, s, b, pts: g*9+s*3+b, gi, nogi, feds: Array.from(feds), titles: sp.pro?.titles || [] };
+      return { nm, acad: c?.Academy || "", g: Math.max(g, sp.pro?.careerG || 0), s: Math.max(s, sp.pro?.careerS || 0), b: Math.max(b, sp.pro?.careerB || 0), pts: g * 9 + s * 3 + b, gi, nogi, feds: Array.from(feds), titles: sp.pro?.titles || [] };
     })).then(setStats).catch(() => {});
   }, [compA, compB]);
   const [a, b] = stats;
@@ -33,7 +41,7 @@ export function TaleOfTheTapeModal({ compA, compB, division, onClose }) {
       <div onClick={e => e.stopPropagation()} style={{ background:"#111622", border:"1.5px solid #f59e0b", borderRadius:"12px", maxWidth:"550px", width:"100%", padding:"16px", color:"#fff", textAlign:"center" }}>
         <div style={{ color:"#fbbf24", fontWeight:"800", fontSize:"0.8rem" }}>🆚 HEAD-TO-HEAD BRACKET COMPARISON</div>
         <div style={{ color:"#94a3b8", fontSize:"0.78rem", marginBottom:"12px" }}>{division}</div>
-        {!a || !b ? <div style={{ padding:"20px", color:"#94a3b8" }}>Scouting 2026 Podium Records...</div> : (
+        {!a || !b ? <div style={{ padding:"20px", color:"#94a3b8" }}>Scouting All-Time & 2026 Podium Records...</div> : (
           <div style={{ display:"grid", gridTemplateColumns:"1fr auto 1fr", gap:"10px", alignItems:"center" }}>
             {[a, null, b].map((x, idx) => x ? (
               <div key={idx} style={{ background:"#182030", border:"1px solid #2d3748", borderRadius:"9px", padding:"10px" }}>
