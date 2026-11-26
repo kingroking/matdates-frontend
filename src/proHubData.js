@@ -610,9 +610,10 @@ export const athBucketsForQuery = (q) => {
   const words = clean.split(/[\s-]+/).map(w => w.replace(/[^a-z]/g, "")).filter(w => w.length >= 2);
   const set = new Set();
   // Put resolved nickname real-name shards FIRST (surname shard first!) so .slice() never drops them!
-  resolveNicknameHit(clean).slice(0, 3).forEach(hit => {
+  resolveNicknameHit(clean).slice(0, 2).forEach(hit => {
     [hit.n, ...(hit.al || [])].forEach(nm => {
-      _sigToks(nm).slice().reverse().forEach(w => set.add(w.slice(0, 2)));
+      const t = _sigToks(nm);
+      if (t.length) { set.add(t[t.length - 1].slice(0, 2)); if (t.length > 1) set.add(t[0].slice(0, 2)); }
     });
   });
   words.slice().reverse().forEach(w => set.add(w.slice(0, 2)));
