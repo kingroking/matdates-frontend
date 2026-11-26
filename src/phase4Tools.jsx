@@ -254,12 +254,13 @@ function TrophyCardModal({ cardData, onClose }) {
 }
 
 const normGymKey = (raw) => {
-  const k = (raw || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-  if (k.startsWith("aoj") || k.startsWith("artofjiujitsu")) return "artofjiujitsu";
-  if (k.startsWith("atoshq") || k === "atosjiujitsuhq") return "atos";
-  return ({
+  const folded = foldStr(raw || '').replace(/[^a-z0-9\s]/g, ' ');
+  const compact = folded.replace(/\s+/g, '');
+  const ALIAS = {
     aoj: 'artofjiujitsu',
     atosjiujitsu: 'atos',
+    atoshq: 'atos',
+    atosjiujitsuhq: 'atos',
     carlsongracieteam: 'carlsongracie',
     gb: 'graciebarra',
     braziliantopteam: 'btt',
@@ -269,8 +270,27 @@ const normGymKey = (raw) => {
     tmcombat: 'carlsongraciesanantonio',
     thiagomendescombatacademy: 'carlsongraciesanantonio',
     carlsongraciejiujitsusanantonio: 'carlsongraciesanantonio',
-    carlsongraciesanantoniotx: 'carlsongraciesanantonio'
-  })[k] || k;
+    carlsongraciesanantoniotx: 'carlsongraciesanantonio',
+    carlsongraciesanantoniohq: 'carlsongraciesanantonio',
+    carlsongracieteamsanantonio: 'carlsongraciesanantonio'
+  };
+  if (ALIAS[compact]) return ALIAS[compact];
+  if (compact.startsWith('aoj') || compact.startsWith('artofjiujitsu')) return 'artofjiujitsu';
+  if (compact.startsWith('atoshq') || compact === 'atosjiujitsuhq') return 'atos';
+  const toks = folded.split(/\s+/).filter(Boolean);
+  while (toks.length > 1) {
+    if (toks.length >= 3 && toks[toks.length - 2] === 'jiu' && toks[toks.length - 1] === 'jitsu') {
+      toks.splice(-2, 2);
+      continue;
+    }
+    if (['hq', 'headquarters', 'bjj', 'jiujitsu', 'academy', 'mma'].includes(toks[toks.length - 1])) {
+      toks.pop();
+      continue;
+    }
+    break;
+  }
+  const k = toks.join('');
+  return ALIAS[k] || k;
 };
 
 const bucketOfKey = (k) => {
@@ -785,7 +805,31 @@ export function LeaderboardModal({ onClose }) {
       (fed === "ALL" || (/ufc/i.test((m.ev||"")+" "+(m.f||"")) ? "UFC" : m.f) === fed) &&
       (age === 'ALL' || !m.ag || m.ag === 'ALL' || m.ag === age)
     );
-    const indivList = matchingAll.filter(m => !m.isEventSummary && (medalFilter === 'ALL' || Number(m.p) === Number(medalFilter)));
+    const indivList = (() => {
+      const rawIndiv = matchingAll.filter(m => !m.isEventSummary && (medalFilter === 'ALL' || Number(m.p) === Number(medalFilter)));
+      const hasIndivJjwl = new Set(
+        rawIndiv.filter(m => m.f === 'JJWL' && !/season ranking/i.test(m.ev || '')).map(m => foldStr(m.n || ''))
+      );
+      const seenSlots = new Set();
+      const out = [];
+      const sortedPref = [...rawIndiv].sort((a, b) => (String(b.n || '').length - String(a.n || '').length));
+      for (const m of sortedPref) {
+        if (m.f === 'JJWL' && /season ranking/i.test(m.ev || '') && hasIndivJjwl.has(foldStr(m.n || ''))) continue;
+        const toks = foldStr(m.n || '').replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
+        const sur = toks[toks.length - 1] || '';
+        const ini = (toks[0] || '')[0] || '';
+        const evK = foldStr(m.ev || '').replace(/^adcc\s+/, '').replace(/[^a-z0-9]+/g, ' ').trim();
+        const divK = foldStr(m.d || '').replace(/[^a-z0-9]+/g, ' ').trim();
+        const pK = String(m.p || 3);
+        const slotK = `${sur}|${ini}|${evK}|${divK}|${pK}`;
+        const strict12 = (pK === '1' || pK === '2') && divK.length >= 12 ? `SLOT12|${evK}|${divK}|${pK}` : '';
+        if (seenSlots.has(slotK) || (strict12 && seenSlots.has(strict12))) continue;
+        seenSlots.add(slotK);
+        if (strict12) seenSlots.add(strict12);
+        out.push(m);
+      }
+      return out;
+    })();
     const eventSummaries = matchingAll.filter(m => m.isEventSummary && (
       medalFilter === 'ALL' ||
       (Number(medalFilter) === 1 && m.eg > 0) ||
