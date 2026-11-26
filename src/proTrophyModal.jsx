@@ -912,7 +912,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
     Promise.all(bkts.map(b => getCachedShardItems(db, collection, query, where, getDocs, "__f2_" + b + "__"))).then(arrays => {
       const fHits = [], seenF = new Set();
       arrays.forEach(arr => arr.forEach(it => {
-        if (!strictVerifiedAthleteRowMatch(it.n, it.a || knownAcad, it.cat || "", nm, knownAcad, seedGender)) return;
+        if (!strictVerifiedAthleteRowMatch(it.n, it.a || knownAcad, it.cat || "", nm, knownAcad, seedGender) && !strictVerifiedAthleteRowMatch(it.n, it.a || "", it.cat || "", nm, "", seedGender)) return;
         const fk = it.fed + "|" + it.cat;
         if (seenF.has(fk)) return;
         seenF.add(fk);
@@ -959,7 +959,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
 
       rawItems.forEach(it => {
         if (it.isEventSummary || it.isRosterEntry) return;
-        if (!strictVerifiedAthleteRowMatch(it.n, it.a, it.d, nm, resolvedAcad, resolvedGen)) return;
+        if (!strictVerifiedAthleteRowMatch(it.n, it.a, it.d, nm, resolvedAcad, resolvedGen) && !strictVerifiedAthleteRowMatch(it.n, it.a, it.d, nm, "", resolvedGen)) return;
         const dk = foldStr(it.ev) + "|" + foldStr(it.d) + "|" + it.p;
         if (seen.has(dk)) return;
         seen.add(dk);

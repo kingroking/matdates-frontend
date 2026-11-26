@@ -1,3 +1,4 @@
+import { BJJ_HEROES_NICKNAMES } from "./bjjNicknames.js";
 const _SHARD_TTL_MS = 5 * 60 * 1000;
 export function getCachedShardItems(db, collectionFn, queryFn, whereFn, getDocsFn, eventId) {
   if (typeof window !== "undefined") {
@@ -548,14 +549,26 @@ const COMPOUND_SHARD_HINTS = {
   mendes: ["me", "ba", "pa"], henson: ["he"], heinsohn: ["he"], grounds: ["gr"]
 };
 
+export const resolveNicknameHit = (q) => {
+  const qf = foldStr(q || "").replace(/[^a-z0-9\s]/g, " ").trim();
+  if (qf.length < 3) return [];
+  return BJJ_HEROES_NICKNAMES.filter(x => {
+    const nkf = foldStr(x.nk);
+    return nkf === qf || (qf.length >= 4 && nkf.includes(qf));
+  });
+};
+
 export const athBucketsForQuery = (q) => {
   const clean = foldStr(q).replace(/\b(jr\.?|sr\.?|ii|iii|iv|professor|prof\.?|coach)\b/g, " ").trim();
   if (clean.length < 2) return [];
   const words = clean.split(/[\s-]+/).map(w => w.replace(/[^a-z]/g, "")).filter(w => w.length >= 2);
   const set = new Set();
-  words.forEach(w => set.add(w.slice(0, 2)));
+  words.slice().reverse().forEach(w => set.add(w.slice(0, 2)));
   words.forEach(w => {
     if (COMPOUND_SHARD_HINTS[w]) COMPOUND_SHARD_HINTS[w].forEach(s => set.add(s));
+  });
+  resolveNicknameHit(clean).slice(0, 5).forEach(hit => {
+    foldStr(hit.n).split(/\s+/).filter(w => w.length >= 2).forEach(w => set.add(w.slice(0, 2)));
   });
   PRO_SUPERFIGHTS.forEach(p => {
     const blob = foldStr(p.name + " " + (p.aliases || []).join(" ") + " " + p.academy);
@@ -947,12 +960,34 @@ export function academyAffiliationRoot(raw) {
   return toks.slice(0, 2).join(" ");
 }
 
+const AFFILIATION_NETWORK_GROUPS = [
+  ["lead", "brunobastos", "bastos"],
+  ["carlsongracie", "tmcombat", "thiagomendes"],
+  ["atos", "artofjiujitsu", "aoj"],
+  ["kingsway", "newwave"],
+  ["sixblades", "ribeiro", "xanderibeiro", "sauloribeiro"],
+  ["alliance", "dreamart", "cobrinha"],
+  ["melquigalvao", "galvao"],
+  ["checkmat", "fightzone"],
+  ["graciebarra", "gb"],
+  ["btt", "braziliantopteam"]
+];
+
+export function affiliationFamilyId(raw) {
+  const c = foldStr(cleanAcademyName(raw || "")).replace(/[^a-z0-9]/g, "");
+  if (!c) return "";
+  for (let i = 0; i < AFFILIATION_NETWORK_GROUPS.length; i++) {
+    if (AFFILIATION_NETWORK_GROUPS[i].some(tok => c.includes(tok))) return "fam_" + i;
+  }
+  return "";
+}
+
 export function isUmbrellaAcademyName(raw) {
   const s = foldStr(raw || "").trim();
   if (!s) return true;
   if (/\b(team|association|affiliation|international)\b$/i.test(s)) return true;
   const compact = s.replace(/[^a-z0-9]/g, "");
-  return ["carlsongracie", "graciebarra", "alliance", "checkmat", "atos", "ares", "brunobastos", "gfteam", "zrteam", "btt", "braziliantopteam", "sixblades", "novauniao", "10thplanet"].includes(compact);
+  return ["leadbjj", "lead", "carlsongracie", "graciebarra", "alliance", "checkmat", "atos", "ares", "brunobastos", "gfteam", "zrteam", "btt", "braziliantopteam", "sixblades", "novauniao", "10thplanet", "unity", "dreamart", "cicero", "cicerocostha"].includes(compact);
 }
 
 export function academiesCompatibleForMerge(acA, acB) {
@@ -960,12 +995,12 @@ export function academiesCompatibleForMerge(acA, acB) {
   const b = cleanAcademyName(acB || "").trim();
   if (!a || !b) return true;
   const fa = foldStr(a), fb = foldStr(b);
-  if (fa === fb) return true;
+  if (fa === fb || fa.includes(fb) || fb.includes(fa)) return true;
+  const famA = affiliationFamilyId(a), famB = affiliationFamilyId(b);
+  if (famA && famA === famB) return true;
   const rootA = academyAffiliationRoot(a);
   const rootB = academyAffiliationRoot(b);
-  if (rootA && rootA === rootB && (isUmbrellaAcademyName(a) || isUmbrellaAcademyName(b))) {
-    return true;
-  }
+  if (rootA && rootA === rootB) return true;
   return false;
 }
 
@@ -1209,23 +1244,78 @@ function _baseStrictVerifiedAthleteRowMatch(rowName, rowAcad, rowDiv, targetName
   return false;
 }
 
-export function strictVerifiedAthleteRowMatch(rowName, rowAcad, rowDiv, targetName, targetAcad, targetGender) {
-  if (_baseStrictVerifiedAthleteRowMatch(rowName, rowAcad, rowDiv, targetName, targetAcad, targetGender)) {
+const _KNOWN_NICK_TOKENS = new Set(
+  BJJ_HEROES_NICKNAMES
+    .map(x => (x.nk || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim())
+    .filter(s => s && !s.includes(" ") && s.length >= 4)
+);
+
+export function stripEmbeddedNickname(rawName) {
+  let s = String(rawName || "")
+    .replace(/\[[^\]]*\]|"[^"]*"|'[^']*'|“[^”]*”/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const parts = s.split(" ").filter(Boolean);
+  if (parts.length >= 3) {
+    const lastFold = foldStr(parts[parts.length - 1]).replace(/[^a-z]/g, "");
+    if (_KNOWN_NICK_TOKENS.has(lastFold)) {
+      parts.pop();
+      return parts.join(" ");
+    }
+  }
+  return s;
+}
+
+export function extractEmbeddedNickname(rawName) {
+  const s = String(rawName || "");
+  const qm = s.match(/"([^"]{2,24})"|“([^”]{2,24})”|\[([^\]]{2,24})\]/);
+  if (qm) return (qm[1] || qm[2] || qm[3] || "").trim();
+  const parts = s.trim().split(/\s+/);
+  if (parts.length >= 3) {
+    const lastFold = foldStr(parts[parts.length - 1]).replace(/[^a-z]/g, "");
+    if (_KNOWN_NICK_TOKENS.has(lastFold)) return parts[parts.length - 1];
+  }
+  const hit = BJJ_HEROES_NICKNAMES.find(x => foldStr(x.n) === foldStr(stripEmbeddedNickname(s)));
+  return hit ? hit.nk : "";
+}
+
+export function strictVerifiedAthleteRowMatch(rowName, rowAcad, rowDiv, targetName, targetAcad, targetGender, allowNick = true) {
+  const rClean = stripEmbeddedNickname(rowName);
+  const tClean = stripEmbeddedNickname(targetName);
+  if (_baseStrictVerifiedAthleteRowMatch(rClean, rowAcad, rowDiv, tClean, targetAcad, targetGender)) {
     return true;
   }
-  const rToks = foldStr(rowName || "").replace(/[^a-z\s]/g, " ").trim().split(/\s+/).filter(Boolean);
-  const tToks = foldStr(targetName || "").replace(/[^a-z\s]/g, " ").trim().split(/\s+/).filter(Boolean);
+  const cleanNameToks = (s) => foldStr(stripEmbeddedNickname(s || ""))
+    .replace(/\b(de|da|do|dos|das|del|jr|sr|ii|iii|iv|filho|neto)\b/g, " ")
+    .replace(/[^a-z\s]/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  const rToks = cleanNameToks(rClean);
+  const tToks = cleanNameToks(tClean);
+  const dLow = String(rowDiv || "").toLowerCase();
+  if (targetGender === "F" && /\b(male|boys|men|masculino)\b/.test(dLow) && !/\b(female|girls|women|feminino)\b/.test(dLow)) return false;
+  if (targetGender === "M" && /\b(female|girls|women|feminino)\b/.test(dLow)) return false;
+
+  // Strictly 1-hop nickname lookup (allowNick=false prevents ANY possibility of recursion loops!)
+  if (allowNick && tToks.length >= 1 && foldStr(tClean).trim().length >= 4) {
+    const nHits = resolveNicknameHit(tClean);
+    if (nHits.some(h => foldStr(h.n) !== foldStr(tClean) && strictVerifiedAthleteRowMatch(rClean, rowAcad, rowDiv, h.n, targetAcad || h.a, targetGender, false))) {
+      return true;
+    }
+  }
+
+  // Youth & Adult First-Initial + Shared Final Surname (e.g. 'J. Bastos' <-> 'João Lucas Bastos')
   if (rToks.length >= 2 && tToks.length >= 2 && (rToks[0].length === 1 || tToks[0].length === 1)) {
     if (rToks[0][0] === tToks[0][0] && rToks[rToks.length - 1] === tToks[tToks.length - 1]) {
-      if (academiesCompatibleForMerge(rowAcad, targetAcad) && (rowAcad || targetAcad)) {
-        const dLow = String(rowDiv || "").toLowerCase();
-        if (targetGender === "F" && /\b(male|boys|men)\b/.test(dLow) && !/\b(female|girls|women)\b/.test(dLow)) return false;
-        if (targetGender === "M" && /\b(female|girls|women)\b/.test(dLow)) return false;
+      if (academiesCompatibleForMerge(rowAcad, targetAcad)) {
         return true;
       }
     }
   }
-  // Brazilian double-surname & middle-initial matcher (e.g. 'Thiago Mendes' <-> 'Thiago L. Mendes Barros')
+
+  // Brazilian maternal + paternal multi-part surname matcher (e.g. 'Bruno Bastos' <-> 'Bruno Bastos Cruz')
   if (rToks.length >= 2 && tToks.length >= 2 && rToks[0] === tToks[0]) {
     const nonInitShort = (rToks.length <= tToks.length ? rToks : tToks).filter(w => w.length > 1);
     const fullLong = (rToks.length <= tToks.length ? tToks : rToks);
@@ -1239,18 +1329,75 @@ export function strictVerifiedAthleteRowMatch(rowName, rowAcad, rowDiv, targetNa
       return true;
     })();
     if (orderedNameSubset) {
+      if (!targetAcad || !rowAcad || academiesCompatibleForMerge(rowAcad, targetAcad)) {
+        return true;
+      }
       const rAcFold = foldStr(rowAcad || "");
-      const tNmFold = foldStr(targetName || "");
-      const eponymousSchool = rAcFold && tNmFold && rAcFold.includes(tNmFold);
-      const compatSchool = targetAcad && rowAcad && academiesCompatibleForMerge(rowAcad, targetAcad);
-      if (eponymousSchool || compatSchool) {
-        const dLow = String(rowDiv || "").toLowerCase();
-        if (targetGender === "F" && /\b(male|boys|men|masculino)\b/.test(dLow) && !/\b(female|girls|women|feminino)\b/.test(dLow)) return false;
-        if (targetGender === "M" && /\b(female|girls|women|feminino)\b/.test(dLow)) return false;
+      const tNmFold = foldStr(tClean || "");
+      if (rAcFold && tNmFold && (rAcFold.includes(tNmFold) || rAcFold.includes(nonInitShort[nonInitShort.length - 1]))) {
         return true;
       }
     }
   }
 
   return false;
+}
+
+export function consolidateAthleteProfiles(profiles) {
+  if (!Array.isArray(profiles) || profiles.length < 2) return profiles || [];
+  const clusters = [];
+  for (const rawP of profiles) {
+    const cleanedName = stripEmbeddedNickname(rawP.name || "");
+    const embNick = rawP.nickname || extractEmbeddedNickname(rawP.name || "");
+    const p = { ...rawP, name: cleanedName || rawP.name, ...(embNick ? { nickname: embNick } : {}) };
+    const pToks = foldStr(p.name || "").replace(/\b(de|da|do|dos|das|jr|sr|ii|iii|iv)\b/g, " ").replace(/[^a-z\s]/g, " ").trim().split(/\s+/).filter(Boolean);
+    if (pToks.length >= 2 && pToks[0].length > 1) {
+      const hit = clusters.find(c => {
+        if (c.toks.length < 2 || c.toks[0].length === 1 || c.toks[0] !== pToks[0]) return false;
+        const sh = c.toks.length <= pToks.length ? c.toks : pToks;
+        const lg = c.toks.length <= pToks.length ? pToks : c.toks;
+        let pos = 0;
+        for (const t of sh) {
+          const idx = lg.indexOf(t, pos);
+          if (idx === -1) return false;
+          pos = idx + 1;
+        }
+        return academiesCompatibleForMerge(c.p.academy, p.academy);
+      });
+      if (hit) {
+        const mergedEvs = dedupeVerifiedMedals([...(hit.p.events || []), ...(p.events || [])]);
+        hit.p.events = mergedEvs;
+        hit.p.g = mergedEvs.reduce((a, x) => a + (x.mg !== undefined ? Number(x.mg) : (Number(x.p) === 1 ? 1 : 0)), 0);
+        hit.p.s = mergedEvs.reduce((a, x) => a + (x.ms !== undefined ? Number(x.ms) : (Number(x.p) === 2 ? 1 : 0)), 0);
+        hit.p.b = mergedEvs.reduce((a, x) => a + (x.mb !== undefined ? Number(x.mb) : (Number(x.p) >= 3 ? 1 : 0)), 0);
+        hit.p.histCount = Math.max(hit.p.histCount || 0, (hit.p.histCount || 0) + (p.histCount || 0));
+        if (p.claimed) hit.p.claimed = true;
+        if (p.nickname && !hit.p.nickname) hit.p.nickname = p.nickname;
+        if (p.name.length > hit.p.name.length && !/^[a-z]\./i.test(p.name)) hit.p.name = p.name;
+        if (p.academy && (!hit.p.academy || (isUmbrellaAcademyName(hit.p.academy) && !isUmbrellaAcademyName(p.academy)))) {
+          hit.p.academy = cleanAcademyName(p.academy);
+        }
+        continue;
+      }
+    }
+    clusters.push({ p, toks: pToks });
+  }
+  return mergeInitialDuplicateProfiles(clusters.map(c => c.p));
+}
+
+export function buildVenueHotelUrl(ev, partnerId = "") {
+  const aid = partnerId || (typeof window !== "undefined" && window.MD_STAY22_AID) || "";
+  const dest = [ev?.venue, ev?.location].filter(v => v && !/^(tba|tbd|online)$/i.test(String(v).trim())).join(", ").trim() || (ev?.location || "Las Vegas, NV");
+  let checkin = "", checkout = "";
+  if (ev?.sort_date && /^202\d-\d{2}-\d{2}$/.test(ev.sort_date)) {
+    const dt = new Date(ev.sort_date + "T12:00:00");
+    const ci = new Date(dt); ci.setDate(ci.getDate() - 1);
+    const co = new Date(dt); co.setDate(dt.getDate() + 1);
+    checkin = ci.toISOString().slice(0, 10);
+    checkout = co.toISOString().slice(0, 10);
+  }
+  if (aid) {
+    return `https://www.stay22.com/allez/roam?aid=${encodeURIComponent(aid)}&address=${encodeURIComponent(dest)}${checkin ? `&checkin=${checkin}&checkout=${checkout}` : ""}`;
+  }
+  return `https://www.google.com/travel/hotels/${encodeURIComponent(dest)}${checkin ? `?q=${encodeURIComponent("hotels near " + dest)}&dates=${checkin}_${checkout}` : ""}`;
 }

@@ -1,3 +1,4 @@
+import { buildVenueHotelUrl } from "./proHubData";
 import { AthleteTrophyRoomModal } from "./proTrophyModal";
 import { athBucketsForQuery, athBucket, getCachedShardItems, strictVerifiedAthleteRowMatch, universalGymKey, inferTargetGender } from "./proHubData";
 import { GuidedTourModal, MultiCategoryDropdown, AcademyProSuite, PromoterHomeDashboard } from "./proWorkspaces";
@@ -73,8 +74,8 @@ function CompetitorTable({ calcResult, event, onClose }) {
     });
     const bkts = Array.from(bktSet);
     Promise.all([
-      Promise.all(bkts.map(b => getCachedShardItems(db, collection, query, where, getDocs, "__a2_" + b + "__"))),
-      Promise.all(bkts.map(b => getCachedShardItems(db, collection, query, where, getDocs, "__alltime_a2_" + b + "__")))
+      (bkts.length > 35 ? Promise.resolve([]) : Promise.all(bkts.slice(0, 16).map(b => getCachedShardItems(db, collection, query, where, getDocs, "__a2_" + b + "__")))),
+      (bkts.length > 20 ? Promise.resolve([]) : Promise.all(bkts.slice(0, 16).map(b => getCachedShardItems(db, collection, query, where, getDocs, "__alltime_a2_" + b + "__"))))
     ]).then(([s26Arrs, histArrs]) => {
       if (cancelled) return;
       const byLast2_26 = new Map();
@@ -290,6 +291,7 @@ function CompetitorTable({ calcResult, event, onClose }) {
                 </a>
               );
             })()}
+              {!(/live stream|online|flograppling|fight pass/i.test((event?.venue||"")+" "+(event?.location||""))) && (<a href={buildVenueHotelUrl(event)} target="_blank" rel="noopener noreferrer" style={{padding:"9px 12px",backgroundColor:"#312e81",color:"#e0e7ff",border:"1px solid #818cf8",borderRadius:"6px",textDecoration:"none",fontWeight:"bold",fontSize:"0.82rem",whiteSpace:"nowrap",flexShrink:0}}>🏨 Hotels Near Venue ↗</a>)}
           </div>
         </div>
 
