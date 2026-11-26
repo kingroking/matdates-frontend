@@ -692,12 +692,25 @@ export const canonicalPersonKey = (nm, acad) => {
 };
 
 // Merge helper for lists: collapses compound-surname variants like "John Silva" + "John Silva Santos" on the same/compatible team!
+const AMBIGUOUS_4STEMS = new Set([
+  "mari", "chri", "dani", "alex", "mich", "jenn", "kris", "step",
+  "bran", "will", "john", "jona", "juli", "caro", "andr", "anto",
+  "gabri", "nich", "robe", "rich", "patr", "vict", "saman", "eliz"
+]);
+function hasUncommonDiminutiveStem(f1, f2) {
+  if (!f1 || !f2) return false;
+  const [sh, lg] = f1.length <= f2.length ? [f1, f2] : [f2, f1];
+  if (sh.length >= 4 && !AMBIGUOUS_4STEMS.has(sh.slice(0, 4)) && lg.startsWith(sh)) return true;
+  const stem = sh.replace(/(ie|i|y)$/, "");
+  return stem.length >= 4 && !AMBIGUOUS_4STEMS.has(stem.slice(0, 4)) && lg.startsWith(stem) && lg.length >= sh.length + 2;
+}
+
 export const sameCompetitorCluster = (nameA, acadA, nameB, acadB) => {
   if (matchesYouthInitial(nameA, nameB)) return true;
   const proA = findProAthlete(nameA), proB = findProAthlete(nameB);
   if (proA && proB) return proA.name === proB.name;
   const tA = sigNameTokens(nameA), tB = sigNameTokens(nameB);
-  if (tA.length >= 2 && tB.length >= 2 && tA[0] === tB[0]) {
+  if (tA.length >= 2 && tB.length >= 2 && (tA[0] === tB[0] || (tA[tA.length - 1] === tB[tB.length - 1] && hasUncommonDiminutiveStem(tA[0], tB[0])))) {
     const sA = new Set(tA.slice(1));
     if (tB.slice(1).some(s => sA.has(s))) {
       const gA = foldStr(acadA || "").replace(/[^a-z0-9]/g, ""), gB = foldStr(acadB || "").replace(/[^a-z0-9]/g, "");
@@ -1385,6 +1398,13 @@ export function strictVerifiedAthleteRowMatch(rowName, rowAcad, rowDiv, targetNa
     }
   }
 
+  // Uncommon 4+ letter diminutive first-name stem + identical surname (e.g. 'Maali Marks' <-> 'Maalashrii Marks')
+  if (rToks.length >= 2 && tToks.length >= 2 && rToks[rToks.length - 1] === tToks[tToks.length - 1] && hasUncommonDiminutiveStem(rToks[0], tToks[0])) {
+    if (!targetAcad || !rowAcad || academiesCompatibleForMerge(rowAcad, targetAcad)) {
+      return true;
+    }
+  }
+
   // Brazilian maternal + paternal multi-part surname matcher (e.g. 'Bruno Bastos' <-> 'Bruno Bastos Cruz')
   if (rToks.length >= 2 && tToks.length >= 2 && rToks[0] === tToks[0]) {
     const nonInitShort = (rToks.length <= tToks.length ? rToks : tToks).filter(w => w.length > 1);
@@ -1423,7 +1443,11 @@ export function consolidateAthleteProfiles(profiles) {
     const pToks = foldStr(p.name || "").replace(/\b(de|da|do|dos|das|jr|sr|ii|iii|iv)\b/g, " ").replace(/[^a-z\s]/g, " ").trim().split(/\s+/).filter(Boolean);
     if (pToks.length >= 2 && pToks[0].length > 1) {
       const hit = clusters.find(c => {
-        if (c.toks.length < 2 || c.toks[0].length === 1 || c.toks[0] !== pToks[0]) return false;
+        if (c.toks.length < 2 || c.toks[0].length === 1) return false;
+        if (c.toks[0] !== pToks[0]) {
+          if (c.toks[c.toks.length - 1] !== pToks[pToks.length - 1] || !hasUncommonDiminutiveStem(c.toks[0], pToks[0])) return false;
+          return academiesCompatibleForMerge(c.p.academy, p.academy);
+        }
         const sh = c.toks.length <= pToks.length ? c.toks : pToks;
         const lg = c.toks.length <= pToks.length ? pToks : c.toks;
         let pos = 0;
@@ -1444,7 +1468,7 @@ export function consolidateAthleteProfiles(profiles) {
         if (p.claimed) hit.p.claimed = true;
         if (p.nickVerified) hit.p.nickVerified = true;
         if (p.nickname && !hit.p.nickname) hit.p.nickname = p.nickname;
-        if (p.name.length > hit.p.name.length && !/^[a-z]\./i.test(p.name)) hit.p.name = p.name;
+        if (pToks[0].length > hit.toks[0].length || (pToks[0].length === hit.toks[0].length && p.name.length > hit.p.name.length && !/^[a-z]\./i.test(p.name))) { hit.p.name = p.name; hit.toks = pToks; }
         if (p.academy && (!hit.p.academy || (isUmbrellaAcademyName(hit.p.academy) && !isUmbrellaAcademyName(p.academy)))) {
           hit.p.academy = cleanAcademyName(p.academy);
         }

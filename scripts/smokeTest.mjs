@@ -212,4 +212,21 @@ for (const hub of expectedHubs) {
   check(`SEO Hub /tournaments/${hub}: valid HTML + JSON-LD schema + listed in sitemap.xml`, exists && hasJsonLd && inSitemap);
 }
 
+// ============================================================================
+// SECTION 8: Diminutive First-Name Stem Consolidation & Collision Guard
+// ============================================================================
+{
+  const mergedMarks = consolidateAthleteProfiles([
+    { name: "Maali Marks", academy: "Carlson Gracie San Antonio", g: 1, s: 0, b: 0, events: [{ ev: "San Antonio Fall Kids", d: "Female / Teen 2 / Grey / Feather", p: 1 }] },
+    { name: "Maalashrii Marks", academy: "Carlson Gracie San Antonio", g: 1, s: 0, b: 0, events: [{ ev: "NAGA San Antonio", d: "Children Gi", p: 1 }] }
+  ]);
+  check("Diminutive stem: 'Maali Marks' + 'Maalashrii Marks' -> 1 profile ('Maalashrii Marks')", mergedMarks.length === 1 && mergedMarks[0].name === "Maalashrii Marks");
+
+  const distinctMarias = consolidateAthleteProfiles([
+    { name: "Maria Silva", academy: "Alliance", g: 1, s: 0, b: 0, events: [] },
+    { name: "Mariana Silva", academy: "Alliance", g: 1, s: 0, b: 0, events: [] }
+  ]);
+  check("Ambiguous stem guard: 'Maria Silva' vs 'Mariana Silva' stay strictly separate", distinctMarias.length === 2);
+}
+
 console.log(`\n🎉 ALL ${passed}/${passed} MATDATES MASTER GUARDRAIL CHECKS PASSED — SAFE TO DEPLOY!\n`);
