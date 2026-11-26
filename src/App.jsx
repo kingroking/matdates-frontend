@@ -246,7 +246,7 @@ function CompetitorTable({ calcResult, event, onClose }) {
       return `https://jits.gg/search?q=${encodeURIComponent(comp.Name)}`;
     }
     if (comp.Profile && comp.Profile !== "#") return cleanProfileUrl(comp.Profile);
-    return `https://www.google.com/search?q=site:smoothcomp.com+${encodeURIComponent(comp.Name)}`;
+    return `https://smoothcomp.com/en/user?search=${encodeURIComponent(comp.Name)}`;
   };
 
   return (

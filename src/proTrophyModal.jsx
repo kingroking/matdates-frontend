@@ -1051,7 +1051,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
     if (isYouthCompetitor) {
       return u.includes("jits.gg") ? u : ("https://jits.gg/search?q=" + encodeURIComponent(nm));
     }
-    return u.includes("smoothcomp.com") ? u : ("https://www.google.com/search?q=site:smoothcomp.com+" + encodeURIComponent(nm));
+    return u.includes("smoothcomp.com") ? u : ("https://smoothcomp.com/en/user?search=" + encodeURIComponent(nm));
   })();
 
   const externalRecordLabel = isYouthCompetitor
@@ -2399,7 +2399,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
               const blob = ((m.f || "") + " " + (m.ev || "")).toLowerCase();
               if (blob.includes("ibjjf")) return "IBJJF";
               if (blob.includes("jjwl") || blob.includes("world league")) return "JJWL";
-              if (blob.includes("adcc")) return "ADCC";
+              if (blob.includes("adcc") || (/\b(us|north american|european|canadian|british)\s+open\b/i.test(m.ev || "") && /\b(beginner|intermediate|advanced|professional)\b.*?\bkg\b/i.test(m.d || ""))) return "ADCC";
               if (blob.includes("ufc")) return "UFC BJJ";
               if (blob.includes("agf")) return "AGF";
               if (blob.includes("ajp") || blob.includes("abu dhabi")) return "AJP";

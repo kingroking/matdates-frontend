@@ -722,7 +722,7 @@ export function LeaderboardModal({ onClose }) {
     const fb = athLastBucket(trimmed);
     if (fb && !bkts.includes(fb)) bkts.push(fb);
     const rawPool = [];
-    bkts.forEach(b => { if (athShardMap[b]) rawPool.push(...athShardMap[b]); });
+    bkts.forEach(b => { const arr = athShardMap[b]; if (arr) { for (let i = 0; i < arr.length; i++) rawPool.push(arr[i]); } });
 
     const qFast = foldStr(trimmed);
     const qParts = qFast.split(/\s+/).filter(Boolean);
@@ -822,7 +822,7 @@ export function LeaderboardModal({ onClose }) {
         const toks = foldStr(m.n || '').replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(Boolean);
         const sur = toks[toks.length - 1] || '';
         const ini = (toks[0] || '')[0] || '';
-        const evK = foldStr(m.ev || '').replace(/^adcc\s+/, '').replace(/[^a-z0-9]+/g, ' ').trim();
+        const evK = foldStr(m.ev || '').replace(/[^a-z0-9]+/g, ' ').trim();
         const divK = foldStr(m.d || '').replace(/[^a-z0-9]+/g, ' ').trim();
         const pK = String(m.p || 3);
         const slotK = `${sur}|${ini}|${evK}|${divK}|${pK}`;

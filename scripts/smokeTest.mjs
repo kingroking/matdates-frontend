@@ -229,4 +229,14 @@ for (const hub of expectedHubs) {
   check("Ambiguous stem guard: 'Maria Silva' vs 'Mariana Silva' stay strictly separate", distinctMarias.length === 2);
 }
 
+// ============================================================================
+// SECTION 9: Large-Shard Call-Stack Guard & Native Smoothcomp Athlete Finder
+// ============================================================================
+{
+  const spreadPushHits = srcFiles.filter(f => /\.push\(\.\.\./.test(fs.readFileSync(path.join(FE, "src", f), "utf8")));
+  check("Large-shard safety: zero .push(...spread) calls across all src/ files (prevents ?athlete=buchecha V8 stack overflow)", spreadPushHits.length === 0, spreadPushHits.join(", "));
+  const freshTrSrc = fs.readFileSync(path.join(FE, "src/proTrophyModal.jsx"), "utf8");
+  check("Smoothcomp outlink uses native smoothcomp.com/en/user?search= (never Google search)", freshTrSrc.includes("https://smoothcomp.com/en/user?search=") && !freshTrSrc.includes("google.com/search?q="));
+}
+
 console.log(`\n🎉 ALL ${passed}/${passed} MATDATES MASTER GUARDRAIL CHECKS PASSED — SAFE TO DEPLOY!\n`);
