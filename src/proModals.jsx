@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { collection, addDoc, getDocs, query, where, doc, getDoc } from "firebase/firestore";
 import { db } from "./firebase";
 import { MatAlertModal, useWatchedAthletes } from "./MatAlertModal";
-import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, sameCompetitorCluster, findProAthlete, PRO_SUPERFIGHTS, UPCOMING_UFC_SUPERFIGHTS, getDeadlineBadge, computeEliteSpotlight, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName, mergeInitialDuplicateProfiles, consolidateAthleteProfiles, resolveNicknameHit, stripEmbeddedNickname, extractEmbeddedNickname, matchesYouthInitial, isUmbrellaAcademyName, getCachedShardItems } from "./proHubData";
+import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, sameCompetitorCluster, findProAthlete, PRO_SUPERFIGHTS, UPCOMING_UFC_SUPERFIGHTS, getDeadlineBadge, computeEliteSpotlight, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName, mergeInitialDuplicateProfiles, consolidateAthleteProfiles, resolveNicknameHit, fastNicknameRowMatch, stripEmbeddedNickname, extractEmbeddedNickname, matchesYouthInitial, isUmbrellaAcademyName, getCachedShardItems } from "./proHubData";
 import { AthleteTrophyRoomModal } from "./proTrophyModal";
 
 const MODAL_BG = { position:"fixed", inset:0, background:"rgba(0,0,0,0.86)", zIndex:10060, display:"flex", alignItems:"center", justifyContent:"center", padding:"12px", boxSizing:"border-box" };
@@ -661,7 +661,7 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
   //    (All-Time history loads inside the specific Athlete Trophy Room on click — cutting Lookup memory by 70%!)
   useEffect(() => {
     if (debouncedQ.trim().length < 2) return;
-    const bkts = athBucketsForQuery(debouncedQ).slice(0, 3);
+    const bkts = athBucketsForQuery(debouncedQ).slice(0, 6);
     bkts.forEach(bkt => {
       if (podShards[bkt]) return;
       setPodShards(p => ({ ...p, [bkt]: [] }));
@@ -725,6 +725,7 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
   const fastRowMatches = (nf, af, qFold, qTerms) => {
   const blob = nf + " " + af;
   if (blob.includes(qFold) || qTerms.every(t => blob.includes(t))) return true;
+  if (fastNicknameRowMatch(nf, qFold)) return true;
   return qTerms.length >= 2 && nf.length >= 4 && nf[1] === "." &&
     nf[0] === qTerms[0][0] && nf.endsWith(qTerms[qTerms.length - 1]);
 };
@@ -733,7 +734,7 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
     const qFold = foldStr(debouncedQ).trim();
     if (qFold.length < 2) return [];
     const qTerms = qFold.split(/\s+/).filter(Boolean);
-    const bkts = athBucketsForQuery(debouncedQ).slice(0, 3);
+    const bkts = athBucketsForQuery(debouncedQ).slice(0, 6);
     const seenR = new Set(), out = [];
     for (const b of bkts) {
       const arr = regShards[b] || [];
@@ -778,12 +779,13 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
           g: 0, s: 0, b: 0,
           events: [],
           proTitles: pro ? pro.titles : extra.proTitles || null,
-          claimed: Boolean(extra.claimed), ...(rawNick ? { nickname: rawNick } : {}), seen: new Set()
+          claimed: Boolean(extra.claimed), nickVerified: Boolean(extra.nickVerified), ...(rawNick ? { nickname: rawNick } : {}), seen: new Set()
         };
         map.set(pk, rec);
       } else {
         if (displayNm.length > rec.name.length && !/^[a-z]\./i.test(displayNm)) rec.name = displayNm;
         if (extra.claimed) rec.claimed = true;
+        if (extra.nickVerified) rec.nickVerified = true;
         if (!pro && displayAc && (!rec.academy || (isUmbrellaAcademyName(rec.academy) && !isUmbrellaAcademyName(displayAc)) || (!isUmbrellaAcademyName(displayAc) && displayAc.length > (rec.academy || "").length))) {
           rec.academy = displayAc;
         } else if (!rec.academy && displayAc) {
@@ -804,10 +806,10 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
 
     // A2. Official BJJ Nickname Directory Hits (e.g. "Buchecha", "Cyborg", "Cobrinha", "Lepri")
     const nickHits = resolveNicknameHit(debouncedQ);
-    const nickTargetFolds = new Set(nickHits.map(h => foldStr(h.n)));
     for (let i = 0; i < nickHits.length; i++) {
-      const r = ensureProfile(nickHits[i].n, nickHits[i].a || "");
+      const r = ensureProfile(nickHits[i].n, nickHits[i].a || "", { nickVerified: true });
       r.nickname = nickHits[i].nk;
+      r.nickVerified = true;
     }
 
     // B. Pro Stars
@@ -819,7 +821,7 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
     }
 
     // C. Athlete Shards (fast linear pass, capped safely)
-    const bkts = athBucketsForQuery(debouncedQ).slice(0, 3);
+    const bkts = athBucketsForQuery(debouncedQ).slice(0, 6);
     let scannedMatches = 0;
     for (const b of bkts) {
       const arr = podShards[b] || [];
@@ -879,10 +881,11 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
       }
     }
 
-    const list = consolidateAthleteProfiles(Array.from(map.values()).filter(p => (p.g + p.s + p.b + (p.histCount || 0)) > 0 || p.claimed || p.proTitles));
+    const list = consolidateAthleteProfiles(Array.from(map.values()).filter(p => (p.g + p.s + p.b + (p.histCount || 0)) > 0 || p.claimed || p.proTitles || p.nickVerified));
     const rankFn = (p) => {
       const pnf = foldStr((p.name || "") + " " + (p.nickname || ""));
-      return pnf === qFold ? 3 : (qTerms.every(t => pnf.includes(t)) || matchesYouthInitial(p.name || "", debouncedQ) ? 2 : 1);
+      if (pnf === qFold || p.nickVerified) return 3;
+      return qTerms.every(t => pnf.includes(t)) || matchesYouthInitial(p.name || "", debouncedQ) ? 2 : 1;
     };
     return list.sort((a, b) => (rankFn(b) - rankFn(a)) || ((b.g * 9 + b.s * 3 + b.b + Math.min(25, b.histCount || 0)) - (a.g * 9 + a.s * 3 + a.b + Math.min(25, a.histCount || 0)))).slice(0, 12);
   }, [debouncedQ, podShards, gymShards, matchingGyms, topGymBucket, claimedBios]);

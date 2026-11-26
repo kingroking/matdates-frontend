@@ -549,13 +549,59 @@ const COMPOUND_SHARD_HINTS = {
   mendes: ["me", "ba", "pa"], henson: ["he"], heinsohn: ["he"], grounds: ["gr"]
 };
 
+let _nickCacheQ = null, _nickCacheRes = [];
 export const resolveNicknameHit = (q) => {
-  const qf = foldStr(q || "").replace(/[^a-z0-9\s]/g, " ").trim();
+  const qf = foldStr(q || "").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
   if (qf.length < 3) return [];
-  return BJJ_HEROES_NICKNAMES.filter(x => {
-    const nkf = foldStr(x.nk);
-    return nkf === qf || (qf.length >= 4 && nkf.includes(qf));
-  });
+  if (_nickCacheQ === qf) return _nickCacheRes;
+  const pQf = phoneticFold(qf);
+  const scored = [];
+  for (let i = 0; i < BJJ_HEROES_NICKNAMES.length; i++) {
+    const x = BJJ_HEROES_NICKNAMES[i];
+    const nkf = foldStr(x.nk || "").replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+    if (!nkf) continue;
+    let sc = 0;
+    if (nkf === qf) sc = 100;
+    else if (qf.length >= 5 && nkf.startsWith(qf)) sc = 85;
+    else if (qf.length >= 5 && nkf.includes(qf)) sc = 75;
+    else if (qf.length >= 5 && nkf[0] === qf[0] && Math.abs(nkf.length - qf.length) <= 2) {
+      const ed = editDistMax2(nkf.replace(/\s+/g, ""), qf.replace(/\s+/g, ""));
+      const maxEd = qf.length >= 7 ? 2 : 1;
+      if (ed <= maxEd && (ed <= 1 || phoneticFold(nkf) === pQf)) sc = 70 - ed * 10;
+    }
+    if (sc > 0) scored.push({ x, sc });
+  }
+  scored.sort((a, b) => b.sc - a.sc);
+  _nickCacheQ = qf;
+  _nickCacheRes = scored.slice(0, 6).map(s => s.x);
+  return _nickCacheRes;
+};
+
+const _STOP_NM = new Set(["de", "da", "do", "dos", "das", "del", "jr", "sr", "ii", "iii", "iv", "filho", "neto"]);
+const _sigToks = (s) => foldStr(s || "").replace(/[^a-z\s]/g, " ").trim().split(/\s+/).filter(w => w.length >= 2 && !_STOP_NM.has(w));
+
+export const fastNicknameRowMatch = (nf, qFold) => {
+  if (!nf || !qFold || qFold.length < 3) return false;
+  const hits = resolveNicknameHit(qFold);
+  if (!hits.length) return false;
+  const rToks = _sigToks(nf);
+  if (rToks.length < 2) return false;
+  for (let i = 0; i < hits.length; i++) {
+    const cands = [hits[i].n, ...(hits[i].al || [])];
+    for (let c = 0; c < cands.length; c++) {
+      const hToks = _sigToks(cands[c]);
+      if (hToks.length >= 2 && rToks[0] === hToks[0]) {
+        let pos = 1, ok = true;
+        for (let k = 1; k < hToks.length; k++) {
+          const idx = rToks.indexOf(hToks[k], pos);
+          if (idx === -1) { ok = false; break; }
+          pos = idx + 1;
+        }
+        if (ok) return true;
+      }
+    }
+  }
+  return false;
 };
 
 export const athBucketsForQuery = (q) => {
@@ -563,12 +609,15 @@ export const athBucketsForQuery = (q) => {
   if (clean.length < 2) return [];
   const words = clean.split(/[\s-]+/).map(w => w.replace(/[^a-z]/g, "")).filter(w => w.length >= 2);
   const set = new Set();
+  // Put resolved nickname real-name shards FIRST (surname shard first!) so .slice() never drops them!
+  resolveNicknameHit(clean).slice(0, 3).forEach(hit => {
+    [hit.n, ...(hit.al || [])].forEach(nm => {
+      _sigToks(nm).slice().reverse().forEach(w => set.add(w.slice(0, 2)));
+    });
+  });
   words.slice().reverse().forEach(w => set.add(w.slice(0, 2)));
   words.forEach(w => {
     if (COMPOUND_SHARD_HINTS[w]) COMPOUND_SHARD_HINTS[w].forEach(s => set.add(s));
-  });
-  resolveNicknameHit(clean).slice(0, 5).forEach(hit => {
-    foldStr(hit.n).split(/\s+/).filter(w => w.length >= 2).forEach(w => set.add(w.slice(0, 2)));
   });
   PRO_SUPERFIGHTS.forEach(p => {
     const blob = foldStr(p.name + " " + (p.aliases || []).join(" ") + " " + p.academy);
@@ -962,6 +1011,7 @@ export function academyAffiliationRoot(raw) {
 
 const AFFILIATION_NETWORK_GROUPS = [
   ["lead", "brunobastos", "bastos"],
+  ["graciehumaita", "megaton", "roylergracie"],
   ["carlsongracie", "tmcombat", "thiagomendes"],
   ["atos", "artofjiujitsu", "aoj"],
   ["kingsway", "newwave"],
@@ -1044,6 +1094,7 @@ export function mergeInitialDuplicateProfiles(profiles) {
         target.b = (target.b || 0) + (ab.p.b || 0);
       }
       target.histCount = (target.histCount || 0) + (ab.p.histCount || 0);
+      if (ab.p.nickVerified) target.nickVerified = true;
       if (ab.p.academy && (!target.academy || (isUmbrellaAcademyName(target.academy) && !isUmbrellaAcademyName(ab.p.academy)))) {
         target.academy = cleanAcademyName(ab.p.academy);
       } else if (target.academy) {
@@ -1246,8 +1297,12 @@ function _baseStrictVerifiedAthleteRowMatch(rowName, rowAcad, rowDiv, targetName
 
 const _KNOWN_NICK_TOKENS = new Set(
   BJJ_HEROES_NICKNAMES
-    .map(x => (x.nk || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim())
-    .filter(s => s && !s.includes(" ") && s.length >= 4)
+    .filter(x => {
+      const nkf = foldStr(x.nk || "").trim();
+      const nfWords = new Set(foldStr(x.n || "").split(/\s+/));
+      return nkf && !nkf.includes(" ") && nkf.length >= 4 && !nfWords.has(nkf);
+    })
+    .map(x => foldStr(x.nk).trim())
 );
 
 export function stripEmbeddedNickname(rawName) {
@@ -1372,6 +1427,7 @@ export function consolidateAthleteProfiles(profiles) {
         hit.p.b = mergedEvs.reduce((a, x) => a + (x.mb !== undefined ? Number(x.mb) : (Number(x.p) >= 3 ? 1 : 0)), 0);
         hit.p.histCount = Math.max(hit.p.histCount || 0, (hit.p.histCount || 0) + (p.histCount || 0));
         if (p.claimed) hit.p.claimed = true;
+        if (p.nickVerified) hit.p.nickVerified = true;
         if (p.nickname && !hit.p.nickname) hit.p.nickname = p.nickname;
         if (p.name.length > hit.p.name.length && !/^[a-z]\./i.test(p.name)) hit.p.name = p.name;
         if (p.academy && (!hit.p.academy || (isUmbrellaAcademyName(hit.p.academy) && !isUmbrellaAcademyName(p.academy)))) {
