@@ -1385,7 +1385,7 @@ export function consolidateAthleteProfiles(profiles) {
   return mergeInitialDuplicateProfiles(clusters.map(c => c.p));
 }
 
-export function buildVenueHotelUrl(ev, partnerId = "") {
+export function buildVenueHotelUrl(ev, partnerId = "matdates") {
   const aid = partnerId || (typeof window !== "undefined" && window.MD_STAY22_AID) || "";
   const dest = [ev?.venue, ev?.location].filter(v => v && !/^(tba|tbd|online)$/i.test(String(v).trim())).join(", ").trim() || (ev?.location || "Las Vegas, NV");
   let checkin = "", checkout = "";
