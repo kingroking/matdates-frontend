@@ -1538,3 +1538,61 @@ export function buildVenueHotelUrl(ev, partnerId = "matdates") {
   }
   return `https://www.google.com/travel/hotels/${encodeURIComponent(dest)}${checkin ? `?q=${encodeURIComponent("hotels near " + dest)}&dates=${checkin}_${checkout}` : ""}`;
 }
+
+
+const DIRECT_BJJ_HEROES_SLUGS = {
+  "bruno bastos": "bruno-bastos",
+  "marcus almeida": "marcus-almeida-buchecha",
+  "roger gracie": "roger-gracie",
+  "rickson gracie": "rickson-gracie",
+  "wellington dias": "wellington-megaton-dias",
+  "roberto abreu": "roberto-cyborg-abreu",
+  "rubens charles": "rubens-charles-cobrinha",
+  "ronaldo souza": "ronaldo-jacare",
+  "fernando augusto": "fernando-terere",
+  "marcelo garcia": "marcelo-garcia",
+  "andre galvao": "andre-galvao",
+  "gordon ryan": "gordon-ryan",
+  "michael musumeci": "mikey-musumeci",
+  "nicholas meregali": "nicholas-meregali",
+  "diogo reis": "diogo-reis",
+  "fabricio andrey": "fabricio-andrey",
+  "micael galvao": "mica-galvao",
+  "tainan dalpra": "tainan-dalpra",
+  "gabrieli pessanha": "gabrieli-pessanha",
+  "beatriz mesquita": "beatriz-mesquita",
+  "ffion davies": "ffion-davies",
+  "helena crevar": "helena-crevar",
+  "caio terra": "caio-terra",
+  "xande ribeiro": "xande-ribeiro",
+  "alexandre ribeiro": "xande-ribeiro",
+  "romulo barral": "romulo-barral",
+  "bruno malfacine": "bruno-malfacine",
+  "lucas lepri": "lucas-lepri",
+  "bernardo faria": "bernardo-faria",
+  "leandro lo": "leandro-lo",
+  "keenan cornelius": "keenan-cornelius",
+  "craig jones": "craig-jones",
+  "nick rodriguez": "nick-rodriguez",
+  "garry tonon": "garry-tonon",
+  "cole abate": "cole-abate",
+  "diego oliveira": "diego-pato-oliveira",
+  "guilherme mendes": "guilherme-mendes",
+  "rafael mendes": "rafael-mendes"
+};
+
+export function resolveBjjHeroesUrl(rawName) {
+  const pro = findProAthlete(rawName);
+  const canon = foldStr(pro ? pro.name : stripEmbeddedNickname(rawName || "")).trim();
+  if (DIRECT_BJJ_HEROES_SLUGS[canon]) {
+    return "https://www.bjjheroes.com/bjj-fighters/" + DIRECT_BJJ_HEROES_SLUGS[canon];
+  }
+  const hit = BJJ_HEROES_NICKNAMES.find(x => foldStr(x.n) === canon || foldStr(x.nk) === foldStr(rawName || "").trim());
+  if (hit) {
+    const hKey = foldStr(hit.n);
+    if (DIRECT_BJJ_HEROES_SLUGS[hKey]) return "https://www.bjjheroes.com/bjj-fighters/" + DIRECT_BJJ_HEROES_SLUGS[hKey];
+    const slug = hKey.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    return "https://www.bjjheroes.com/bjj-fighters/" + slug;
+  }
+  return "";
+}

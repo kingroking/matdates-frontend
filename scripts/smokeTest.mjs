@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import {
+  resolveBjjHeroesUrl,
   strictVerifiedAthleteRowMatch,
   consolidateAthleteProfiles,
   athBucketsForQuery,
@@ -238,5 +239,10 @@ for (const hub of expectedHubs) {
   const freshTrSrc = fs.readFileSync(path.join(FE, "src/proTrophyModal.jsx"), "utf8");
   check("Smoothcomp outlink uses native smoothcomp.com/en/user?search= (never Google search)", freshTrSrc.includes("https://smoothcomp.com/en/user?search=") && !freshTrSrc.includes("google.com/search?q="));
 }
+
+check("Legend external bio resolver: Bruno Bastos & Buchecha link directly to verified BJJ Heroes profiles",
+  resolveBjjHeroesUrl("Bruno Bastos") === "https://www.bjjheroes.com/bjj-fighters/bruno-bastos" &&
+  resolveBjjHeroesUrl("Buchecha") === "https://www.bjjheroes.com/bjj-fighters/marcus-almeida-buchecha"
+);
 
 console.log(`\n🎉 ALL ${passed}/${passed} MATDATES MASTER GUARDRAIL CHECKS PASSED — SAFE TO DEPLOY!\n`);

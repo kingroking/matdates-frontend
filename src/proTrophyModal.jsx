@@ -6,7 +6,7 @@ const TrophyShareStudioModal = React.lazy(() => import("./trophyShareStudio"));
 import { collection, doc, getDoc, getDocs, setDoc, query, where, arrayUnion } from "firebase/firestore";
 import { db, auth } from "./firebase";
 import { addDoc } from "firebase/firestore";
-import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, matchesYouthInitial, computeEliteSpotlight, findProAthlete, PRO_SUPERFIGHTS, BJJ_BELT_GROUPS, normalizeBeltValue, getBeltVisualSpec, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName, dedupeVerifiedMedals, getCachedShardItems, getCachedQueryOnce } from "./proHubData";
+import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, matchesYouthInitial, computeEliteSpotlight, findProAthlete, resolveBjjHeroesUrl, PRO_SUPERFIGHTS, BJJ_BELT_GROUPS, normalizeBeltValue, getBeltVisualSpec, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName, dedupeVerifiedMedals, getCachedShardItems, getCachedQueryOnce } from "./proHubData";
 
 let _trLiveEvDates = null;
 function loadTrEventDates(dbRef, collectionFn, getDocsFn) {
@@ -1046,17 +1046,27 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
     return false;
   })();
 
+  const bjjHeroesHref = !isYouthCompetitor ? resolveBjjHeroesUrl(nm) : "";
+  const hasSmoothcompActivity = evs.some(e => /smoothcomp|grappling industries|naga|tap cancer|newbreed|agf/i.test((e.f || "") + " " + (e.ev || "")));
+
   const externalRecordHref = (() => {
     const u = (bio?.jitsUrl || "").trim();
     if (isYouthCompetitor) {
       return u.includes("jits.gg") ? u : ("https://jits.gg/search?q=" + encodeURIComponent(nm));
     }
-    return u.includes("smoothcomp.com") ? u : ("https://smoothcomp.com/en/user?search=" + encodeURIComponent(nm));
+    if (u.includes("smoothcomp.com")) return u;
+    if (bjjHeroesHref) return bjjHeroesHref;
+    if (hasSmoothcompActivity) return "https://smoothcomp.com/en/user?search=" + encodeURIComponent(nm);
+    return "";
   })();
 
   const externalRecordLabel = isYouthCompetitor
     ? ((bio?.jitsUrl || "").includes("jits.gg") ? "📊 Jits Profile ↗" : "📊 Jits ↗")
-    : ((bio?.jitsUrl || "").includes("smoothcomp.com") ? "🌐 Smoothcomp Profile ↗" : "🌐 Smoothcomp ↗");
+    : (bio?.jitsUrl || "").includes("smoothcomp.com")
+      ? "🌐 Smoothcomp Profile ↗"
+      : bjjHeroesHref
+        ? "📖 BJJ Heroes Bio ↗"
+        : "🌐 Smoothcomp ↗";
 
   const handleSongClick = () => {
     if (!bio?.songRepeat) return;
@@ -1548,21 +1558,23 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
               {bio?.showWatchCount ? ` • 🔥${watcherCount}` : (isOwner ? ` • 👁️${watcherCount}` : "")}
             </button>
 
+            {externalRecordHref && (
               <a
                 href={externalRecordHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => { if (isYouthCompetitor) trackEvent("jitsGgOutclicks"); }}
-              style={{
-                background: isYouthCompetitor ? "#132033" : "#241b12",
-                color: isYouthCompetitor ? "#38bdf8" : "#ff9f43",
-                border: isYouthCompetitor ? "1px solid #0284c7" : "1px solid #d97706",
-                borderRadius:"7px", padding:"5px 9px", fontWeight:"800", fontSize:"0.73rem",
-                textDecoration:"none", display:"inline-flex", alignItems:"center", gap:"4px", whiteSpace:"normal"
-              }}
-            >
-              {externalRecordLabel}
-            </a>
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => { if (isYouthCompetitor) trackEvent("jitsGgOutclicks"); }}
+                style={{
+                  background: isYouthCompetitor ? "#132033" : "#241b12",
+                  color: isYouthCompetitor ? "#38bdf8" : "#ff9f43",
+                  border: isYouthCompetitor ? "1px solid #0284c7" : "1px solid #d97706",
+                  borderRadius:"7px", padding:"5px 9px", fontWeight:"800", fontSize:"0.73rem",
+                  textDecoration:"none", display:"inline-flex", alignItems:"center", gap:"4px", whiteSpace:"normal"
+                }}
+              >
+                {externalRecordLabel}
+              </a>
+            )}
 
             
           </div>
