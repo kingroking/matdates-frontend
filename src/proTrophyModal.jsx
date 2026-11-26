@@ -1112,6 +1112,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
       if (!resized) { setAvatarSaving(false); return; }
       setForm(p => ({ ...p, avatarData: resized }));
       if (isOwner || !isClaimed) {
+        const baseBio = bio || {};
         const nowIso = new Date().toISOString();
         const patch = {
           ...((form.careerG !== "" || baseBio.careerG !== undefined) ? {

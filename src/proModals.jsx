@@ -827,7 +827,7 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
       const arr = podShards[b] || [];
       for (let i = 0; i < arr.length; i++) {
         const m = arr[i];
-        if (!fastRowMatches(m._nf || "", m._af || "", qFold, qTerms) && !(nickTargetFolds.size > 0 && nickTargetFolds.has(foldStr(m.n)))) continue;
+        if (!fastRowMatches(m._nf || "", m._af || "", qFold, qTerms)) continue;
         const rec = ensureProfile(m.n, m.a);
         if (m.isRosterEntry) continue;
         const gTarget = inferTargetGender(rec.name, rec.events);

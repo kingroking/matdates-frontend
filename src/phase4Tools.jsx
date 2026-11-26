@@ -592,7 +592,7 @@ export function LeaderboardModal({ onClose }) {
         return next;
       });
       })
-      .catch(() => setAthShardMap(prev => ({ ...prev, [bkt]: [] })))
+      .catch(() => setAthShardMap(prev => ({ ...prev, ...Object.fromEntries(missing.map(b => [b, []])) })))
       .finally(() => setLoadingAthShard(''));
   }, [mode, deferredAthQ, athShardMap]);
 

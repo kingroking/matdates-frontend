@@ -56,6 +56,27 @@ for (const [file, content] of Object.entries(srcMap)) {
   check(`Import integrity (${file}): zero duplicate named imports`, !dupFound, dupFound);
 }
 
+
+// ============================================================================
+// SECTION 1B: Real AST Undeclared-Variable Guard (ESLint no-undef across src/)
+// ============================================================================
+import { spawnSync } from "child_process";
+const eslintBin = path.join(FE, "node_modules/.bin/eslint");
+if (fs.existsSync(eslintBin)) {
+  const res = spawnSync(eslintBin, ["--rule", "no-undef: error", "--format", "json", "src/"], { cwd: FE, encoding: "utf8", maxBuffer: 10 * 1024 * 1024 });
+  const stdout = (res.stdout || "").trim();
+  if (stdout.startsWith("[")) {
+    const report = JSON.parse(stdout);
+    const undefs = [];
+    for (const fileRep of report) {
+      for (const m of fileRep.messages || []) {
+        if (m.ruleId === "no-undef") undefs.push(`${path.basename(fileRep.filePath)}:${m.line} ${m.message}`);
+      }
+    }
+    check("AST Undeclared-Variable Audit (ESLint no-undef across all 19 src/ files)", undefs.length === 0, undefs.slice(0, 5).join(" | "));
+  }
+}
+
 // ============================================================================
 // SECTION 2: Nickname Directory, Typo Tolerance & IBJJF Middle-Name Matching
 // ============================================================================

@@ -881,6 +881,10 @@ export function PromoterHomeDashboard({ events, user }) {
   const [staffInput, setStaffInput] = useState("");
   const [showTour, setShowTour] = useState(false);
   const [msg, setMsg] = useState("");
+  const [mmQuery, setMmQuery] = useState("");
+  const [mmBelt, setMmBelt] = useState("ALL");
+  const [offerTarget, setOfferTarget] = useState(null);
+  const [offerForm, setOfferForm] = useState({ eventDetails: "", terms: "" });
 
   useEffect(() => {
     if (!user?.email) return;
