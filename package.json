@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:smoke": "node scripts/smokeTest.mjs",
+    "prebuild": "node scripts/smokeTest.mjs"
   },
   "dependencies": {
     "date-fns": "^4.4.0",
