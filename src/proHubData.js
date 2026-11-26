@@ -112,6 +112,29 @@ export const PRO_SUPERFIGHTS = [
     facts: ["Widely regarded as the greatest Gi competitor of all time, famously submitting all 9 opponents from mount at the 2009 Worlds."]
   },
   {
+    name: "Marcus Almeida", aliases: ["buchecha", "bucheche", "marcus buchecha", "marcus vinicius oliveira de almeida"], shards: ["al", "ma"],
+    academy: "CheckMat", belt: "Black Belt (Hall of Fame)", rec: "13x IBJJF Black Belt World Champion • 2x ADCC World Champion", feds: ["IBJJF", "ADCC"],
+    careerG: 19, careerS: 3, careerB: 2,
+    titles: ["👑 13x IBJJF Black Belt World Champion (Record 6x Open Class)", "🥇 2x ADCC World Champion (2013, 2017)", "🏛️ IBJJF Hall of Fame"],
+    careerPodiums: [
+      { ev: "World IBJJF Jiu-Jitsu Championship 2019", d: "Male / Adult / Black / Ultra-Heavy & Open Class Double Gold", p: 1, f: "IBJJF", yr: 2019 },
+      { ev: "World IBJJF Jiu-Jitsu Championship 2018", d: "Male / Adult / Black / Ultra-Heavy & Open Class Double Gold", p: 1, f: "IBJJF", yr: 2018 },
+      { ev: "ADCC Submission Fighting World Championship 2017", d: "+99kg World Champion", p: 1, f: "ADCC", yr: 2017 },
+      { ev: "World IBJJF Jiu-Jitsu Championship 2016", d: "Male / Adult / Black / Ultra-Heavy & Open Class Double Gold", p: 1, f: "IBJJF", yr: 2016 }
+    ],
+    bouts: [{ ev: "ADCC World Championship Finals", org: "ADCC", res: "🏆 2x +99kg World Title", sub: "Explosive Double-Leg & Back Takes" }],
+    facts: ["Holds the all-time IBJJF record with 13 adult black belt World Championship gold medals."]
+  },
+  {
+    name: "Bruno Bastos", aliases: ["bruno bastos cruz"], shards: ["ba", "cr"],
+    academy: "Bruno Bastos Association / LEAD BJJ", belt: "5th Degree Black Belt", rec: "Multiple-Time IBJJF World Master & No-Gi Pan Champion • ADCC Veteran", feds: ["IBJJF", "ADCC"],
+    careerG: 12, careerS: 6, careerB: 5,
+    titles: ["🥇 Multiple-Time IBJJF World Master & Pan No-Gi Champion", "⚔️ ADCC World Championship Veteran", "🥋 Head Coach — Bruno Bastos Association / LEAD BJJ"],
+    careerPodiums: [],
+    bouts: [{ ev: "Pro SuperFight & IBJJF Black Belt Circuit", org: "IBJJF / F2W", res: "🏆 Multi-Time Heavyweight & Ultra-Heavy Champion", sub: "Half-Guard Pressure & Kimura Trap" }],
+    facts: ["One of the most accomplished active black belt competitors and association leaders in Texas and worldwide."]
+  },
+  {
     name: "Rickson Gracie", aliases: ["rickson gracie"], shards: ["gr"],
     academy: "Gracie Jiu-Jitsu", belt: "9th Degree Red Belt", rec: "Grandmaster • 1980s Rio & Vale Tudo Legend", feds: ["CBJJ", "VALE TUDO"],
     careerG: 11, careerS: 0, careerB: 0,
@@ -1464,7 +1487,12 @@ export function consolidateAthleteProfiles(profiles) {
         hit.p.g = mergedEvs.reduce((a, x) => a + (x.mg !== undefined ? Number(x.mg) : (Number(x.p) === 1 ? 1 : 0)), 0);
         hit.p.s = mergedEvs.reduce((a, x) => a + (x.ms !== undefined ? Number(x.ms) : (Number(x.p) === 2 ? 1 : 0)), 0);
         hit.p.b = mergedEvs.reduce((a, x) => a + (x.mb !== undefined ? Number(x.mb) : (Number(x.p) >= 3 ? 1 : 0)), 0);
-        hit.p.histCount = Math.max(hit.p.histCount || 0, (hit.p.histCount || 0) + (p.histCount || 0));
+        const mergedHist = dedupeVerifiedMedals([...(hit.p.histEvents || []), ...(p.histEvents || [])]);
+        hit.p.histEvents = mergedHist;
+        hit.p.hg = mergedHist.length ? mergedHist.reduce((a, x) => a + (Number(x.p) === 1 ? 1 : 0), 0) : Math.max(hit.p.hg || 0, p.hg || 0);
+        hit.p.hs = mergedHist.length ? mergedHist.reduce((a, x) => a + (Number(x.p) === 2 ? 1 : 0), 0) : Math.max(hit.p.hs || 0, p.hs || 0);
+        hit.p.hb = mergedHist.length ? mergedHist.reduce((a, x) => a + (Number(x.p) >= 3 ? 1 : 0), 0) : Math.max(hit.p.hb || 0, p.hb || 0);
+        hit.p.histCount = Math.max(mergedHist.length, hit.p.histCount || 0, p.histCount || 0);
         if (p.claimed) hit.p.claimed = true;
         if (p.nickVerified) hit.p.nickVerified = true;
         if (p.nickname && !hit.p.nickname) hit.p.nickname = p.nickname;
@@ -1477,7 +1505,21 @@ export function consolidateAthleteProfiles(profiles) {
     }
     clusters.push({ p, toks: pToks });
   }
-  return mergeInitialDuplicateProfiles(clusters.map(c => c.p));
+  const mergedInit = mergeInitialDuplicateProfiles(clusters.map(c => c.p));
+  return mergedInit.map(mp => {
+    if ((mp.hg || mp.hs || mp.hb) || (mp.histEvents && mp.histEvents.length)) return mp;
+    const matchCluster = clusters.find(c => sameCompetitorCluster(c.p.name, c.p.academy, mp.name, mp.academy));
+    if (matchCluster && matchCluster.p) {
+      return {
+        ...mp,
+        hg: matchCluster.p.hg || 0,
+        hs: matchCluster.p.hs || 0,
+        hb: matchCluster.p.hb || 0,
+        histEvents: matchCluster.p.histEvents || []
+      };
+    }
+    return mp;
+  });
 }
 
 export function buildVenueHotelUrl(ev, partnerId = "matdates") {

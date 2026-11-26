@@ -494,6 +494,7 @@ export function LeaderboardModal({ onClose }) {
   const [bucketMap, setBucketMap] = useState({});
   const [athShardMap, setAthShardMap] = useState({});
   const [rosterCache, setRosterCache] = useState(null);
+  const loadedRgPrefixesRef = React.useRef(new Set());
   const [loadingBucket, setLoadingBucket] = useState('');
   const [loadingAthShard, setLoadingAthShard] = useState('');
   const [trophyCard, setTrophyCard] = useState(null);
@@ -563,13 +564,16 @@ export function LeaderboardModal({ onClose }) {
     const bkt = bucketOfKey(gymKey);
     // Fire upcoming roster fetch in background WITHOUT blocking Trophy Room render!
     const rgPrefix = (gymKey || '00').replace(/[^a-z0-9]/g, '').slice(0, 2).padEnd(2, '0');
-    getDocs(query(collection(db, 'event_competitors'), where('event_id', '==', '__rg_' + rgPrefix + '__')))
-      .then(rSnap => {
-        const rItems = [];
-        rSnap.docs.forEach(d => (d.data().items || []).forEach(it => rItems.push(it)));
-        setRosterCache(prev => [...(prev || []), ...rItems]);
-      })
-      .catch(() => {});
+    if (!loadedRgPrefixesRef.current.has(rgPrefix)) {
+      loadedRgPrefixesRef.current.add(rgPrefix);
+      getDocs(query(collection(db, 'event_competitors'), where('event_id', '==', '__rg_' + rgPrefix + '__')))
+        .then(rSnap => {
+          const rItems = [];
+          rSnap.docs.forEach(d => (d.data().items || []).forEach(it => rItems.push(it)));
+          setRosterCache(prev => [...(prev || []), ...rItems]);
+        })
+        .catch(() => { loadedRgPrefixesRef.current.delete(rgPrefix); });
+    }
     if (bucketMap[bkt]) return;
     setLoadingBucket(bkt);
     try {
@@ -836,7 +840,22 @@ export function LeaderboardModal({ onClose }) {
       (Number(medalFilter) === 2 && m.es > 0) ||
       (Number(medalFilter) === 3 && m.eb > 0)
     ));
-    const gymUpcoming = rosterCache ? rosterCache.filter(c => normGymKey(c.a) === activeGym.key).slice(0, 35) : [];
+    const gymUpcoming = (() => {
+      if (!rosterCache) return [];
+      const seenReg = new Set();
+      const out = [];
+      for (const c of rosterCache) {
+        if (normGymKey(c.a) !== activeGym.key) continue;
+        const cleanDiv = String(c.d || '').replace(/^([A-Za-z]+\s+Belt)\s*-\s*[A-Za-z]+\s*\/\s*/i, '$1 - ').trim();
+        const styleTag = /no[-\s]?gi/i.test((c.e || '') + ' ' + cleanDiv) ? '⚡ No-Gi' : (/\b(ibjjf|jjwl|gi)\b/i.test((c.e || '') + ' ' + cleanDiv) ? '🥋 Gi' : '');
+        const rk = foldStr(c.n || '') + '|' + String(c.e || '') + '|' + foldStr(cleanDiv).replace(/[^a-z0-9]/g, '');
+        if (seenReg.has(rk)) continue;
+        seenReg.add(rk);
+        out.push({ ...c, _cleanDiv: cleanDiv, _styleTag: styleTag });
+        if (out.length >= 35) break;
+      }
+      return out;
+    })();
 
     // Find parent association key if this is a local affiliate (e.g. Carlson Gracie San Antonio -> carlsongracie)
     const parentKey = ['carlsongracie', 'graciebarra', 'alliance', 'checkmat', 'atos', 'ares'].find(
@@ -1041,7 +1060,7 @@ export function LeaderboardModal({ onClose }) {
                     <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
                       {gymUpcoming.map((c, ci) => (
                         <span key={ci} style={{ background:'#161d27', border:'1px solid #293446', borderRadius:'5px', padding:'4px 8px', fontSize:'0.75rem', color:'#e2e8f0' }}>
-                          <strong>{c.n}</strong>{c.d ? <span style={{ color:'#94a3b8' }}> · {c.d.split('/')[0].trim()}</span> : null}
+                          <strong>{c.n}</strong>{c._styleTag ? <span style={{ color:'#38bdf8', fontWeight:700 }}> · {c._styleTag}</span> : null}{c._cleanDiv ? <span style={{ color:'#94a3b8' }}> · {c._cleanDiv.split('/')[0].trim()}</span> : null}
                         </span>
                       ))}
                     </div>

@@ -6,7 +6,7 @@ const TrophyShareStudioModal = React.lazy(() => import("./trophyShareStudio"));
 import { collection, doc, getDoc, getDocs, setDoc, query, where, arrayUnion } from "firebase/firestore";
 import { db, auth } from "./firebase";
 import { addDoc } from "firebase/firestore";
-import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, matchesYouthInitial, computeEliteSpotlight, PRO_SUPERFIGHTS, BJJ_BELT_GROUPS, normalizeBeltValue, getBeltVisualSpec, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName, dedupeVerifiedMedals, getCachedShardItems, getCachedQueryOnce } from "./proHubData";
+import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, matchesYouthInitial, computeEliteSpotlight, findProAthlete, PRO_SUPERFIGHTS, BJJ_BELT_GROUPS, normalizeBeltValue, getBeltVisualSpec, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName, dedupeVerifiedMedals, getCachedShardItems, getCachedQueryOnce } from "./proHubData";
 
 let _trLiveEvDates = null;
 function loadTrEventDates(dbRef, collectionFn, getDocsFn) {
@@ -526,7 +526,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
   const initials = nm.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]?.toUpperCase() || "").join("") || "🥋";
 
   const [evs, setEvs] = useState(activeAth?.events || []);
-  const [histEvs, setHistEvs] = useState([]);
+  const [histEvs, setHistEvs] = useState(activeAth?.histEvents || []);
   const [promBouts, setPromBouts] = useState([]);
   const [fedRanks, setFedRanks] = useState([]);
   const [coachedSquadStats, setCoachedSquadStats] = useState(null);
@@ -846,10 +846,10 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
     const bkts = athBucketsForQuery(nm);
     if (!bkts.length && athBucket(nm) !== "__") bkts.push(athBucket(nm));
 
-    const primaryCached = typeof window !== "undefined" && window.__mdShardCache &&
-      window.__mdShardCache.has("__a2_" + bkts[0] + "__") &&
-      window.__mdShardCache.has("__alltime_a2_" + bkts[0] + "__");
-    setMedalsLoading(!primaryCached && !hasInitial26 && !hasInitialHist);
+    const proSeed = findProAthlete(nm);
+    const hasProFloor = Boolean(proSeed && ((proSeed.careerG || 0) + (proSeed.careerS || 0) + (proSeed.careerB || 0) > 0));
+    if (!hasInitial26 && (hasInitialHist || hasProFloor)) setEraView("ALLTIME");
+    setMedalsLoading(!hasInitial26 && !hasInitialHist && !hasProFloor);
 
     let cancelled = false;
     const apply2026Arrays = (arrays) => {
@@ -1051,7 +1051,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
     if (isYouthCompetitor) {
       return u.includes("jits.gg") ? u : ("https://jits.gg/search?q=" + encodeURIComponent(nm));
     }
-    return u.includes("smoothcomp.com") ? u : ("https://www.google.com/search?q=site:smoothcomp.com/profile+" + encodeURIComponent(nm));
+    return u.includes("smoothcomp.com") ? u : ("https://www.google.com/search?q=site:smoothcomp.com+" + encodeURIComponent(nm));
   })();
 
   const externalRecordLabel = isYouthCompetitor
