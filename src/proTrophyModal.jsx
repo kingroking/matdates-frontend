@@ -6,7 +6,7 @@ const TrophyShareStudioModal = React.lazy(() => import("./trophyShareStudio"));
 import { collection, doc, getDoc, getDocs, setDoc, query, where, arrayUnion } from "firebase/firestore";
 import { db, auth } from "./firebase";
 import { addDoc } from "firebase/firestore";
-import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, matchesYouthInitial, computeEliteSpotlight, PRO_SUPERFIGHTS, BJJ_BELT_GROUPS, normalizeBeltValue, getBeltVisualSpec, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName, dedupeVerifiedMedals, getCachedShardItems } from "./proHubData";
+import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, matchesYouthInitial, computeEliteSpotlight, PRO_SUPERFIGHTS, BJJ_BELT_GROUPS, normalizeBeltValue, getBeltVisualSpec, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName, dedupeVerifiedMedals, getCachedShardItems, getCachedQueryOnce } from "./proHubData";
 
 let _trLiveEvDates = null;
 function loadTrEventDates(dbRef, collectionFn, getDocsFn) {
@@ -761,10 +761,13 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
 
   useEffect(() => { refreshFamilyBios(); }, [curUser?.uid, curUser?.email]);
 
+  const [medalsLoading, setMedalsLoading] = useState(false);
+
   useEffect(() => {
     if (!slug) return;
     trackEvent("trophyViews");
     const passedEvs = activeAth?.events || [];
+    const passedHist = activeAth?.histEvents || [];
     setEvs(passedEvs);
     setCnt({ g: activeAth?.g || 0, s: activeAth?.s || 0, b: activeAth?.b || 0, acad: activeAth?.academy || activeAth?.a || "" });
     setEditBio(false);
@@ -830,29 +833,142 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
       }
     }).catch(() => {});
 
-    setHistEvs([]);
+    setHistEvs(passedHist);
     setCoachedSquadStats(null);
     setPromBouts([]);
-    setEraView("2026");
-    // Check if this athlete is a Head Professor / Coach of an Academy & load their Squad's Coached Medal Haul!
-    getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__public_bios__"))).then(sn => {
-      const nFold = foldStr(nm);
-      let students = 0;
-      let matchedGym = "";
-      sn.forEach(d => {
-        const b = d.data() || {};
-        const cFold = foldStr(String(b.coach || "").replace(/^(?:head\s+)?(?:professor|prof\.?|coach|master|mestre|sensei)\s+/i, ""));
-        if (cFold && (cFold.includes(nFold) || nFold.includes(cFold))) {
-          students++;
-          if (!matchedGym && b.academy) matchedGym = cleanAcademyName(b.academy);
-        }
+    setFedRanks([]);
+    const hasInitial26 = passedEvs.length > 0 || ((activeAth?.g || 0) + (activeAth?.s || 0) + (activeAth?.b || 0)) > 0;
+    const hasInitialHist = passedHist.length > 0 || ((activeAth?.hg || 0) + (activeAth?.hs || 0) + (activeAth?.hb || 0)) > 0;
+    setEraView(!hasInitial26 && hasInitialHist ? "ALLTIME" : "2026");
+
+    const knownAcad = activeAth?.academy || activeAth?.a || cached?.academy || "";
+    const seedGender = inferTargetGender(nm, passedEvs);
+    const bkts = athBucketsForQuery(nm);
+    if (!bkts.length && athBucket(nm) !== "__") bkts.push(athBucket(nm));
+
+    const primaryCached = typeof window !== "undefined" && window.__mdShardCache &&
+      window.__mdShardCache.has("__a2_" + bkts[0] + "__") &&
+      window.__mdShardCache.has("__alltime_a2_" + bkts[0] + "__");
+    setMedalsLoading(!primaryCached && !hasInitial26 && !hasInitialHist);
+
+    let cancelled = false;
+    const apply2026Arrays = (arrays) => {
+      if (cancelled) return 0;
+      const rawItems = [];
+      arrays.forEach(arr => (arr || []).forEach(it => rawItems.push(it)));
+      const resolvedGen = seedGender || inferTargetGender(nm, rawItems);
+      let resolvedAcad = knownAcad;
+      if (!resolvedAcad) {
+        const exactHit = rawItems.find(it => foldStr(it.n) === foldStr(nm) && it.a);
+        if (exactHit) resolvedAcad = exactHit.a;
+      }
+      const seen = new Set(), out = [];
+      passedEvs.forEach(pe => {
+        if (!strictVerifiedAthleteRowMatch(pe.n || nm, pe.a || resolvedAcad, pe.d, nm, resolvedAcad, resolvedGen)) return;
+        const dk = foldStr(pe.ev) + "|" + foldStr(pe.d) + "|" + pe.p;
+        if (!seen.has(dk)) { seen.add(dk); out.push(pe); }
       });
-      const targetGym = matchedGym || (/black/i.test(bio?.belt || "") ? cleanAcademyName(knownAcad || bio?.academy || "") : "");
-      if (targetGym && (students > 0 || /thiago mendes|bruno bastos/i.test(nm))) {
-        const gk = foldStr(targetGym).replace(/[^a-z0-9]/g, "").replace(/(hq|bjj|jiujitsu|academy|mma)$/, "");
-        getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__lb_all_all__"))).then(lsn => {
-          lsn.forEach(ld => {
-            ((ld.data() || {}).items || []).forEach(row => {
+      rawItems.forEach(it => {
+        if (it.isEventSummary || it.isRosterEntry) return;
+        if (!strictVerifiedAthleteRowMatch(it.n, it.a, it.d, nm, resolvedAcad, resolvedGen) && !strictVerifiedAthleteRowMatch(it.n, it.a, it.d, nm, "", resolvedGen)) return;
+        const dk = foldStr(it.ev) + "|" + foldStr(it.d) + "|" + it.p;
+        if (seen.has(dk)) return;
+        seen.add(dk);
+        out.push(it);
+        if (!resolvedAcad && it.a) resolvedAcad = it.a;
+      });
+      const gTot = out.reduce((a, x) => a + (x.mg !== undefined ? Number(x.mg) : (Number(x.p) === 1 ? 1 : 0)), 0);
+      const sTot = out.reduce((a, x) => a + (x.ms !== undefined ? Number(x.ms) : (Number(x.p) === 2 ? 1 : 0)), 0);
+      const bTot = out.reduce((a, x) => a + (x.mb !== undefined ? Number(x.mb) : (Number(x.p) >= 3 ? 1 : 0)), 0);
+      setEvs(out);
+      setCnt({ g: gTot, s: sTot, b: bTot, acad: resolvedAcad });
+      return out.length;
+    };
+
+    const applyHistArrays = (arrays) => {
+      if (cancelled) return 0;
+      const seenH = new Set(), outH = [];
+      [...passedHist, ...arrays.flat()].forEach(it => {
+        if (!it) return;
+        const sameExactOrPriorSchool = strictVerifiedAthleteRowMatch(it.n || nm, it.a, it.d, nm, knownAcad, seedGender) ||
+          strictVerifiedAthleteRowMatch(it.n || nm, it.a, it.d, nm, "", seedGender);
+        if (!sameExactOrPriorSchool) return;
+        if (/black/i.test(bio?.belt || "") && /\b(white|blue|grey|gray|yellow|orange|green)\b/i.test(it.d || "") && Number(it.yr || 2018) >= 2022) return;
+        const dk = foldStr(it.ev) + "|" + foldStr(it.d) + "|" + it.p;
+        if (seenH.has(dk)) return;
+        seenH.add(dk);
+        outH.push(it);
+      });
+      outH.sort((a, b) => (Number(b.yr || 0) - Number(a.yr || 0)) || (Number(a.p || 3) - Number(b.p || 3)));
+      setHistEvs(outH);
+      return outH.length;
+    };
+
+    // Wave 1 Priority: Fetch primary surname bucket FIRST before any secondary or background queries!
+    (async () => {
+      try {
+        if (bkts.length > 0) {
+          const [p0, h0] = await Promise.all([
+            getCachedShardItems(db, collection, query, where, getDocs, "__a2_" + bkts[0] + "__"),
+            getCachedShardItems(db, collection, query, where, getDocs, "__alltime_a2_" + bkts[0] + "__")
+          ]);
+          const c26 = apply2026Arrays([p0]);
+          const cHist = applyHistArrays([h0]);
+          if (c26 + cHist > 0 || bkts.length === 1) {
+            if (!cancelled) setMedalsLoading(false);
+          }
+          if (bkts.length > 1 && !cancelled) {
+            const rest = bkts.slice(1, 4);
+            const [restP, restH] = await Promise.all([
+              Promise.all(rest.map(b => getCachedShardItems(db, collection, query, where, getDocs, "__a2_" + b + "__"))),
+              Promise.all(rest.map(b => getCachedShardItems(db, collection, query, where, getDocs, "__alltime_a2_" + b + "__")))
+            ]);
+            apply2026Arrays([p0, ...restP]);
+            applyHistArrays([h0, ...restH]);
+          }
+        }
+      } catch {} finally {
+        if (!cancelled) setMedalsLoading(false);
+      }
+    })();
+
+    // Wave 2 Deferred Background: Ranks, Coached Squad, Watcher Count & Promoter Bouts (never blocks medal shards!)
+    const bgTimer = setTimeout(() => {
+      if (cancelled) return;
+      Promise.all(bkts.slice(0, 3).map(b => getCachedShardItems(db, collection, query, where, getDocs, "__f2_" + b + "__"))).then(arrays => {
+        if (cancelled) return;
+        const fHits = [], seenF = new Set();
+        arrays.forEach(arr => arr.forEach(it => {
+          if (!strictVerifiedAthleteRowMatch(it.n, it.a || knownAcad, it.cat || "", nm, knownAcad, seedGender) && !strictVerifiedAthleteRowMatch(it.n, it.a || "", it.cat || "", nm, "", seedGender)) return;
+          const fk = it.fed + "|" + it.cat;
+          if (seenF.has(fk)) return;
+          seenF.add(fk);
+          fHits.push(it);
+        }));
+        fHits.sort((a, b) => parseInt(String(a.rank || "9999").replace(/\D/g, ""), 10) - parseInt(String(b.rank || "9999").replace(/\D/g, ""), 10));
+        setFedRanks(fHits);
+      }).catch(() => {});
+
+      getCachedQueryOnce("public_bios_raw", () =>
+        getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__public_bios__"))).then(sn => sn.docs.map(d => d.data() || {}))
+      ).then(biosArr => {
+        if (cancelled) return;
+        const nFold = foldStr(nm);
+        let students = 0;
+        let matchedGym = "";
+        biosArr.forEach(b => {
+          const cFold = foldStr(String(b.coach || "").replace(/^(?:head\s+)?(?:professor|prof\.?|coach|master|mestre|sensei)\s+/i, ""));
+          if (cFold && (cFold.includes(nFold) || nFold.includes(cFold))) {
+            students++;
+            if (!matchedGym && b.academy) matchedGym = cleanAcademyName(b.academy);
+          }
+        });
+        const targetGym = matchedGym || (/black/i.test(bio?.belt || "") ? cleanAcademyName(knownAcad || bio?.academy || "") : "");
+        if (targetGym && (students > 0 || /thiago mendes|bruno bastos/i.test(nm))) {
+          const gk = foldStr(targetGym).replace(/[^a-z0-9]/g, "").replace(/(hq|bjj|jiujitsu|academy|mma)$/, "");
+          getCachedShardItems(db, collection, query, where, getDocs, "__lb_all_all__").then(rows => {
+            if (cancelled) return;
+            rows.forEach(row => {
               const rk = foldStr(row.Academy || row.a || "").replace(/[^a-z0-9]/g, "");
               if (rk && (rk === gk || rk.includes(gk) || gk.includes(rk))) {
                 setCoachedSquadStats({
@@ -864,115 +980,46 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
                 });
               }
             });
-          });
-        }).catch(() => {});
-      }
-    }).catch(() => {});
+          }).catch(() => {});
+        }
+      }).catch(() => {});
 
-    getDocs(query(collection(db, "mat_watches"), where("athleteName", "==", nm))).then(sn => {
-      const uniqueWatchers = new Set();
-      sn.forEach(d => {
-        const wd = d.data() || {};
-        if (wd.kind || (!wd.active && !wd.followFuture)) return;
-        uniqueWatchers.add(wd.uid || (wd.email || "").toLowerCase() || wd.fcmToken || d.id);
-      });
-      setWatcherCount(uniqueWatchers.size);
-    }).catch(() => {});
-
-    // Fetch Promoter SuperFight bouts/results & Prior-Year All-Time Career Archive in background
-    getDocs(query(collection(db, "mat_watches"), where("kind", "==", "prom_cfg"))).then(sn => {
-      const myBouts = [];
-      const tLow = foldStr(nm);
-      sn.forEach(d => {
-        const cfg = d.data() || {};
-        (cfg.boutResults || []).forEach(r => {
-          if (foldStr(r.winner) === tLow || foldStr(r.loser) === tLow) {
-            const won = foldStr(r.winner) === tLow;
-            myBouts.push({
-              ev: cfg.eventName || "Verified SuperFight",
-              d: (won ? "🏆 W vs. " + r.loser : "Bout vs. " + r.winner) + (r.method ? " (" + r.method + ")" : ""),
-              p: won ? 1 : 2,
-              f: "SUPERFIGHT",
-              yr: 2026
-            });
-          }
+      getDocs(query(collection(db, "mat_watches"), where("athleteName", "==", nm))).then(sn => {
+        if (cancelled) return;
+        const uniqueWatchers = new Set();
+        sn.forEach(d => {
+          const wd = d.data() || {};
+          if (wd.kind || (!wd.active && !wd.followFuture)) return;
+          uniqueWatchers.add(wd.uid || (wd.email || "").toLowerCase() || wd.fcmToken || d.id);
         });
-      });
-      if (myBouts.length) setPromBouts(myBouts);
-    }).catch(() => {});
+        setWatcherCount(uniqueWatchers.size);
+      }).catch(() => {});
 
-    const knownAcad = activeAth?.academy || activeAth?.a || cached?.academy || "";
-    const seedGender = inferTargetGender(nm, passedEvs);
-    setFedRanks([]);
+      getCachedQueryOnce("prom_cfg_all", () =>
+        getDocs(query(collection(db, "mat_watches"), where("kind", "==", "prom_cfg"))).then(sn => sn.docs.map(d => d.data() || {}))
+      ).then(cfgs => {
+        if (cancelled) return;
+        const myBouts = [];
+        const tLow = foldStr(nm);
+        cfgs.forEach(cfg => {
+          (cfg.boutResults || []).forEach(r => {
+            if (foldStr(r.winner) === tLow || foldStr(r.loser) === tLow) {
+              const won = foldStr(r.winner) === tLow;
+              myBouts.push({
+                ev: cfg.eventName || "Verified SuperFight",
+                d: (won ? "🏆 W vs. " + r.loser : "Bout vs. " + r.winner) + (r.method ? " (" + r.method + ")" : ""),
+                p: won ? 1 : 2,
+                f: "SUPERFIGHT",
+                yr: 2026
+              });
+            }
+          });
+        });
+        if (myBouts.length) setPromBouts(myBouts);
+      }).catch(() => {});
+    }, 220);
 
-    const bkts = athBucketsForQuery(nm);
-    if (!bkts.length && athBucket(nm) !== "__") bkts.push(athBucket(nm));
-
-    // Fetch Daily Official Federation #Rank Standings (__f2_XX__) for this athlete!
-    Promise.all(bkts.map(b => getCachedShardItems(db, collection, query, where, getDocs, "__f2_" + b + "__"))).then(arrays => {
-      const fHits = [], seenF = new Set();
-      arrays.forEach(arr => arr.forEach(it => {
-        if (!strictVerifiedAthleteRowMatch(it.n, it.a || knownAcad, it.cat || "", nm, knownAcad, seedGender) && !strictVerifiedAthleteRowMatch(it.n, it.a || "", it.cat || "", nm, "", seedGender)) return;
-        const fk = it.fed + "|" + it.cat;
-        if (seenF.has(fk)) return;
-        seenF.add(fk);
-        fHits.push(it);
-      }));
-      fHits.sort((a, b) => parseInt(String(a.rank || "9999").replace(/\D/g, ""), 10) - parseInt(String(b.rank || "9999").replace(/\D/g, ""), 10));
-      setFedRanks(fHits);
-    }).catch(() => {});
-
-    // Fetch Prior-Year All-Time Career Podiums (__alltime_a2_XX__) with strict gender + academy guard!
-    Promise.all(bkts.map(b => getCachedShardItems(db, collection, query, where, getDocs, "__alltime_a2_" + b + "__"))).then(arrays => {
-      const seenH = new Set(), outH = [];
-      arrays.forEach(arr => arr.forEach(it => {
-        const sameExactOrPriorSchool = strictVerifiedAthleteRowMatch(it.n, it.a, it.d, nm, knownAcad, seedGender) ||
-          strictVerifiedAthleteRowMatch(it.n, it.a, it.d, nm, "", seedGender);
-        if (!sameExactOrPriorSchool) return;
-        if (/black/i.test(bio?.belt || "") && /\b(white|blue|grey|gray|yellow|orange|green)\b/i.test(it.d || "") && Number(it.yr || 2018) >= 2022) return;
-        const dk = foldStr(it.ev) + "|" + foldStr(it.d) + "|" + it.p;
-        if (seenH.has(dk)) return;
-        seenH.add(dk);
-        outH.push(it);
-      }));
-      outH.sort((a, b) => (Number(b.yr || 0) - Number(a.yr || 0)) || (Number(a.p || 3) - Number(b.p || 3)));
-      setHistEvs(outH);
-    }).catch(() => {});
-
-    // Fetch 2026 Season Podiums (__a2_XX__) with strict gender + academy guard!
-    Promise.all(bkts.map(b => getCachedShardItems(db, collection, query, where, getDocs, "__a2_" + b + "__"))).then(arrays => {
-      const rawItems = [];
-      arrays.forEach(arr => arr.forEach(it => rawItems.push(it)));
-      const resolvedGen = seedGender || inferTargetGender(nm, rawItems);
-      let resolvedAcad = knownAcad;
-      if (!resolvedAcad) {
-        const exactHit = rawItems.find(it => foldStr(it.n) === foldStr(nm) && it.a);
-        if (exactHit) resolvedAcad = exactHit.a;
-      }
-
-      const seen = new Set(), out = [];
-      passedEvs.forEach(pe => {
-        if (!strictVerifiedAthleteRowMatch(pe.n || nm, pe.a || resolvedAcad, pe.d, nm, resolvedAcad, resolvedGen)) return;
-        const dk = foldStr(pe.ev) + "|" + foldStr(pe.d) + "|" + pe.p;
-        if (!seen.has(dk)) { seen.add(dk); out.push(pe); }
-      });
-
-      rawItems.forEach(it => {
-        if (it.isEventSummary || it.isRosterEntry) return;
-        if (!strictVerifiedAthleteRowMatch(it.n, it.a, it.d, nm, resolvedAcad, resolvedGen) && !strictVerifiedAthleteRowMatch(it.n, it.a, it.d, nm, "", resolvedGen)) return;
-        const dk = foldStr(it.ev) + "|" + foldStr(it.d) + "|" + it.p;
-        if (seen.has(dk)) return;
-        seen.add(dk);
-        out.push(it);
-        if (!resolvedAcad && it.a) resolvedAcad = it.a;
-      });
-
-      const gTot = out.reduce((a, x) => a + (x.mg !== undefined ? Number(x.mg) : (Number(x.p) === 1 ? 1 : 0)), 0);
-      const sTot = out.reduce((a, x) => a + (x.ms !== undefined ? Number(x.ms) : (Number(x.p) === 2 ? 1 : 0)), 0);
-      const bTot = out.reduce((a, x) => a + (x.mb !== undefined ? Number(x.mb) : (Number(x.p) >= 3 ? 1 : 0)), 0);
-      setEvs(out);
-      setCnt({ g: gTot, s: sTot, b: bTot, acad: resolvedAcad });
-    }).catch(() => {});
+    return () => { cancelled = true; clearTimeout(bgTimer); };
   }, [nm]);
 
   const elite = computeEliteSpotlight({ name: nm, academy: cnt.acad, g: cnt.g, s: cnt.s, b: cnt.b, events: evs }, bio?.funFact);
@@ -1390,6 +1437,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
   const dispS = eraView === "ALLTIME" ? totS : s26;
   const dispB = eraView === "ALLTIME" ? totB : b26;
   const dispPts = dispG * 9 + dispS * 3 + dispB;
+  const showMedalSkeleton = medalsLoading && (dispG + dispS + dispB) === 0;
   const allCombinedEvs = sortPodiumsNewestFirst([...s26Evs, ...cleanHistEvs], 2026);
   const visibleEvents = eraView === "ALLTIME" ? allCombinedEvs : s26Evs;
   const hasScoutingCards = Boolean(bio && (bio.quote || bio.age || bio.coach || bio.favMove || bio.cheatMeal || bio.currentRead));
@@ -1821,7 +1869,7 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
             <div style={{ marginTop:"12px", paddingTop:"10px", borderTop:"1px solid rgba(51,65,85,0.65)" }}>
               <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap", marginBottom:"8px" }}>
                 <span style={{ fontSize:"0.69rem", fontWeight:"800", color:"#94a3b8", letterSpacing:"0.8px", textTransform:"uppercase" }}>
-                  {eraView === "2026" ? `🔥 2026 Season (${g26 + s26 + b26} Medals)` : `🏛️ All-Time Career (${totG + totS + totB} Medals)`}
+                  {showMedalSkeleton ? <span style={{ color:"#93c5fd" }}>⏳ Syncing Verified Podiums…</span> : (eraView === "2026" ? `🔥 2026 Season (${g26 + s26 + b26} Medals)` : `🏛️ All-Time Career (${totG + totS + totB} Medals)`)}
                 </span>
                 <div style={{ display:"inline-flex", background:"#090d16", border:"1px solid #2d3b52", borderRadius:"8px", padding:"2px", gap:"2px" }}>
                   <button type="button" onClick={() => setEraView("2026")} style={{ padding:"3px 9px", borderRadius:"6px", border:"none", fontSize:"0.71rem", fontWeight:"800", cursor:"pointer", background: eraView === "2026" ? "#f59e0b" : "transparent", color: eraView === "2026" ? "#000" : "#94a3b8" }}>
@@ -1835,19 +1883,19 @@ export function AthleteTrophyRoomModal({ athlete, onClose, onBack, backLabel = '
 
               <div style={{ display:"grid", gridTemplateColumns:"repeat(4, 1fr)", gap:"7px" }}>
                 <div style={{ background:"#0b101b", border:"1px solid rgba(250,204,21,0.35)", borderRadius:"9px", padding:"7px 6px", textAlign:"center" }}>
-                  <div style={{ fontSize:"1.12rem", fontWeight:"900", color:"#fde047" }}>🥇 {dispG}</div>
+                  <div style={{ fontSize:"1.12rem", fontWeight:"900", color:"#fde047" }}>🥇 {showMedalSkeleton ? "···" : dispG}</div>
                   <div style={{ fontSize:"0.64rem", fontWeight:"800", color:"#94a3b8", letterSpacing:"0.6px" }}>GOLD</div>
                 </div>
                 <div style={{ background:"#0b101b", border:"1px solid rgba(203,213,225,0.3)", borderRadius:"9px", padding:"7px 6px", textAlign:"center" }}>
-                  <div style={{ fontSize:"1.12rem", fontWeight:"900", color:"#e2e8f0" }}>🥈 {dispS}</div>
+                  <div style={{ fontSize:"1.12rem", fontWeight:"900", color:"#e2e8f0" }}>🥈 {showMedalSkeleton ? "···" : dispS}</div>
                   <div style={{ fontSize:"0.64rem", fontWeight:"800", color:"#94a3b8", letterSpacing:"0.6px" }}>SILVER</div>
                 </div>
                 <div style={{ background:"#0b101b", border:"1px solid rgba(217,119,6,0.35)", borderRadius:"9px", padding:"7px 6px", textAlign:"center" }}>
-                  <div style={{ fontSize:"1.12rem", fontWeight:"900", color:"#fdba74" }}>🥉 {dispB}</div>
+                  <div style={{ fontSize:"1.12rem", fontWeight:"900", color:"#fdba74" }}>🥉 {showMedalSkeleton ? "···" : dispB}</div>
                   <div style={{ fontSize:"0.64rem", fontWeight:"800", color:"#94a3b8", letterSpacing:"0.6px" }}>BRONZE</div>
                 </div>
                 <div style={{ background:"#0b101b", border:"1px solid rgba(52,211,153,0.35)", borderRadius:"9px", padding:"7px 6px", textAlign:"center" }}>
-                  <div style={{ fontSize:"1.12rem", fontWeight:"900", color:"#34d399" }}>{dispPts}</div>
+                  <div style={{ fontSize:"1.12rem", fontWeight:"900", color:"#34d399" }}>{showMedalSkeleton ? "···" : dispPts}</div>
                   <div style={{ fontSize:"0.64rem", fontWeight:"800", color:"#94a3b8", letterSpacing:"0.6px" }}>MAT PTS</div>
                 </div>
               </div>

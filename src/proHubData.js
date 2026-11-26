@@ -1,5 +1,19 @@
 import { BJJ_HEROES_NICKNAMES } from "./bjjNicknames.js";
-const _SHARD_TTL_MS = 5 * 60 * 1000;
+const _SHARD_TTL_MS = 30 * 60 * 1000;
+export function getCachedQueryOnce(cacheKey, fetcherFn) {
+  if (typeof window !== "undefined") {
+    if (!window.__mdOnceCache) window.__mdOnceCache = new Map();
+    const hit = window.__mdOnceCache.get(cacheKey);
+    if (hit && (Date.now() - hit.ts) < _SHARD_TTL_MS) return hit.promise;
+    const p = fetcherFn().catch(err => {
+      window.__mdOnceCache.delete(cacheKey);
+      throw err;
+    });
+    window.__mdOnceCache.set(cacheKey, { ts: Date.now(), promise: p });
+    return p;
+  }
+  return fetcherFn();
+}
 export function getCachedShardItems(db, collectionFn, queryFn, whereFn, getDocsFn, eventId) {
   if (typeof window !== "undefined") {
     if (!window.__mdShardCache) window.__mdShardCache = new Map();

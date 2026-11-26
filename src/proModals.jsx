@@ -3,12 +3,14 @@ import React, { useState, useEffect, useMemo } from "react";
 import { collection, addDoc, getDocs, query, where, doc, getDoc } from "firebase/firestore";
 import { db } from "./firebase";
 import { MatAlertModal, useWatchedAthletes } from "./MatAlertModal";
-import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, sameCompetitorCluster, findProAthlete, PRO_SUPERFIGHTS, UPCOMING_UFC_SUPERFIGHTS, getDeadlineBadge, computeEliteSpotlight, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName, mergeInitialDuplicateProfiles, consolidateAthleteProfiles, resolveNicknameHit, fastNicknameRowMatch, stripEmbeddedNickname, extractEmbeddedNickname, matchesYouthInitial, isUmbrellaAcademyName, getCachedShardItems } from "./proHubData";
+import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, sameCompetitorCluster, findProAthlete, PRO_SUPERFIGHTS, UPCOMING_UFC_SUPERFIGHTS, getDeadlineBadge, computeEliteSpotlight, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName, mergeInitialDuplicateProfiles, consolidateAthleteProfiles, resolveNicknameHit, fastNicknameRowMatch, stripEmbeddedNickname, extractEmbeddedNickname, matchesYouthInitial, isUmbrellaAcademyName, getCachedShardItems, getCachedQueryOnce } from "./proHubData";
 import { AthleteTrophyRoomModal } from "./proTrophyModal";
 
-const _SHARED_POD = {};
-const _SHARED_REG = {};
-const _SHARED_PROMISES = {};
+const _FOLDED_POD = {};
+const _FOLDED_REG = {};
+const _INFLIGHT_POD = new Set();
+let _CACHED_BIOS = null;
+let _CACHED_GYMS = null;
 
 const MODAL_BG = { position:"fixed", inset:0, background:"rgba(0,0,0,0.86)", zIndex:10060, display:"flex", alignItems:"center", justifyContent:"center", padding:"12px", boxSizing:"border-box" };
 
@@ -612,121 +614,122 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
     return () => clearTimeout(t);
   }, [qStr]);
 
-  const [regShards, setRegShards] = useState({});
-  const [claimedBios, setClaimedBios] = useState([]);
-  const [dedupedGyms, setDedupedGyms] = useState([]);
-  const [podShards, setPodShards] = useState({});
+  const [regShards, setRegShards] = useState(() => ({ ..._FOLDED_REG }));
+  const [claimedBios, setClaimedBios] = useState(() => _CACHED_BIOS || []);
+  const [dedupedGyms, setDedupedGyms] = useState(() => _CACHED_GYMS || []);
+  const [podShards, setPodShards] = useState(() => ({ ..._FOLDED_POD }));
   const [gymShards, setGymShards] = useState({});
   const [watchPick, setWatchPick] = useState(null);
   const [trophyPick, setTrophyPick] = useState(null);
   const { getWatch, removeWatch } = useWatchedAthletes();
   const evMap = useMemo(() => Object.fromEntries((events || []).map(e => [e.id, e])), [events]);
 
-  // Pre-fold bios & aggregate academies ONCE on open so typing never normalizes 8,000 academy strings!
+  // Pre-fold bios & aggregate academies ONCE per session (deferred when cold so athlete shards get 100% bandwidth!)
   useEffect(() => {
-    getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__public_bios__"))).then(sn => {
-      setClaimedBios(sn.docs.map(d => {
-        const x = d.data();
-        if (!x || !x.name) return null;
-        return { ...x, _nf: foldStr(x.name), _af: foldStr(x.academy || ""), _nkf: foldStr(x.nickname || "") };
-      }).filter(Boolean));
-    }).catch(() => {});
+    if (!_CACHED_BIOS) {
+      getCachedQueryOnce("public_bios_folded", () =>
+        getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__public_bios__"))).then(sn =>
+          sn.docs.map(d => {
+            const x = d.data();
+            if (!x || !x.name) return null;
+            return { ...x, _nf: foldStr(x.name), _af: foldStr(x.academy || ""), _nkf: foldStr(x.nickname || "") };
+          }).filter(Boolean)
+        )
+      ).then(list => { _CACHED_BIOS = list; setClaimedBios(list); }).catch(() => {});
+    }
 
-    getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__global_leaderboard__"))).then(sn => {
-      const byK = new Map();
-      sn.forEach(d => {
-        const dt = d.data() || {};
-        const arr = Array.isArray(dt.items) ? dt.items : (dt.Academy ? [dt] : []);
-        arr.forEach(r => {
-          if (r.Board === "ibjjf_hist_youth" || r.Board === "ibjjf_hist_adult") return;
-          const ac = (r.Academy || "").trim();
-          if (!ac) return;
-          const gk = universalGymKey(ac);
-          if (!gk) return;
-          let rec = byK.get(gk);
-          if (!rec) {
-            rec = { key: gk, Academy: cleanAcademyName(ac), _low: foldStr(cleanAcademyName(ac)), Gold: 0, Silver: 0, Bronze: 0 };
-            byK.set(gk, rec);
-          } else if (cleanAcademyName(ac).length > rec.Academy.length && !(rec.Academy === 'Carlson Gracie San Antonio' && /carlson gracie/i.test(ac))) {
-            rec.Academy = ac;
-            rec._low = foldStr(ac);
-          }
-          rec.Gold += Number(r.Gold || 0);
-          rec.Silver += Number(r.Silver || 0);
-          rec.Bronze += Number(r.Bronze || 0);
-        });
-      });
-      const list = Array.from(byK.values()).sort((a, b) => (b.Gold * 9 + b.Silver * 3 + b.Bronze) - (a.Gold * 9 + a.Silver * 3 + a.Bronze));
-      setDedupedGyms(list);
-    }).catch(() => {});
+    if (!_CACHED_GYMS) {
+      const t = setTimeout(() => {
+        getCachedQueryOnce("global_lb_deduped", () =>
+          getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__global_leaderboard__"))).then(sn => {
+            const byK = new Map();
+            sn.forEach(d => {
+              const dt = d.data() || {};
+              const arr = Array.isArray(dt.items) ? dt.items : (dt.Academy ? [dt] : []);
+              arr.forEach(r => {
+                if (r.Board === "ibjjf_hist_youth" || r.Board === "ibjjf_hist_adult") return;
+                const ac = (r.Academy || "").trim();
+                if (!ac) return;
+                const gk = universalGymKey(ac);
+                if (!gk) return;
+                let rec = byK.get(gk);
+                if (!rec) {
+                  rec = { key: gk, Academy: cleanAcademyName(ac), _low: foldStr(cleanAcademyName(ac)), Gold: 0, Silver: 0, Bronze: 0 };
+                  byK.set(gk, rec);
+                } else if (cleanAcademyName(ac).length > rec.Academy.length && !(rec.Academy === 'Carlson Gracie San Antonio' && /carlson gracie/i.test(ac))) {
+                  rec.Academy = ac;
+                  rec._low = foldStr(ac);
+                }
+                rec.Gold += Number(r.Gold || 0);
+                rec.Silver += Number(r.Silver || 0);
+                rec.Bronze += Number(r.Bronze || 0);
+              });
+            });
+            return Array.from(byK.values()).sort((a, b) => (b.Gold * 9 + b.Silver * 3 + b.Bronze) - (a.Gold * 9 + a.Silver * 3 + a.Bronze));
+          })
+        ).then(list => { _CACHED_GYMS = list; setDedupedGyms(list); }).catch(() => {});
+      }, 320);
+      return () => clearTimeout(t);
+    }
   }, []);
 
-  // 1. Progressive 2-Wave Shard Loader (Medals FIRST on primary surname shard, cached across modal opens!)
+  // 1. Unified Priority Shard Loader (Shares window.__mdShardCache with Trophy Room for 0ms handoff!)
   const [syncingShards, setSyncingShards] = useState(0);
   useEffect(() => {
-    if (debouncedQ.trim().length < 2) return;
-    const bkts = athBucketsForQuery(debouncedQ).slice(0, 4);
-    const toFetch = [];
-    for (const bkt of bkts) {
-      if (_SHARED_POD[bkt]) {
-        if (!podShards[bkt]) setPodShards(p => ({ ...p, [bkt]: _SHARED_POD[bkt] }));
-        if (_SHARED_REG[bkt] && !regShards[bkt]) setRegShards(p => ({ ...p, [bkt]: _SHARED_REG[bkt] }));
-      } else if (!podShards[bkt]) {
-        toFetch.push(bkt);
+    const cleanQ = debouncedQ.trim();
+    if (cleanQ.length < 2) return;
+    const bkts = athBucketsForQuery(cleanQ).slice(0, 4);
+    const foldItems = (arr, extra = {}) => (arr || []).map(it => ({
+      ...it,
+      ...extra,
+      a: cleanAcademyName(it.a),
+      _nf: foldStr((it.n || "") + " " + (it.nk || "")),
+      _af: foldStr(it.a)
+    }));
+
+    bkts.forEach((bkt, idx) => {
+      if (_FOLDED_POD[bkt]) {
+        if (!podShards[bkt]) setPodShards(p => ({ ...p, [bkt]: _FOLDED_POD[bkt] }));
+        if (_FOLDED_REG[bkt] && !regShards[bkt]) setRegShards(p => ({ ...p, [bkt]: _FOLDED_REG[bkt] }));
+        return;
       }
-    }
-    if (!toFetch.length) return;
-
-    const mapItems = (sn, extra = {}) => {
-      const out = [];
-      sn.forEach(d => ((d.data() || {}).items || []).forEach(it => {
-        out.push({ ...it, ...extra, a: cleanAcademyName(it.a), _nf: foldStr((it.n || "") + " " + (it.nk || "")), _af: foldStr(it.a) });
-      }));
-      return out;
-    };
-
-    toFetch.forEach((bkt, idx) => {
-      setPodShards(p => ({ ...p, [bkt]: [] }));
-      setRegShards(p => ({ ...p, [bkt]: [] }));
+      if (_INFLIGHT_POD.has(bkt)) return;
+      _INFLIGHT_POD.add(bkt);
       setSyncingShards(c => c + 1);
 
       (async () => {
-        if (idx > 0) await new Promise(res => setTimeout(res, idx * 85));
-        if (!_SHARED_PROMISES[bkt]) {
-          // Wave 1: Fetch ONLY 2026 & All-Time Medal Shards first so counts snap in immediately!
-          _SHARED_PROMISES[bkt] = Promise.all([
-            getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__a2_" + bkt + "__"))),
-            getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__alltime_a2_" + bkt + "__")))
-          ]).then(([snPod, snHist]) => {
-            const medalArr = [...mapItems(snPod), ...mapItems(snHist, { isHist: true })];
-            _SHARED_POD[bkt] = medalArr;
-            return medalArr;
-          });
-
-          // Wave 2 (non-blocking background): Upcoming registrations + primary roster
-          Promise.all([
-            getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__r2_" + bkt + "__"))),
-            idx === 0 ? getDocs(query(collection(db, "event_competitors"), where("event_id", "==", "__c2_" + bkt + "__"))) : Promise.resolve(null)
-          ]).then(([snReg, snComp]) => {
-            const regArr = mapItems(snReg);
-            _SHARED_REG[bkt] = regArr;
-            setRegShards(p => ({ ...p, [bkt]: regArr }));
-            if (snComp) {
-              const compArr = mapItems(snComp, { isRosterEntry: true });
-              if (compArr.length) {
-                _SHARED_POD[bkt] = [...(_SHARED_POD[bkt] || []), ...compArr];
-                setPodShards(p => ({ ...p, [bkt]: _SHARED_POD[bkt] }));
-              }
-            }
-          }).catch(() => {});
-        }
         try {
-          const medalArr = await _SHARED_PROMISES[bkt];
+          if (idx > 0) await new Promise(res => setTimeout(res, idx * 110));
+          // Wave 1: Primary medal shards via getCachedShardItems (populates Trophy Room cache simultaneously!)
+          const [rawPod, rawHist] = await Promise.all([
+            getCachedShardItems(db, collection, query, where, getDocs, "__a2_" + bkt + "__"),
+            getCachedShardItems(db, collection, query, where, getDocs, "__alltime_a2_" + bkt + "__")
+          ]);
+          const medalArr = [...foldItems(rawPod), ...foldItems(rawHist, { isHist: true })];
+          _FOLDED_POD[bkt] = medalArr;
           setPodShards(p => ({ ...p, [bkt]: medalArr }));
-          if (_SHARED_REG[bkt]) setRegShards(p => ({ ...p, [bkt]: _SHARED_REG[bkt] }));
+
+          // Wave 2 (deferred background): Upcoming registrations + primary roster
+          setTimeout(() => {
+            Promise.all([
+              getCachedShardItems(db, collection, query, where, getDocs, "__r2_" + bkt + "__"),
+              idx === 0 ? getCachedShardItems(db, collection, query, where, getDocs, "__c2_" + bkt + "__") : Promise.resolve([])
+            ]).then(([rawReg, rawComp]) => {
+              const regArr = foldItems(rawReg);
+              _FOLDED_REG[bkt] = regArr;
+              setRegShards(p => ({ ...p, [bkt]: regArr }));
+              if (rawComp && rawComp.length) {
+                const merged = [...(_FOLDED_POD[bkt] || []), ...foldItems(rawComp, { isRosterEntry: true })];
+                _FOLDED_POD[bkt] = merged;
+                setPodShards(p => ({ ...p, [bkt]: merged }));
+              }
+            }).catch(() => {});
+          }, 220);
         } catch {
-          delete _SHARED_PROMISES[bkt];
+          _FOLDED_POD[bkt] = [];
+          setPodShards(p => ({ ...p, [bkt]: [] }));
         } finally {
+          _INFLIGHT_POD.delete(bkt);
           setSyncingShards(c => Math.max(0, c - 1));
         }
       })();
@@ -818,8 +821,8 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
         rec = {
           name: displayNm,
           academy: displayAc,
-          g: 0, s: 0, b: 0,
-          events: [],
+          g: 0, s: 0, b: 0, hg: pro?.careerG || 0, hs: pro?.careerS || 0, hb: pro?.careerB || 0,
+          events: [], histEvents: [],
           proTitles: pro ? pro.titles : extra.proTitles || null,
           claimed: Boolean(extra.claimed), nickVerified: Boolean(extra.nickVerified), ...(rawNick ? { nickname: rawNick } : {}), seen: new Set()
         };
@@ -883,6 +886,9 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
           rec.events.push(m);
         } else {
           rec.histCount = (rec.histCount || 0) + 1;
+          const hp = Number(m.p || 3);
+          if (hp === 1) rec.hg = (rec.hg || 0) + 1; else if (hp === 2) rec.hs = (rec.hs || 0) + 1; else rec.hb = (rec.hb || 0) + 1;
+          rec.histEvents.push(m);
         }
         if (++scannedMatches >= 600) break;
       }
@@ -945,6 +951,12 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
 
   const trimmedQ = qStr.trim();
   const alreadyWatched = Boolean(trimmedQ.length >= 2 && getWatch(trimmedQ));
+  const primaryLookupBkts = trimmedQ.length >= 2 ? athBucketsForQuery(trimmedQ).slice(0, 2) : [];
+  const isQuerySyncing = trimmedQ.length >= 2 && (
+    trimmedQ.toLowerCase() !== debouncedQ.trim().toLowerCase() ||
+    syncingShards > 0 ||
+    primaryLookupBkts.some(b => !_FOLDED_POD[b])
+  );
 
     const allPodProfiles = useMemo(() => {
     const qF = foldStr(trimmedQ).replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
@@ -961,9 +973,10 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
           name: hero.name,
           academy: hero.academy || "",
           g: 0, s: 0, b: 0,
+          hg: hero.careerG || 0, hs: hero.careerS || 0, hb: hero.careerB || 0,
           histCount: (hero.careerG || 0) + (hero.careerS || 0) + (hero.careerB || 0) || (hero.careerPodiums || []).length,
           proTitles: hero.titles || [],
-          events: []
+          events: [], histEvents: hero.careerPodiums || []
         });
       }
     }
@@ -1015,7 +1028,7 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
                     {p.academy && <span onClick={(e) => { e.stopPropagation(); const gk = universalGymKey(p.academy); if (gk) window.location.href = "/?gym=" + encodeURIComponent(gk); }} title={"Open " + p.academy + " Trophy Room"} style={{ color:"#ff9f43", fontSize:"0.78rem", cursor:"pointer", textDecoration:"underline", textDecorationColor:"rgba(255,159,67,0.45)" }}> • {p.academy}</span>}
                   </div>
                   <div style={{ fontSize:"0.76rem", color:"#cbd5e1" }}>
-                    {(syncingShards > 0 || trimmedQ.toLowerCase() !== debouncedQ.trim().toLowerCase()) && (p.g + p.s + p.b + (p.histCount || 0)) === 0 ? <span style={{ color:"#93c5fd" }}>⏳ Syncing verified medals…{p.proTitles ? " • " + p.proTitles[0] : ""}</span> : <>🥇{p.g} 🥈{p.s} 🥉{p.b} (2026){p.histCount ? ` • +${p.histCount} Prior-Yr` : ""}{p.proTitles ? " • " + p.proTitles[0] : ""}</>}
+                    {(p.g + p.s + p.b) > 0 ? <>🥇{p.g} 🥈{p.s} 🥉{p.b} (2026){p.histCount ? ` • +${p.histCount} Prior-Yr` : ""}{p.proTitles ? " • " + p.proTitles[0] : ""}</> : isQuerySyncing ? <span style={{ color:"#93c5fd" }}>⏳ Syncing verified medals…{p.proTitles ? " • " + p.proTitles[0] : ""}</span> : ((p.hg || 0) + (p.hs || 0) + (p.hb || 0)) > 0 ? <>🥇{p.hg || 0} 🥈{p.hs || 0} 🥉{p.hb || 0} (All-Time){p.proTitles ? " • " + p.proTitles[0] : ""}</> : <>🥇{p.g} 🥈{p.s} 🥉{p.b} (2026){p.histCount ? ` • +${p.histCount} Prior-Yr` : ""}{p.proTitles ? " • " + p.proTitles[0] : ""}</>}
                   </div>
                 </div>
                 <div style={{ display:"flex", gap:"6px" }} onClick={e => e.stopPropagation()}>
