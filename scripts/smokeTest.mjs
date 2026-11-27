@@ -10,7 +10,9 @@ import {
   buildVenueHotelUrl,
   academiesCompatibleForMerge,
   stripEmbeddedNickname,
-  extractEmbeddedNickname
+  extractEmbeddedNickname,
+  smartAthleteMatch,
+  universalGymKey
 } from "../src/proHubData.js";
 import { BJJ_HEROES_NICKNAMES } from "../src/bjjNicknames.js";
 
@@ -243,6 +245,21 @@ for (const hub of expectedHubs) {
 check("Legend external bio resolver: Bruno Bastos & Buchecha link directly to verified BJJ Heroes profiles",
   resolveBjjHeroesUrl("Bruno Bastos") === "https://www.bjjheroes.com/bjj-fighters/bruno-bastos" &&
   resolveBjjHeroesUrl("Buchecha") === "https://www.bjjheroes.com/bjj-fighters/marcus-almeida-buchecha"
+);
+
+// ============================================================================
+// SECTION 10: Full BJJ Heroes Roster (~1,000+) & Given-Name Equivalence Guard
+// ============================================================================
+check("Full BJJ Heroes A-Z Directory loaded (>= 800 verified fighters)", BJJ_HEROES_NICKNAMES.length >= 800, "count=" + BJJ_HEROES_NICKNAMES.length);
+check("Given-name equivalence: 'Tom DeBlass' matches IBJJF legal name 'Thomas D. DeBlass'",
+  smartAthleteMatch("Thomas D. DeBlass", "Ricardo Almeida", "Tom DeBlass") &&
+  strictVerifiedAthleteRowMatch("Thomas D. DeBlass", "TDBJJ", "Male / Adult / Black / Ultra Heavy", "Tom DeBlass", "", "M")
+);
+check("Ocean County BJJ / TDBJJ / Tom DeBlass Affiliate canonicalize to unified academy key",
+  universalGymKey("TDBJJ") === "oceancountybjj" &&
+  universalGymKey("Tom DeBlass Affiliate") === "oceancountybjj" &&
+  universalGymKey("Ocean County BJJ") === "oceancountybjj" &&
+  resolveBjjHeroesUrl("Tom DeBlass").includes("bjjheroes.com/")
 );
 
 console.log(`\n🎉 ALL ${passed}/${passed} MATDATES MASTER GUARDRAIL CHECKS PASSED — SAFE TO DEPLOY!\n`);

@@ -631,6 +631,16 @@ export function LeaderboardModal({ onClose }) {
     const scClubs26 = [];
     rows.forEach(r => {
       const b = (r.Board || '').toLowerCase();
+      if (b === 'ibjjf_hist_youth' || b === 'ibjjf_hist_adult') {
+        const hk = normGymKey(r.Academy);
+        if (!hk) return;
+        if (!map[hk]) map[hk] = {
+          key: hk, Academy: r.Academy, Gold: 0, Silver: 0, Bronze: 0, Subs: 0,
+          Points: 0, YouthMedals: 0, AdultMedals: 0, Feds: new Set(['IBJJF']),
+          allTimeClub: { g: Number(r.Gold || 0), s: Number(r.Silver || 0), b: Number(r.Bronze || 0), total: Number(r.Gold || 0) + Number(r.Silver || 0) + Number(r.Bronze || 0) }
+        };
+        return;
+      }
       if (b === 'smoothcomp_clubs') { if (!rows.some(x => x.Board === 'smoothcomp_clubs_2026')) scClubs26.push(r); return; }
       if (b === 'smoothcomp_clubs_2026') { scClubs26.push(r); return; }
       const rFed = b.startsWith('ibjjf') ? 'IBJJF'

@@ -135,6 +135,21 @@ export const PRO_SUPERFIGHTS = [
     facts: ["One of the most accomplished active black belt competitors and association leaders in Texas and worldwide."]
   },
   {
+    name: "Tom DeBlass", aliases: ["thomas david deblass", "thomas deblass", "thomas d. deblass", "thomas d deblass", "tom de blass"], shards: ["de", "th", "to"],
+    academy: "Ocean County BJJ (Tom DeBlass)", belt: "5th Degree Black Belt", rec: "3x ADCC North American Trials Winner • IBJJF World & Pan No-Gi Champion • UFC/Bellator Vet", feds: ["ADCC", "IBJJF"],
+    careerG: 7, careerS: 1, careerB: 3,
+    titles: ["🥇 3x ADCC North American Trials Champion (2009, 2014, 2016)", "🥇 IBJJF Pan No-Gi Adult Black Belt Ultra-Heavy Champion (2013)", "🥇 IBJJF World No-Gi Master Black Belt Open Class Champion (2015)", "🥋 Founder — Ocean County BJJ & Tom DeBlass Association"],
+    careerPodiums: [
+      { ev: "ADCC North American Trials 2016", d: "+99kg Champion", p: 1, f: "ADCC", yr: 2016 },
+      { ev: "ADCC North American Trials 2014", d: "+99kg Champion", p: 1, f: "ADCC", yr: 2014 },
+      { ev: "ADCC North American Trials 2009", d: "-99kg Champion", p: 1, f: "ADCC", yr: 2009 }
+    ],
+    bouts: [
+      { ev: "Fight 2 Win / KASAI Pro SuperFights", org: "F2W / KASAI", res: "🏆 Multi-Time Main Event Heavyweight Winner", sub: "Half-Guard Sweep, Guillotine & Leg Locks" }
+    ],
+    facts: ["Black belt under Ricardo Almeida, UFC & Bellator veteran, founder of Ocean County BJJ in Forked River, NJ, and head coach to elite grapplers including Garry Tonon."]
+  },
+  {
     name: "Rickson Gracie", aliases: ["rickson gracie"], shards: ["gr"],
     academy: "Gracie Jiu-Jitsu", belt: "9th Degree Red Belt", rec: "Grandmaster • 1980s Rio & Vale Tudo Legend", feds: ["CBJJ", "VALE TUDO"],
     careerG: 11, careerS: 0, careerB: 0,
@@ -641,6 +656,74 @@ export const fastNicknameRowMatch = (nf, qFold) => {
   return false;
 };
 
+
+const GIVEN_NAME_GROUPS = [
+  ["tom", "tommy", "thomas", "tomas"],
+  ["mike", "mikey", "michael", "miguel"],
+  ["rob", "robbie", "bob", "bobby", "robert", "roberto"],
+  ["will", "willy", "bill", "billy", "liam", "william"],
+  ["jim", "jimmy", "jamie", "james"],
+  ["matt", "matty", "matthew", "mateo", "matheus"],
+  ["dave", "davy", "david", "davi"],
+  ["dan", "danny", "daniel", "danilo"],
+  ["josh", "joshua"],
+  ["tony", "antonio", "anthony"],
+  ["nick", "nicky", "nico", "nicholas", "nicolas"],
+  ["chris", "christopher", "cristiano"],
+  ["alex", "alexandre", "alexander", "alejandro"],
+  ["joe", "joey", "joseph"],
+  ["ben", "benny", "benjamin"],
+  ["sam", "sammy", "samuel"],
+  ["pat", "paddy", "patrick"],
+  ["jon", "johnny", "jonathan", "john"],
+  ["rich", "richie", "dick", "rick", "ricky", "richard", "ricardo"],
+  ["greg", "gregory"],
+  ["steve", "steven", "stephen"],
+  ["tim", "timmy", "timothy"],
+  ["andy", "drew", "andrew", "andre"],
+  ["ed", "eddie", "edward", "eduardo"],
+  ["frank", "frankie", "francis", "francisco"],
+  ["charlie", "chuck", "charles"],
+  ["pete", "peter", "pedro"],
+  ["nate", "nathan", "nathaniel"],
+  ["zack", "zach", "zachary"],
+  ["jake", "jacob"],
+  ["max", "maxwell", "maximilian"],
+  ["leo", "leonardo"],
+  ["gui", "guilherme"],
+  ["rafa", "rafael", "raphael"],
+  ["bia", "beatriz", "bianca"],
+  ["gabi", "gabrieli", "gabrielle", "gabriela"],
+  ["bella", "izzy", "isabella", "isabelle"],
+  ["liz", "lizzy", "beth", "elizabeth", "elisabeth"],
+  ["kate", "katie", "katherine", "catherine"],
+  ["maddie", "madison", "madeleine"],
+  ["abby", "abigail"],
+  ["lexi", "alexis", "alexandra"]
+];
+const _GIVEN_EQUIV_MAP = (() => {
+  const m = new Map();
+  for (const grp of GIVEN_NAME_GROUPS) {
+    for (const n of grp) {
+      const ex = m.get(n) || new Set();
+      grp.forEach(x => ex.add(x));
+      m.set(n, ex);
+    }
+  }
+  return m;
+})();
+export function getGivenNameVariants(tok) {
+  const clean = foldStr(tok || "").replace(/[^a-z]/g, "");
+  const s = _GIVEN_EQUIV_MAP.get(clean);
+  return s ? Array.from(s) : (clean ? [clean] : []);
+}
+export function areGivenNamesEquivalent(f1, f2) {
+  if (!f1 || !f2) return false;
+  if (f1 === f2) return true;
+  const s = _GIVEN_EQUIV_MAP.get(f1);
+  return Boolean(s && s.has(f2));
+}
+
 export const athBucketsForQuery = (q) => {
   const clean = foldStr(q).replace(/\b(jr\.?|sr\.?|ii|iii|iv|professor|prof\.?|coach)\b/g, " ").trim();
   if (clean.length < 2) return [];
@@ -654,6 +737,7 @@ export const athBucketsForQuery = (q) => {
     });
   });
   words.slice().reverse().forEach(w => set.add(w.slice(0, 2)));
+  if (words.length >= 1) getGivenNameVariants(words[0]).forEach(v => { if (v.length >= 2) set.add(v.slice(0, 2)); });
   words.forEach(w => {
     if (COMPOUND_SHARD_HINTS[w]) COMPOUND_SHARD_HINTS[w].forEach(s => set.add(s));
   });
@@ -696,7 +780,7 @@ export const smartAthleteMatch = (candName, candAcad, queryStr, extraNick = "") 
   const blobWords = blob.split(/[\s/"'()-]+/).filter(Boolean);
   return qTerms.every(qt => {
     if (blob.includes(qt)) return true;
-    if (blobWords.some(bw => bw.startsWith(qt) || (qt.length >= 4 && qt.startsWith(bw) && bw.length >= 4))) return true;
+    if (blobWords.some(bw => bw.startsWith(qt) || areGivenNamesEquivalent(qt, bw) || (qt.length >= 4 && qt.startsWith(bw) && bw.length >= 4))) return true;
     // Fuzzy/phonetic surname match (e.g. "henson" -> "heinsohn")
     if (qt.length >= 4) {
       const pQt = phoneticFold(qt);
@@ -722,6 +806,7 @@ const AMBIGUOUS_4STEMS = new Set([
 ]);
 function hasUncommonDiminutiveStem(f1, f2) {
   if (!f1 || !f2) return false;
+  if (areGivenNamesEquivalent(f1, f2)) return true;
   const [sh, lg] = f1.length <= f2.length ? [f1, f2] : [f2, f1];
   if (sh.length >= 4 && !AMBIGUOUS_4STEMS.has(sh.slice(0, 4)) && lg.startsWith(sh)) return true;
   const stem = sh.replace(/(ie|i|y)$/, "");
@@ -1158,6 +1243,8 @@ export function mergeInitialDuplicateProfiles(profiles) {
 }
 
 export function cleanAcademyName(raw) {
+  const _ocCleanCheck = foldStr(raw || "").replace(/[^a-z0-9]/g, "");
+  if (_ocCleanCheck === "tdbjj" || _ocCleanCheck === "ocjj" || _ocCleanCheck === "deblassbjj" || _ocCleanCheck.startsWith("oceancounty") || _ocCleanCheck.startsWith("tomdeblass")) return "Ocean County BJJ (Tom DeBlass)";
   if (!raw || typeof raw !== "string") return raw || "";
   let s = raw.trim().replace(/\s+/g, " ");
   // Normalize Carlson Gracie San Antonio Hq/HQ variations (preserving '/ TM Combat Academy' when present)
@@ -1171,6 +1258,8 @@ export function cleanAcademyName(raw) {
 }
 
 export function universalGymKey(raw) {
+  const _ocKeyCheck = foldStr(raw || "").replace(/[^a-z0-9]/g, "");
+  if (_ocKeyCheck === "tdbjj" || _ocKeyCheck === "ocjj" || _ocKeyCheck === "deblassbjj" || _ocKeyCheck.startsWith("oceancounty") || _ocKeyCheck.startsWith("tomdeblass")) return "oceancountybjj";
   const s = foldStr(raw || "").replace(/[^a-z0-9\s]/g, " ");
   let toks = s.split(/\s+/).filter(Boolean);
   const tailNoise = new Set(["hq", "headquarters", "bjj", "jiu", "jitsu", "jiujitsu", "academy", "mma", "team", "club", "association", "tx", "ca", "fl"]);
@@ -1316,9 +1405,11 @@ function _baseStrictVerifiedAthleteRowMatch(rowName, rowAcad, rowDiv, targetName
   const rLast = rParts[rParts.length - 1].replace(/\./g, "");
   const tLast = tParts[tParts.length - 1].replace(/\./g, "");
 
-  // 3. Exact full name match (all tokens match)
+  // 3. Exact full name match OR Given-Name Equivalent + Exact Surname (e.g. "Thomas D. DeBlass" <-> "Tom DeBlass")
   if (rFold.replace(/\./g, "") === tFold.replace(/\./g, "")) {
-    // If target has a known academy AND row has a known academy AND this is a common surname, still allow legitimate gym switches unless age/gender failed above
+    return true;
+  }
+  if (rLast === tLast && rLast.length >= 3 && areGivenNamesEquivalent(rFirst, tFirst)) {
     return true;
   }
 
@@ -1541,6 +1632,7 @@ export function buildVenueHotelUrl(ev, partnerId = "matdates") {
 
 
 const DIRECT_BJJ_HEROES_SLUGS = {
+  "tom deblass": "tom-deblass",
   "bruno bastos": "bruno-bastos",
   "marcus almeida": "marcus-almeida-buchecha",
   "roger gracie": "roger-gracie",
@@ -1587,8 +1679,19 @@ export function resolveBjjHeroesUrl(rawName) {
   if (DIRECT_BJJ_HEROES_SLUGS[canon]) {
     return "https://www.bjjheroes.com/bjj-fighters/" + DIRECT_BJJ_HEROES_SLUGS[canon];
   }
-  const hit = BJJ_HEROES_NICKNAMES.find(x => foldStr(x.n) === canon || foldStr(x.nk) === foldStr(rawName || "").trim());
+  const qClean = foldStr(rawName || "").trim();
+  const hit = BJJ_HEROES_NICKNAMES.find(x => {
+    const xn = foldStr(x.n);
+    if (xn === canon || xn === qClean || (x.nk && foldStr(x.nk) === qClean)) return true;
+    const xp = xn.split(/\s+/), cp = canon.split(/\s+/);
+    return xp.length >= 2 && cp.length >= 2 && xp[xp.length - 1] === cp[cp.length - 1] && areGivenNamesEquivalent(xp[0], cp[0]);
+  });
   if (hit) {
+    if (hit.s) {
+      return hit.s.startsWith("?p=")
+        ? ("https://www.bjjheroes.com/" + hit.s)
+        : ("https://www.bjjheroes.com/bjj-fighters/" + hit.s);
+    }
     const hKey = foldStr(hit.n);
     if (DIRECT_BJJ_HEROES_SLUGS[hKey]) return "https://www.bjjheroes.com/bjj-fighters/" + DIRECT_BJJ_HEROES_SLUGS[hKey];
     const slug = hKey.replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");

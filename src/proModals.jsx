@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { collection, addDoc, getDocs, query, where, doc, getDoc } from "firebase/firestore";
 import { db } from "./firebase";
 import { MatAlertModal, useWatchedAthletes } from "./MatAlertModal";
-import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, sameCompetitorCluster, findProAthlete, PRO_SUPERFIGHTS, UPCOMING_UFC_SUPERFIGHTS, getDeadlineBadge, computeEliteSpotlight, universalGymKey, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName, mergeInitialDuplicateProfiles, consolidateAthleteProfiles, resolveNicknameHit, fastNicknameRowMatch, stripEmbeddedNickname, extractEmbeddedNickname, matchesYouthInitial, isUmbrellaAcademyName, getCachedShardItems, getCachedQueryOnce } from "./proHubData";
+import { foldStr, athBucket, athBucketsForQuery, smartAthleteMatch, canonicalPersonKey, sameCompetitorCluster, findProAthlete, PRO_SUPERFIGHTS, UPCOMING_UFC_SUPERFIGHTS, getDeadlineBadge, computeEliteSpotlight, universalGymKey, getGivenNameVariants, inferTargetGender, strictVerifiedAthleteRowMatch, cleanAcademyName, mergeInitialDuplicateProfiles, consolidateAthleteProfiles, resolveNicknameHit, fastNicknameRowMatch, stripEmbeddedNickname, extractEmbeddedNickname, matchesYouthInitial, isUmbrellaAcademyName, getCachedShardItems, getCachedQueryOnce } from "./proHubData";
 import { AthleteTrophyRoomModal } from "./proTrophyModal";
 
 const _FOLDED_POD = {};
@@ -647,22 +647,28 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
               const dt = d.data() || {};
               const arr = Array.isArray(dt.items) ? dt.items : (dt.Academy ? [dt] : []);
               arr.forEach(r => {
-                if (r.Board === "ibjjf_hist_youth" || r.Board === "ibjjf_hist_adult") return;
+                const isHistBoard = r.Board === "ibjjf_hist_youth" || r.Board === "ibjjf_hist_adult";
                 const ac = (r.Academy || "").trim();
                 if (!ac) return;
                 const gk = universalGymKey(ac);
                 if (!gk) return;
                 let rec = byK.get(gk);
                 if (!rec) {
-                  rec = { key: gk, Academy: cleanAcademyName(ac), _low: foldStr(cleanAcademyName(ac)), Gold: 0, Silver: 0, Bronze: 0 };
+                  const cl = cleanAcademyName(ac);
+                  rec = { key: gk, Academy: cl, _low: foldStr(cl + " " + ac), Gold: 0, Silver: 0, Bronze: 0, hGold: 0, hSilver: 0, hBronze: 0 };
                   byK.set(gk, rec);
-                } else if (cleanAcademyName(ac).length > rec.Academy.length && !(rec.Academy === 'Carlson Gracie San Antonio' && /carlson gracie/i.test(ac))) {
-                  rec.Academy = ac;
-                  rec._low = foldStr(ac);
+                } else {
+                  rec._low = rec._low + " " + foldStr(ac);
                 }
-                rec.Gold += Number(r.Gold || 0);
-                rec.Silver += Number(r.Silver || 0);
-                rec.Bronze += Number(r.Bronze || 0);
+                if (isHistBoard) {
+                  rec.hGold += Number(r.Gold || 0);
+                  rec.hSilver += Number(r.Silver || 0);
+                  rec.hBronze += Number(r.Bronze || 0);
+                } else {
+                  rec.Gold += Number(r.Gold || 0);
+                  rec.Silver += Number(r.Silver || 0);
+                  rec.Bronze += Number(r.Bronze || 0);
+                }
               });
             });
             return Array.from(byK.values()).sort((a, b) => (b.Gold * 9 + b.Silver * 3 + b.Bronze) - (a.Gold * 9 + a.Silver * 3 + a.Bronze));
@@ -770,6 +776,10 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
   const fastRowMatches = (nf, af, qFold, qTerms) => {
   const blob = nf + " " + af;
   if (blob.includes(qFold) || qTerms.every(t => blob.includes(t))) return true;
+  if (qTerms.length >= 1) {
+    const firstVars = getGivenNameVariants(qTerms[0]);
+    if (firstVars.length > 1 && firstVars.some(v => blob.includes(v)) && qTerms.slice(1).every(t => blob.includes(t))) return true;
+  }
   if (fastNicknameRowMatch(nf, qFold)) return true;
   return qTerms.length >= 2 && nf.length >= 4 && nf[1] === "." &&
     nf[0] === qTerms[0][0] && nf.endsWith(qTerms[qTerms.length - 1]);
@@ -1011,7 +1021,7 @@ export function UniversalAthleteLookupModal({ events, onClose, onOpenBracket }) 
                   <div key={g.key} onClick={() => { window.location.href = "/?gym=" + encodeURIComponent(g.key); }} style={{ background:"#172032", border:"1px solid #f59e0b", borderRadius:"8px", padding:"8px 11px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:"8px", flexWrap:"wrap" , cursor:"pointer" }}>
                       <div style={{ fontSize:"0.81rem" }}>
                         <b style={{ color:"#fff", textDecoration:"underline", textDecorationColor:"rgba(245,158,11,0.65)" }}>{g.Academy}</b>
-                      <span style={{ color:"#cbd5e1", marginLeft:"7px", fontSize:"0.76rem" }}>🥇{g.Gold} 🥈{g.Silver} 🥉{g.Bronze}</span>
+                      <span style={{ color:"#cbd5e1", marginLeft:"7px", fontSize:"0.76rem" }}>{(g.Gold + g.Silver + g.Bronze) > 0 ? <>🥇{g.Gold} 🥈{g.Silver} 🥉{g.Bronze}</> : <>🥇{g.hGold || 0} 🥈{g.hSilver || 0} 🥉{g.hBronze || 0} (All-Time)</>}</span>
                     </div>
                     <a href={"/?gym=" + encodeURIComponent(g.key)} style={{ background:"#f59e0b", color:"#000", padding:"5px 10px", borderRadius:"6px", fontWeight:"800", fontSize:"0.74rem", textDecoration:"none", whiteSpace:"nowrap" }}>Academy Trophy Room →</a>
                   </div>
